@@ -9,7 +9,7 @@ import { pressTabClose, useTabCloseControl } from "../../state/sidebar/closeCont
 import { currentMovingTabIds } from "../../state/tabs/topStrip";
 import { TabBadges } from "../media/TabBadges";
 import { TabIcon } from "../sidebar/TabIcon";
-import { Button, FadeLabel, Symbol, useHover } from "../ui";
+import { Button, FadeLabel, Symbol, useHover, useTooltip } from "../ui";
 import { HoverSlot } from "../ui/HoverSlot";
 import { surfaceTheme, ThemeContext, useTheme } from "../ui/theme";
 import { toolbarPalette, useEasedColor } from "../ui/toolbarColors";
@@ -127,6 +127,7 @@ export function TabChip({ tabId, width, tuck, dragged }: { tabId: string; width:
   const { palette, band } = useWebsiteBand(tabId);
   const closeControl = useTabCloseControl(tabId);
   const { hovered, hoverProps } = useHover();
+  const muteTip = useTooltip(muteTitle(mute));
   const unread = useTabUnread(tabId);
   const mutePressMotion = usePressScaleMotion(!!(playing || mute), buttonMotion.iconPressScale);
   const mutePressStyle = mutePressMotion.scale ? { transform: [{ scale: mutePressMotion.scale }] } : undefined;
@@ -151,7 +152,7 @@ export function TabChip({ tabId, width, tuck, dragged }: { tabId: string; width:
                 <TabBadges tabId={tab.id} />
               </View>
               {(playing || mute) && (
-                <Pressable onPress={() => toggleMute(tab.id)} onPressIn={mutePressMotion.onPressIn} onPressOut={mutePressMotion.onPressOut} style={{ marginLeft: CHIP_LABEL_GAP }} tooltip={muteTitle(mute)}>
+                <Pressable onPress={() => toggleMute(tab.id)} onPressIn={mutePressMotion.onPressIn} onPressOut={mutePressMotion.onPressOut} style={{ marginLeft: CHIP_LABEL_GAP }} tooltip={muteTip}>
                   <Animated.View pointerEvents="none" style={mutePressStyle}>
                     <Symbol name={mute ? "speaker.slash" : "speaker.wave.2"} size={11} color={onBand ? palette.icon : theme.textTab} style={{ width: 16, height: 16 }} />
                   </Animated.View>

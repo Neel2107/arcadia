@@ -5,7 +5,7 @@ import { folderIdOfCell } from "../../state/pins/tileFolders";
 import { openTileFolderMenu } from "../../state/sidebar/tileFolderUi";
 import { currentMovingTabIds, openTileFolderStripMenu, useTileFolderLabel } from "../../state/tabs/topStrip";
 import { FolderMosaic } from "../sidebar/FolderTile";
-import { ContextMenuArea, useHover } from "../ui";
+import { ContextMenuArea, useHover, useTooltip } from "../ui";
 import { GlassFill, useGlass } from "../ui/Glass";
 import { useTheme } from "../ui/theme";
 import { DockContext } from "./context";
@@ -120,6 +120,7 @@ function FolderCell({ folderId, tabIds, geometry, from }: { folderId: string; ta
   const windowId = useWindowId();
   const label = useTileFolderLabel(windowId, folderId);
   const { hovered, hoverProps } = useHover();
+  const tip = useTooltip(`${label}\nShow Folder`);
   const drag = useStripDrag({
     tabId: null,
     ids: () => tabIds,
@@ -138,7 +139,7 @@ function FolderCell({ folderId, tabIds, geometry, from }: { folderId: string; ta
       <View
         {...drag.panHandlers}
         {...hoverProps}
-        tooltip={`${label}\nShow Folder`}
+        tooltip={tip}
         style={{
           position: "absolute",
           left: PINNED_FACE_INSET,
