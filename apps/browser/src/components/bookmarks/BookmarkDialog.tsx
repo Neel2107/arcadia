@@ -65,7 +65,7 @@ function DialogPanel({ state }: { state: BookmarkDialogState }) {
     setFolderId(id);
   };
 
-  const heading = state.kind === "allTabs" ? `Bookmark ${state.tabs.length} Tabs` : "Bookmark Added";
+  const heading = state.kind === "allTabs" ? `Bookmark ${state.tabs.length} Tabs` : state.added ? "Bookmark Added" : "Edit Bookmark";
 
   return (
     <Dialog

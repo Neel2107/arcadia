@@ -44,11 +44,6 @@ export function returnFocusToPage(windowId: string) {
   else focusHeroBar(windowId, active);
 }
 
-export function toggleBookmarkInWindow(windowId: string, page: { url: string; title: string; favicon: string | null }) {
-  const s = store();
-  s.toggleBookmark(bookmarkProfileId(s, s.windows[windowId]), page);
-}
-
 export function returnShownTabToPinnedUrl(windowId: string, tabId: string) {
   const s = store();
   if (activeTabId(s, windowId) === tabId) s.returnToPinnedUrl(tabId);

@@ -17,7 +17,8 @@ import { HoverCard as HoverPanel, space, Text } from "../ui";
 import { ActionTile } from "../site/SiteControlsParts";
 import { SectionLabel } from "./SectionLabel";
 import { SidebarListRow, SidebarRowLabel } from "./SidebarRow";
-import { clickTab, toggleBookmarkInWindow } from "../../state/sidebar/actions";
+import { clickTab } from "../../state/sidebar/actions";
+import { pressBookmarkButton } from "../../state/bookmarks/actions";
 import { useBookmarksShown } from "../../state/bookmarks/hooks";
 import { GroupPanel } from "./GroupPanel";
 import { dismissHover, setHoverSpace } from "../../state/sidebar/hover";
@@ -101,7 +102,7 @@ function TabCard({ tabId, windowId, anchor }: { tabId: string; windowId: string;
             icon={bookmarked ? "bookmark.fill" : "bookmark"}
             active={bookmarked}
             label="Bookmark"
-            onPress={() => toggleBookmarkInWindow(windowId, { url: tab.url, title: tabTitle(tab), favicon: tab.favicon })}
+            onPress={() => pressBookmarkButton(windowId, tabId)}
           />
         ) : null}
         {!isActive && !tab.pin ? (
