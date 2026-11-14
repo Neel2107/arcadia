@@ -47,6 +47,18 @@ class PopupGeometryTests(unittest.TestCase):
     def test_non_finite_placements_and_zoom_are_refused(self):
         self.run_case('finite')
 
+    def test_a_surface_takes_focus_only_in_an_active_window_and_never_activates_one(self):
+        self.run_case('focus')
+        views = (SOURCE / 'ardia/linux/ac_linux_extension_views.cc').read_text()
+        focus = views[views.index('  void Focus() {'):views.index('  void OnWillChangeFocus(')]
+        self.assertIn('ext::SurfaceFocusFor(native_shown_, widget && widget->IsActive())', focus)
+        stored = focus[focus.index('case ext::SurfaceFocus::kStored:'):focus.index('case ext::SurfaceFocus::kTaken:')]
+        self.assertIn('if (focus) focus->SetStoredFocusView(view_);', stored)
+        self.assertNotIn('RequestFocus', stored)
+        self.assertNotIn('contents()->Focus()', stored)
+        taken = focus[focus.index('case ext::SurfaceFocus::kTaken:'):]
+        self.assertLess(taken.index('view_->RequestFocus();'), taken.index('contents()->Focus();'))
+
 
 if __name__ == '__main__':
     unittest.main()

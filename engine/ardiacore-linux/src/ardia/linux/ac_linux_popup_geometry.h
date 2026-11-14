@@ -100,6 +100,13 @@ inline std::optional<PopupBox> PopupBoxFor(const PopupPlacement& p, double zoom,
   return box;
 }
 
+enum class SurfaceFocus { kNone, kStored, kTaken };
+
+constexpr SurfaceFocus SurfaceFocusFor(bool shown, bool window_active) {
+  if (!shown) return SurfaceFocus::kNone;
+  return window_active ? SurfaceFocus::kTaken : SurfaceFocus::kStored;
+}
+
 }
 
 #endif

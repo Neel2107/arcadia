@@ -16,8 +16,13 @@
 #include <utility>
 #include <vector>
 
+#include "ardia/linux/ac_linux_app_activation.h"
 #include "ardia/linux/ac_linux_policy.h"
 #include "ardia/linux/ac_linux_contract.h"
+#include "ardia/linux/ac_linux_page_keys.h"
+#include "ardia/linux/ac_linux_pointer_regions.h"
+#include "ardia/linux/ac_linux_report.h"
+#include "ardia/linux/ac_linux_report_core.h"
 #include "ardia/linux/ac_linux_sidebar_edge.h"
 #include "ardia/linux/ac_linux_status_geometry.h"
 #include "ardia/linux/ac_linux_auto_pip_service.h"
@@ -167,6 +172,7 @@
 #include "chrome/common/chrome_switches.h"
 #include "components/search_engines/template_url.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/input/native_web_keyboard_event.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/search_engines/template_url_service.h"
@@ -207,7 +213,9 @@
 #include "ui/aura/client/focus_client.h"
 #include "ui/aura/env.h"
 #include "ui/aura/window.h"
+#include "ui/aura/window_event_dispatcher.h"
 #include "ui/aura/window_targeter.h"
+#include "ui/aura/window_tree_host.h"
 #include "ui/compositor/compositor.h"
 #include "ui/compositor/compositor_observer.h"
 #include "ui/compositor/layer.h"
@@ -229,9 +237,11 @@
 #include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/gfx/codec/png_codec.h"
+#include "ui/events/base_event_utils.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/event.h"
 #include "ui/events/event_handler.h"
+#include "ui/events/event_sink.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/events/keycodes/keyboard_code_conversion.h"
 #include "ui/native_theme/native_theme.h"
@@ -272,6 +282,8 @@ extern bool (*g_ardia_linux_off_the_record_navigation)(content::WebContents*, co
 extern void (*g_ardia_linux_devtools_opened_tab)(content::WebContents*, content::WebContents*, const GURL&);
 extern void (*g_ardia_linux_devtools_open_url)(Profile*, const GURL&);
 extern void (*g_ardia_linux_drag_ended)(BrowserWindowInterface*);
+extern void (*g_ardia_linux_unhandled_key)(content::WebContents*, const input::NativeWebKeyboardEvent&);
+extern void (*g_ardia_linux_minimum_size)(const BrowserWindowInterface*, gfx::Size* minimum);
 extern void (*g_ardia_devtools_dock_changed)(BrowserWindowInterface* browser,
                                              content::WebContents* inspected,
                                              content::WebContents* devtools);
@@ -378,6 +390,7 @@ struct RequestedWindow {
   std::string page_profile;
   base::WeakPtr<Profile> app_profile;
   base::DictValue private_window;
+  base::DictValue small_window;
   int opener_host = 0;
   uint64_t opener_generation = 0;
 };
@@ -400,6 +413,13 @@ linux_window::FocusLedger& WindowFocus() {
   static base::NoDestructor<linux_window::FocusLedger> ledger(MayActivateNativeWindows());
   return *ledger;
 }
+
+linux_window::AppActivation& AppActivationState() {
+  static base::NoDestructor<linux_window::AppActivation> activation;
+  return *activation;
+}
+
+void NoteAppActivation();
 
 linux_window::FullScreenRestore& FullScreenRestorer() {
   static base::NoDestructor<linux_window::FullScreenRestore> restore;
@@ -1006,6 +1026,8 @@ class TabBinding : public content::WebContentsObserver {
   base::WeakPtrFactory<TabBinding> weak_factory_{this};
 };
 
+constexpr int kMouseButtons = ui::EF_LEFT_MOUSE_BUTTON | ui::EF_MIDDLE_MOUSE_BUTTON | ui::EF_RIGHT_MOUSE_BUTTON;
+
 class WindowKeyboardHandler : public ui::EventHandler {
  public:
   explicit WindowKeyboardHandler(base::RepeatingCallback<void(ui::KeyEvent*)> handle)
@@ -1056,7 +1078,17 @@ class ShellHostView : public views::View,
   int id() const { return id_; }
   const std::string& window_id() const { return window_id_; }
   bool is_utility() const { return !kind_.empty(); }
-  void set_small(bool small) { small_ = small; }
+  void set_small(bool small) {
+    if (small_ == small) return;
+    small_ = small;
+    if (GetWidget()) GetWidget()->OnSizeConstraintsChanged();
+  }
+  void MinimumSize(gfx::Size* minimum) const {
+    if (small_ && !is_utility()) *minimum = gfx::Size(linux_window::kSmallWindowMinWidth, linux_window::kSmallWindowMinHeight);
+  }
+  const char* WindowKind() const {
+    return is_utility() ? kind_.c_str() : small_ ? linux_window::kSmallWindowKind : linux_window::kBrowserWindowKind;
+  }
   bool ReportsCommits() const { return handler_ && reports_commits_; }
   void SetReportsCommits(bool on) { reports_commits_ = on; }
   bool OpensNewTabLinksInPlace() const { return g_new_tab_links_in_place && small_ && !is_utility(); }
@@ -1076,6 +1108,7 @@ class ShellHostView : public views::View,
     utility_ = std::move(request.utility);
     page_profile_ = std::move(request.page_profile);
     private_window_ = std::move(request.private_window);
+    small_window_ = std::move(request.small_window);
     if (const auto name = ardiacore::linux_profiles::ParseProfileName(page_profile_);
         name && name->kind == ardiacore::linux_profiles::ProfileKind::kPrivate) {
       std::vector<int> taken;
@@ -1290,6 +1323,7 @@ class ShellHostView : public views::View,
   std::string ExtensionTabKey(content::WebContents* contents) const;
   bool PromptEvent(std::string_view name, base::DictValue data);
   bool PromptPageEvent(content::WebContents* contents, std::string_view name, base::Value data);
+  bool ReportUnhandledEscape(content::WebContents* contents);
   bool ExtensionsListening() const { return browser_ && handler_ && !is_utility(); }
   void ReleaseExtensions() {
     extension_surfaces_.reset();
@@ -1480,6 +1514,8 @@ class ShellHostView : public views::View,
   void SetInputRegions(const base::DictValue& args,
                        base::OnceCallback<void(bool, base::Value)> done);
   void ApplyShellInput();
+  linux_window::Rect OpenerWorkArea() const;
+  void ReleaseStaleShellHover();
   void SetPresentations(const base::DictValue& args,
                        base::OnceCallback<void(bool, base::Value)> done);
   void StripCommand(int command, const base::DictValue& args,
@@ -1586,6 +1622,7 @@ class ShellHostView : public views::View,
   base::WeakPtr<Profile> app_profile_;
   std::string page_profile_;
   base::DictValue private_window_;
+  base::DictValue small_window_;
   int private_ordinal_ = 0;
   int opener_host_ = 0;
   uint64_t opener_generation_ = 0;
@@ -2362,6 +2399,8 @@ ShellHostView::~ShellHostView() {
   ForgetOpenerHost(id_);
   LinuxImportWindowClosed(window_id_);
   WindowFocus().Forget(id_);
+  NoteAppActivation();
+  ardiacore::LinuxReportCallerGone(id_);
   DropPlayer();
   weak_factory_.InvalidateWeakPtrs();
   LinuxLiveCallerGone(LiveCaller());
@@ -2421,6 +2460,7 @@ void ShellHostView::Initialize() {
                                                        : gfx::Size(640, 600));
     GetWidget()->OnSizeConstraintsChanged();
   }
+  if (small_ && !is_utility()) GetWidget()->OnSizeConstraintsChanged();
   LayoutOverlay();
   StartLinuxContentBlocker(profile(), page_profile());
   if (!title_.empty()) {
@@ -2847,8 +2887,18 @@ base::DictValue ShellHostView::Bootstrap() const {
     for (const char* capability : ardia::linux_open_urls::kOpenUrlCapabilities) capabilities.Append(capability);
   }
   for (const char* capability : ardia::linux_commands::kWindowCommandCapabilities) capabilities.Append(capability);
+  if (!is_utility()) {
+    for (const char* capability : ardia::linux_keys::kPageKeyCapabilities) capabilities.Append(capability);
+  }
+  for (const char* capability : ardia::linux_window::kAppActivationCapabilities) capabilities.Append(capability);
+  if (!is_utility()) {
+    for (const char* capability : ardia::linux_window::kSmallWindowCapabilities) capabilities.Append(capability);
+  }
   for (const char* capability : ardia::linux_notifications::kNotificationCapabilities) capabilities.Append(capability);
   capabilities.Append("ArdiaShell.fetchBangList");
+  if (!is_utility()) {
+    for (const char* capability : ardia::linux_report::kReportCapabilities) capabilities.Append(capability);
+  }
   base::DictValue native_modules;
   native_modules.Set("ArdiaApp", base::DictValue().Set("systemInfo", std::move(info)));
   if (auto installed = ardiacore::LinuxCliBootstrapVersion()) {
@@ -2865,6 +2915,8 @@ base::DictValue ShellHostView::Bootstrap() const {
   if (is_utility()) bootstrap.Set("utility", utility_.Clone());
   bootstrap.Set("pageProfile", page_profile_);
   if (!private_window_.empty()) bootstrap.Set("privateWindow", private_window_.Clone());
+  bootstrap.Set("windowKind", WindowKind());
+  if (small_ && !small_window_.empty()) bootstrap.Set("smallWindow", small_window_.Clone());
   if (ChromeMade()) bootstrap.Set("chromeMade", true);
   if (base::ListValue adopt = UnclaimedTabsForShell(); !adopt.empty()) bootstrap.Set("adoptTabs", std::move(adopt));
   if (typeahead_ && typeahead_->capturing() && typeahead_timer_.IsRunning()) {
@@ -2919,8 +2971,10 @@ void ShellHostView::OnSidebarEdgeMouse(const ui::MouseEvent& event) {
   const double y = event.root_location_f().y() - origin.y();
   const double width = this->width();
   const double height = this->height();
-  if (!exited) return ReportSidebarEdge(sidebar_edge_.Moved(x, y, width, height));
-  ReportSidebarEdge(sidebar_edge_.Exited(x, y, width, height, GetWidget()->IsActive()));
+  const bool released = type == ui::EventType::kMouseReleased;
+  const bool pressed = ardia::linux_window::ButtonsHeld(event.flags(), event.changed_button_flags(), released, kMouseButtons);
+  if (!exited) return ReportSidebarEdge(sidebar_edge_.Moved(x, y, width, height, pressed));
+  ReportSidebarEdge(sidebar_edge_.Exited(x, y, width, height, GetWidget()->IsActive(), pressed));
   if (!sidebar_edge_.settling()) return;
   sidebar_edge_settle_.Start(FROM_HERE, base::Milliseconds(ardia::linux_window::SidebarEdgeWatch::kSettleMs),
                              base::BindOnce([](base::WeakPtr<ShellHostView> host) {
@@ -3845,6 +3899,21 @@ void ShellHostView::OnWidgetDestroying(views::Widget*) {
   pane_focus_observation_.Reset();
 }
 
+void NoteAppActivation() {
+  const auto settle = AppActivationState().WindowsChanged(WindowFocus().active() != 0);
+  if (!settle) return;
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+      FROM_HERE, base::BindOnce([](uint64_t generation) {
+        const bool quiet = std::ranges::none_of(Hosts(), [](const auto& entry) { return entry.second->DialogsPending(); });
+        if (!AppActivationState().Settled(generation, WindowFocus().active() != 0, quiet)) return;
+        for (const auto& [id, host] : Hosts()) {
+          host->Event("ArdiaShell", "onAppEvent", base::Value(base::DictValue()
+              .Set("type", linux_window::kResignActiveEvent)));
+        }
+      }, *settle),
+      base::Milliseconds(linux_window::AppActivation::kSettleMs));
+}
+
 void BroadcastWindowEvent(const base::DictValue& event) {
   for (const auto& [id, host] : Hosts()) {
     if (!host->is_utility()) host->Event("ArdiaShell", "onWindowEvent", base::Value(event.Clone()));
@@ -3939,6 +4008,7 @@ void ShellHostView::OnWidgetActivationChanged(views::Widget*, bool active) {
   if (active) activation_ = ++ActivationClock();
   if (active) FocusShellOnActivation();
   const bool changed = WindowFocus().Observe(id_, active);
+  NoteAppActivation();
   if (active) ReturnUnrequestedActivation(id_);
   if (!changed || is_utility() || window_id_.empty()) return;
   BroadcastWindowEvent(base::DictValue().Set("type", "focus").Set("id", window_id_));
@@ -4343,6 +4413,16 @@ bool ShellHostView::PromptPageEvent(content::WebContents* contents, std::string_
   for (const auto& [id, binding] : bindings_) {
     if (!contents || binding->contents() != contents) continue;
     return binding->page() && binding->page()->EmitDocument(std::string(name), std::move(data));
+  }
+  return false;
+}
+
+bool ShellHostView::ReportUnhandledEscape(content::WebContents* contents) {
+  for (const auto& [id, binding] : bindings_) {
+    if (!contents || binding->contents() != contents) continue;
+    if (!ardia::linux_keys::PageTakesEscape(!!binding->page(), binding->presented, binding->pane_visible)) return false;
+    return binding->page()->EmitDocument(ardia::linux_keys::kCommandEvent, base::Value(base::DictValue()
+        .Set("command", ardia::linux_keys::kEscapeCommand).Set("text", "")));
   }
   return false;
 }
@@ -5355,6 +5435,37 @@ void ShellHostView::SetInputRegions(
   shell_pass_ = std::move(pass);
   ApplyShellInput();
   std::move(done).Run(true, base::Value());
+  ReleaseStaleShellHover();
+}
+
+linux_window::Rect ShellHostView::OpenerWorkArea() const {
+  auto* screen = display::Screen::Get();
+  const views::Widget* widget = GetWidget();
+  if (!screen || !widget) return linux_window::Rect();
+  return LifecycleRect(screen->GetDisplayNearestWindow(widget->GetNativeWindow()).work_area());
+}
+
+void ShellHostView::ReleaseStaleShellHover() {
+  views::Widget* widget = GetWidget();
+  aura::Window* native = widget ? widget->GetNativeWindow() : nullptr;
+  aura::WindowTreeHost* tree_host = native ? native->GetHost() : nullptr;
+  aura::Window* container = shell_ ? shell_->holder()->GetNativeViewContainer() : nullptr;
+  if (!tree_host || !container) return;
+  aura::WindowEventDispatcher* dispatcher = tree_host->dispatcher();
+  aura::Window* hovered = dispatcher->mouse_moved_handler();
+  gfx::Point location = dispatcher->GetLastMouseLocationInRoot();
+  gfx::Point origin;
+  views::View::ConvertPointToWidget(shell_, &origin);
+  std::vector<ardia::linux_window::PassRect> pass;
+  for (const gfx::Rect& rect : ShellPass()) pass.push_back({rect.x(), rect.y(), rect.width(), rect.height()});
+  if (!ardia::linux_window::ShellHoverIsStale(hovered && container->Contains(hovered),
+                                              aura::Env::GetInstance()->IsMouseButtonDown(), pass,
+                                              location.x() - origin.x(), location.y() - origin.y())) {
+    return;
+  }
+  tree_host->ConvertDIPToPixels(&location);
+  ui::MouseEvent move(ui::EventType::kMouseMoved, location, location, ui::EventTimeForNow(), ui::EF_IS_SYNTHESIZED, 0);
+  std::ignore = tree_host->GetEventSink()->OnEventFromSource(&move);
 }
 
 std::vector<gfx::Rect> ShellHostView::ShellPass() const {
@@ -5774,6 +5885,7 @@ struct WindowOpening {
   linux_window::OpenIntent intent;
   std::optional<base::DictValue> utility;
   base::DictValue private_window;
+  base::DictValue small_window;
   base::WeakPtr<Profile> app_profile;
 };
 
@@ -5858,6 +5970,7 @@ void OpenNativeWindow(WindowOpening opening, uint64_t generation, Profile* page,
   request.page_profile = opening.page_profile;
   request.app_profile = opening.app_profile;
   request.private_window = std::move(opening.private_window);
+  request.small_window = std::move(opening.small_window);
   request.opener_host = opening.opener_host;
   request.opener_generation = opening.opener_generation;
   RequestedWindows()[created->GetSessionID().id()] = std::move(request);
@@ -5938,6 +6051,14 @@ void ShellHostView::Invoke(
     return ardiacore::LinuxSystemInvoke(method, values, std::move(done));
   }
   if (method == ardia::linux_bang_list::kCall) return ardiacore::FetchLinuxBangList(values, std::move(done));
+  if (ardiacore::LinuxReportInvokes(method)) {
+    return ardiacore::LinuxReportInvoke(
+        method, values, profile() ? DocumentDirectory(profile()) : base::FilePath(), id_,
+        base::BindRepeating([](base::WeakPtr<ShellHostView> host, base::Value event) {
+          if (host) host->Event("ArdiaReport", ardia::linux_report::kEvent, std::move(event));
+        }, GetWeakPtr()),
+        std::move(done));
+  }
   if (ardiacore::LinuxNotificationsInvokes(method)) {
     return ardiacore::LinuxNotificationsInvoke(method, values, profile(), id_, std::move(done));
   }
@@ -6096,7 +6217,8 @@ void ShellHostView::Invoke(
     const double hold = values.size() > 2 ? values[2].GetDouble() : 0;
     const auto side = values.size() > 3 && values[3].GetBool() ? ardia::linux_window::SidebarSide::kRight
                                                                 : ardia::linux_window::SidebarSide::kLeft;
-    ReportSidebarEdge(sidebar_edge_.Watch(std::isfinite(hold) ? hold : 0, side, GetWidget() && GetWidget()->IsActive()));
+    const bool while_pressed = values.size() > 4 && values[4].GetBool();
+    ReportSidebarEdge(sidebar_edge_.Watch(std::isfinite(hold) ? hold : 0, side, GetWidget() && GetWidget()->IsActive(), while_pressed));
     return std::move(done).Run(true, base::Value());
   }
   if (method == "ArdiaShell.setDragEscapeCapture") {
@@ -6609,6 +6731,11 @@ void ShellHostView::Invoke(
         (private_window && (!incognito || !private_json || private_json->size() > kPrivateWindowLimit))) {
       return std::move(done).Run(false, ProfileFailure(ardiacore::linux_profiles::ProfileError::kInvalid));
     }
+    const base::DictValue* small_window = kind == linux_window::kSmallWindowKind && options ? options->FindDict("smallWindow") : nullptr;
+    const auto small_json = small_window ? base::WriteJson(*small_window) : std::nullopt;
+    if (small_window && (incognito || !small_json || small_json->size() > kPrivateWindowLimit)) {
+      return std::move(done).Run(false, base::Value("Invalid native window request"));
+    }
     const std::string* behind = options ? options->FindString("behind") : nullptr;
     int behind_window = 0;
     for (const auto& [native_id, host] : Hosts()) {
@@ -6627,6 +6754,13 @@ void ShellHostView::Invoke(
       std::vector<double> numbers;
       for (const base::Value& value : *frame) numbers.push_back(value.GetDouble());
       requested = linux_window::RequestedFrame(numbers, PrimaryScreenRect(), GlobalScreenCoordinates());
+    }
+    if (!utility && !requested && kind == linux_window::kSmallWindowKind) {
+      std::vector<double> size;
+      if (const base::ListValue* given = options ? options->FindList("size") : nullptr) {
+        for (const base::Value& value : *given) size.push_back(value.is_int() || value.is_double() ? value.GetDouble() : NAN);
+      }
+      requested = linux_window::RequestedSmallFrame(size, OpenerWorkArea(), GlobalScreenCoordinates());
     }
     for (const auto& [native_id, host] : Hosts()) {
       if (host->window_id() != id) continue;
@@ -6668,6 +6802,7 @@ void ShellHostView::Invoke(
     opening.intent = intent;
     opening.utility = std::move(utility_navigation);
     if (private_window) opening.private_window = private_window->Clone();
+    if (small_window) opening.small_window = small_window->Clone();
     opening.app_profile = profile()->GetWeakPtr();
     opening.opener_host = id_;
     opening.opener_generation = renderer_generation_;
@@ -7387,6 +7522,25 @@ void StartLinuxHost() {
       if (auto* status = host->PageStatus(contents)) return status->TargetURL(url, host->PointerFromPageBottom(contents));
     }
     return false;
+  };
+  g_ardia_linux_minimum_size = [](const BrowserWindowInterface* browser, gfx::Size* minimum) {
+    if (!browser || !minimum) return;
+    const auto found = Hosts().find(browser->GetSessionID().id());
+    if (found != Hosts().end()) found->second->MinimumSize(minimum);
+  };
+  g_ardia_linux_unhandled_key = [](content::WebContents* contents, const input::NativeWebKeyboardEvent& event) {
+    const int modifiers = event.GetModifiers();
+    if (!ardia::linux_keys::IsUnhandledEscape({
+            .raw_key_down = event.GetType() == blink::WebInputEvent::Type::kRawKeyDown,
+            .key_code = event.windows_key_code,
+            .control = (modifiers & blink::WebInputEvent::kControlKey) != 0,
+            .alt = (modifiers & blink::WebInputEvent::kAltKey) != 0,
+            .meta = (modifiers & blink::WebInputEvent::kMetaKey) != 0})) {
+      return;
+    }
+    for (const auto& [id, host] : Hosts()) {
+      if (host->ReportUnhandledEscape(contents)) return;
+    }
   };
   g_ardia_linux_renderer_unresponsive = [](content::WebContents* contents,
                                            content::RenderWidgetHost* widget,

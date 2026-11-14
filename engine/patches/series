@@ -121,6 +121,8 @@ chromium chromium-linux-pip-in-window.patch linux
 chromium chromium-linux-glass-compositing.patch linux
 chromium chromium-linux-open-urls.patch linux
 chromium chromium-linux-thin-scroll-bars.patch linux
+chromium chromium-linux-unhandled-key.patch linux
+chromium chromium-linux-window-minimum-size.patch linux
 
 layer engine/chromium
 layer engine/ardiacore mac

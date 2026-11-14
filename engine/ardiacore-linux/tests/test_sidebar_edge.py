@@ -72,6 +72,20 @@ class SidebarEdgeTests(unittest.TestCase):
     def test_switching_sides_reevaluates_the_pointer_and_drops_a_settle(self):
         self.run_case('side-switch')
 
+    def test_a_pressed_drag_peeks_only_for_a_watch_that_asks_for_it_as_on_the_mac(self):
+        self.run_case('pressed')
+        self.run_case('pressed-leave')
+
+    def test_the_host_reads_the_buttons_from_each_event_and_the_fifth_argument(self):
+        host = (SOURCE / 'ardia/linux/ac_linux_host.cc').read_text()
+        mouse = host[host.index('void ShellHostView::OnSidebarEdgeMouse('):host.index('void ShellHostView::ReportSidebarEdge(')]
+        self.assertIn('ardia::linux_window::ButtonsHeld(event.flags(), event.changed_button_flags(), released, kMouseButtons)', mouse)
+        self.assertIn('sidebar_edge_.Moved(x, y, width, height, pressed)', mouse)
+        self.assertIn('sidebar_edge_.Exited(x, y, width, height, GetWidget()->IsActive(), pressed)', mouse)
+        watch = host[host.index('if (method == "ArdiaShell.watchSidebarEdge") {'):host.index('if (method == "ArdiaShell.setDragEscapeCapture") {')]
+        self.assertIn('const bool while_pressed = values.size() > 4 && values[4].GetBool();', watch)
+        self.assertIn('side, GetWidget() && GetWidget()->IsActive(), while_pressed)', watch)
+
 
 if __name__ == '__main__':
     unittest.main()

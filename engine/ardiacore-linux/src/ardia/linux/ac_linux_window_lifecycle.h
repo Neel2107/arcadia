@@ -89,6 +89,18 @@ std::optional<Requested> RequestedFrame(const std::vector<double>& frame,
                                         const Rect& primary,
                                         bool global_coordinates);
 
+inline constexpr char kBrowserWindowKind[] = "browser";
+inline constexpr char kSmallWindowKind[] = "small";
+inline constexpr const char* kSmallWindowCapabilities[] = {"ArdiaShell.smallWindows"};
+inline constexpr int kSmallWindowMinWidth = 420;
+inline constexpr int kSmallWindowMinHeight = 300;
+inline constexpr int kSmallWindowWidth = 900;
+inline constexpr int kSmallWindowHeight = 640;
+
+Requested RequestedSmallFrame(const std::vector<double>& size,
+                              const Rect& work_area,
+                              bool global_coordinates);
+
 class GeometryLedger {
  public:
   explicit GeometryLedger(bool global_coordinates)

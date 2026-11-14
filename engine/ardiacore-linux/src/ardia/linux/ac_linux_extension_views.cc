@@ -205,10 +205,20 @@ class LinuxExtensionSurfaces::Surface : public extensions::ExtensionView,
   void Raise() { parent_->ReorderChildView(view_, parent_->children().size()); }
 
   void Focus() {
-    if (!native_shown_) return;
-    WatchFocus();
-    view_->RequestFocus();
-    contents()->Focus();
+    const views::Widget* widget = view_->GetWidget();
+    views::FocusManager* focus = view_->GetFocusManager();
+    switch (ext::SurfaceFocusFor(native_shown_, widget && widget->IsActive())) {
+      case ext::SurfaceFocus::kNone:
+        return;
+      case ext::SurfaceFocus::kStored:
+        if (focus) focus->SetStoredFocusView(view_);
+        return;
+      case ext::SurfaceFocus::kTaken:
+        WatchFocus();
+        view_->RequestFocus();
+        contents()->Focus();
+        return;
+    }
   }
 
   void OnWillChangeFocus(views::View* before, views::View* now) override {

@@ -76,6 +76,15 @@ void NonFiniteIsRefused() {
   assert(!PopupLimitsFor(Toolbar(), 0));
 }
 
+void FocusIsTakenOnlyInAnActiveWindow() {
+  using ardia::linux_extensions::SurfaceFocus;
+  using ardia::linux_extensions::SurfaceFocusFor;
+  assert(SurfaceFocusFor(true, true) == SurfaceFocus::kTaken);
+  assert(SurfaceFocusFor(true, false) == SurfaceFocus::kStored);
+  assert(SurfaceFocusFor(false, true) == SurfaceFocus::kNone);
+  assert(SurfaceFocusFor(false, false) == SurfaceFocus::kNone);
+}
+
 }
 
 int main(int argc, char** argv) {
@@ -88,6 +97,7 @@ int main(int argc, char** argv) {
   else if (name == "zoom") ZoomScalesTheIntent();
   else if (name == "pixels") FractionalScaleLandsOnWholePixels();
   else if (name == "finite") NonFiniteIsRefused();
+  else if (name == "focus") FocusIsTakenOnlyInAnActiveWindow();
   else return 2;
   return 0;
 }

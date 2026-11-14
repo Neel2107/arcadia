@@ -111,9 +111,11 @@ class HardwareTests(unittest.TestCase):
         self.assertIn('AsyncFunction("setThinScrollBars") { (thin: Bool) in ThinScrollBars.set(thin) }',
                       (REPO / 'packages/shell/ios/SystemModule.swift').read_text())
 
-    def test_the_scroll_bar_patch_is_linux_only_and_last_in_the_series(self):
+    def test_the_scroll_bar_patch_is_linux_only_and_follows_the_open_urls_patch(self):
         steps = [line.split() for line in (PATCHES / 'series').read_text().splitlines() if line.startswith('chromium ')]
-        self.assertEqual(steps[-1], ['chromium', 'chromium-linux-thin-scroll-bars.patch', 'linux'])
+        at = [step[1] for step in steps].index('chromium-linux-thin-scroll-bars.patch')
+        self.assertEqual(steps[at], ['chromium', 'chromium-linux-thin-scroll-bars.patch', 'linux'])
+        self.assertEqual(steps[at - 1][1], 'chromium-linux-open-urls.patch')
         self.assertEqual([step[1] for step in steps].count('chromium-linux-thin-scroll-bars.patch'), 1)
 
     def test_the_scroll_bar_patch_applies_to_the_chromium_157_native_theme(self):

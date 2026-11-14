@@ -24,7 +24,8 @@ class SidebarEdgeWatch {
   bool watching() const { return watching_; }
   bool settling() const { return settling_; }
 
-  std::optional<SidebarEdgeReport> Watch(double hold, SidebarSide side, bool active) {
+  std::optional<SidebarEdgeReport> Watch(double hold, SidebarSide side, bool active, bool while_pressed = false) {
+    while_pressed_ = while_pressed;
     if (side != side_) {
       side_ = side;
       beside_ = !known_ && Beside(x_, y_, false);
@@ -33,7 +34,7 @@ class SidebarEdgeWatch {
     watching_ = true;
     hold_ = std::max(0.0, hold);
     fresh_ = true;
-    return Report(beside_ ? active && !settling_ : known_ && Within(x_, y_));
+    return Report(Allowed() && (beside_ ? active && !settling_ : known_ && Within(x_, y_)));
   }
 
   void Stop() {
@@ -42,20 +43,23 @@ class SidebarEdgeWatch {
     settling_ = false;
   }
 
-  std::optional<SidebarEdgeReport> Moved(double x, double y, double width, double height) {
+  std::optional<SidebarEdgeReport> Moved(double x, double y, double width, double height, bool pressed = false) {
+    pressed_ = pressed;
     Place(x, y, width, height);
     known_ = true;
     beside_ = false;
     settling_ = false;
-    return Report(Within(x, y));
+    return Report(Allowed() && Within(x, y));
   }
 
-  std::optional<SidebarEdgeReport> Exited(double x, double y, double width, double height, bool active) {
+  std::optional<SidebarEdgeReport> Exited(double x, double y, double width, double height, bool active,
+                                          bool pressed = false) {
+    pressed_ = pressed;
     Place(x, y, width, height);
     known_ = false;
     beside_ = Beside(x, y, over_);
     settling_ = false;
-    if (!beside_ || !active) return Report(false);
+    if (!beside_ || !active || !Allowed()) return Report(false);
     if (over_) return std::nullopt;
     settling_ = watching_;
     return std::nullopt;
@@ -64,7 +68,7 @@ class SidebarEdgeWatch {
   std::optional<SidebarEdgeReport> Settled(bool active) {
     if (!settling_) return std::nullopt;
     settling_ = false;
-    return Report(beside_ && active);
+    return Report(beside_ && active && Allowed());
   }
 
   std::optional<SidebarEdgeReport> ActivationChanged(bool active) {
@@ -75,6 +79,8 @@ class SidebarEdgeWatch {
   }
 
  private:
+  bool Allowed() const { return while_pressed_ || !pressed_; }
+
   double Inset(double x) const { return side_ == SidebarSide::kRight ? width_ - 1 - x : x; }
 
   bool Within(double x, double y) const {
@@ -116,6 +122,8 @@ class SidebarEdgeWatch {
   bool known_ = false;
   bool beside_ = false;
   bool settling_ = false;
+  bool while_pressed_ = false;
+  bool pressed_ = false;
   double hold_ = 0;
   double x_ = -1;
   double y_ = -1;

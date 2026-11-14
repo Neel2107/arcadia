@@ -202,6 +202,42 @@ void SwitchingSidesReevaluatesThePointerAndDropsASettle(SidebarSide) {
   assert(Over(edge.Settled(true)));
 }
 
+void APressedDragDoesNotPeekUnlessTheWatchAsksForIt(SidebarSide side) {
+  SidebarEdgeWatch edge;
+  assert(!Over(edge.Watch(0, side, true)));
+  assert(!edge.Moved(At(side, 300), 300, kWidth, kHeight, true));
+  assert(!edge.Moved(At(side, 3), 300, kWidth, kHeight, true));
+  assert(Over(edge.Moved(At(side, 3), 300, kWidth, kHeight, false)));
+  assert(!Over(edge.Moved(At(side, 4), 300, kWidth, kHeight, true)));
+  assert(Over(edge.Watch(0, side, true, true)));
+  assert(!edge.Moved(At(side, 5), 300, kWidth, kHeight, true));
+  assert(!Over(edge.Watch(0, side, true, false)));
+  assert(Over(edge.Moved(At(side, 5), 300, kWidth, kHeight, false)));
+}
+
+void APressedLeaveNeitherSettlesNorHoldsThePeek(SidebarSide side) {
+  SidebarEdgeWatch edge;
+  edge.Watch(0, side, true);
+  edge.Moved(At(side, 40), 300, kWidth, kHeight);
+  assert(!edge.Exited(At(side, 12), 300, kWidth, kHeight, true, true));
+  assert(!edge.settling());
+  assert(!edge.Settled(true));
+  SidebarEdgeWatch peek;
+  peek.Watch(kHold, side, true);
+  assert(Over(peek.Moved(At(side, 30), 300, kWidth, kHeight)));
+  assert(!Over(peek.Exited(At(side, 2), 300, kWidth, kHeight, true, true)));
+  SidebarEdgeWatch dragging;
+  dragging.Watch(kHold, side, true, true);
+  assert(Over(dragging.Moved(At(side, 30), 300, kWidth, kHeight, true)));
+  assert(!dragging.Exited(At(side, 2), 300, kWidth, kHeight, true, true));
+  SidebarEdgeWatch settled;
+  settled.Watch(0, side, true, true);
+  settled.Moved(At(side, 40), 300, kWidth, kHeight, true);
+  assert(!settled.Exited(At(side, 12), 300, kWidth, kHeight, true, true));
+  assert(settled.settling());
+  assert(Over(settled.Settled(true)));
+}
+
 }
 
 int main(int argc, char** argv) {
@@ -226,6 +262,8 @@ int main(int argc, char** argv) {
   else if (name == "watch-settling") WatchingDuringASettleWaitsForIt(side);
   else if (name == "right-pixels") TheRightStripCoversTheSamePixelsAsTheLeft(side);
   else if (name == "side-switch") SwitchingSidesReevaluatesThePointerAndDropsASettle(side);
+  else if (name == "pressed") APressedDragDoesNotPeekUnlessTheWatchAsksForIt(side);
+  else if (name == "pressed-leave") APressedLeaveNeitherSettlesNorHoldsThePeek(side);
   else return 2;
   return 0;
 }

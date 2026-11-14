@@ -1,5 +1,6 @@
 #include "ardia/linux/ac_linux_window_lifecycle.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace ardia::linux_window {
@@ -135,6 +136,28 @@ std::optional<Requested> RequestedFrame(const std::vector<double>& frame,
     requested.bounds.x = primary.x + static_cast<int>(std::lround(frame[0]));
     requested.bounds.y = primary.y + primary.height -
                          (static_cast<int>(std::lround(frame[1])) + height);
+  }
+  return requested;
+}
+
+Requested RequestedSmallFrame(const std::vector<double>& size,
+                              const Rect& work_area,
+                              bool global_coordinates) {
+  const bool given = size.size() == 2 && std::isfinite(size[0]) && std::isfinite(size[1]);
+  const auto fit = [](double wanted, int minimum, int room) {
+    const double floor = std::max(wanted, static_cast<double>(minimum));
+    return room > 0 ? std::min(floor, static_cast<double>(room)) : std::min(floor, kMaxExtent);
+  };
+  const double width = fit(given ? size[0] : kSmallWindowWidth, kSmallWindowMinWidth, work_area.width);
+  const double height = fit(given ? size[1] : kSmallWindowHeight, kSmallWindowMinHeight, work_area.height);
+  Requested requested;
+  requested.bounds.width = static_cast<int>(std::lround(width));
+  requested.bounds.height = static_cast<int>(std::lround(height));
+  requested.positioned = global_coordinates && work_area.width > 0 && work_area.height > 0;
+  if (requested.positioned) {
+    const double lift = std::min(work_area.height * 0.05, (work_area.height - height) / 2);
+    requested.bounds.x = work_area.x + static_cast<int>(std::lround((work_area.width - width) / 2));
+    requested.bounds.y = work_area.y + static_cast<int>(std::lround((work_area.height - height) / 2 - lift));
   }
   return requested;
 }
