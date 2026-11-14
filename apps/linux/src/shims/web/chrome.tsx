@@ -1,6 +1,7 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { View, type ViewProps, type ViewStyle } from "react-native";
 import { useBrowser } from "../../../../browser/src/state/browser/store";
+import { ThemeContext } from "../../../../browser/src/components/ui/theme";
 import { ardiaHost, hostModuleMethod, hostSupports, reportHostError } from "../../host";
 import { shellOverPages, useInputRegion } from "../../shellAbove";
 import { GlassInside, GlassOptIn, useGlassSurface, useVisualEffectMark } from "../../shellGlass";
@@ -88,20 +89,28 @@ export function Surface({ fill, cornerRadius = 0, borderColor, borderWidth = 0, 
   );
 }
 
-const MATERIAL_FILL: Record<string, string> = {
-  popover: "rgba(246,246,246,0.72)",
-  menu: "rgba(246,246,246,0.72)",
-  hudWindow: "rgba(30,30,30,0.6)",
-  sidebar: "rgba(240,240,240,0.5)",
-  underWindowBackground: "rgba(240,240,240,0.4)",
+type MaterialFill = { light: string; dark: string };
+
+const MATERIAL_FILL: Record<string, MaterialFill> = {
+  popover: { light: "rgba(246,246,246,0.72)", dark: "rgba(40,40,42,0.72)" },
+  menu: { light: "rgba(246,246,246,0.72)", dark: "rgba(40,40,42,0.72)" },
+  hudWindow: { light: "rgba(246,246,246,0.6)", dark: "rgba(30,30,30,0.6)" },
+  sidebar: { light: "rgba(240,240,240,0.5)", dark: "rgba(46,46,48,0.5)" },
+  underWindowBackground: { light: "rgba(240,240,240,0.4)", dark: "rgba(30,30,30,0.4)" },
 };
+const PLAIN_MATERIAL: MaterialFill = { light: "rgba(246,246,246,0.6)", dark: "rgba(40,40,42,0.6)" };
+
+export function useSurfaceDark(): boolean {
+  const appDark = useBrowser((s) => s.ui.appDark);
+  return useContext(ThemeContext)?.dark ?? appDark;
+}
 
 export type VisualEffectProps = ViewProps & { material?: string; blendingMode?: "withinWindow" | "behindWindow"; cornerRadius?: number };
 
 export function VisualEffect({ material = "popover", cornerRadius, style, ...props }: VisualEffectProps) {
   const mark = useRef<View & Element>(null);
   useVisualEffectMark(mark);
-  const fill = MATERIAL_FILL[material] ?? "rgba(246,246,246,0.6)";
+  const fill = (MATERIAL_FILL[material] ?? PLAIN_MATERIAL)[useSurfaceDark() ? "dark" : "light"];
   const opaque = shellOverPages();
   const glass: Style = {
     backgroundColor: opaque ? opaqueColor(fill) : fill,
@@ -204,8 +213,8 @@ function inScrollView(node: Element | null) {
 }
 
 export function GlassEffect({ cornerRadius = 0, tint, glassStyle = "regular", dark, style, ...props }: GlassEffectProps) {
-  const appDark = useBrowser((s) => s.ui.appDark);
-  const theme = (dark ?? appDark) ? "dark" : "light";
+  const surfaceDark = useSurfaceDark();
+  const theme = (dark ?? surfaceDark) ? "dark" : "light";
   const g = GLASS[theme];
   const clear = glassStyle === "clear";
   const filter = clear ? glassFilter(1, (1 + g.slope) / 2, g.offset / 2) : glassFilter(g.saturate, g.slope, g.offset);

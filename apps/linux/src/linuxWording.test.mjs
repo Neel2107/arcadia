@@ -47,6 +47,19 @@ const EXPECTED = [
   ["components/settings/rows/privacyRows.ts", ["system password", "title: \"Zoom with Ctrl and the mouse wheel\""], []],
   ["components/settings/panes/Tabs.tsx", ["title: \"Shift-click\"", "title: \"Alt-click\"", "title: \"Alt+Shift-click\"", "\"Alt-click (Peek moves to Shift-click)\"", "\"Alt-click (split view moves to Alt+Shift-click)\"", "\"Alt-click opens a split now: choosing it here moves split view back to Alt+Shift-click.\""], []],
   ["components/onboarding/LayoutSteps.tsx", ["title: \"Shift-click\""], []],
+  ["components/settings/rows/generalRows.ts", ["Asks before the close button or File › Close Window closes its tabs.", "The window buttons move with the sidebar."], ["The window buttons stay at the top left."]],
+  ["components/settings/rows/appearanceRows.ts", ["In full screen the page goes edge to edge", "Also in View › Show Bookmarks Bar, Ctrl+Shift+B."], ["In macOS full screen"]],
+  ["components/settings/panes/Advanced.tsx", ["or in power saver mode"], ["Low Power Mode"]],
+  ["components/downloads/Downloads.tsx", ["tooltip=\"Show in Folder\""], ["Show in Finder"]],
+  ["components/pages/DownloadsPage.tsx", ["title=\"Show in Folder\""], ["Show in Finder"]],
+  ["state/downloads/downloadMenu.ts", ["title: \"Show in Folder\""], ["Show in Finder"]],
+  ["state/bookmarks/exportHtml.ts", ["title: \"Show in Folder\""], ["Show in Finder"]],
+  ["state/browser/actions.ts", ["stay installed on this computer, turned off."], ["on this Mac"]],
+  ["state/onboarding/tour.ts", ["Ctrl+S hides the sidebar.", "press Super+Shift+=.", "Settings (Ctrl+,)."], ["menu bar", "⌘"]],
+  ["state/presets/setupCode.ts", ["Appearance follows your desktop", "Ctrl+T opens the command bar"], ["your Mac", "⌘T"]],
+  ["state/releaseNotes/releaseNotes.ts", ["from any page with Ctrl+L."], ["⌘L"]],
+  ["state/sync/scopeAdapters.ts", ["\"This computer\""], ["This Mac"]],
+  ["state/telemetry/copy.ts", ["Ctrl+Tab switcher", "Alt+Enter in the command bar", "from the taskbar or at launch"], ["Dock", "Touch ID", "⌘", "⌥", "⌃"]],
   ["components/tabstrip/NewTabButton.tsx", ["New Tab (Ctrl+T) — Alt-click to open in Split View"], []],
 ];
 
@@ -121,7 +134,7 @@ const componentFiles = (dir) => readdirSync(new URL(`../../browser/src/${dir}`, 
   .map((file) => `${dir}/${file}`);
 
 test("shortcut glyphs become Linux key names without stray '+-' click modifiers", () => {
-  assert.equal(linuxShortcutText(`"⇧⌘S" "⌘Z" "⌥⌘I" "⌃⇧Tab"`), `"Shift+Ctrl+S" "Ctrl+Z" "Alt+Ctrl+I" "Super+Shift+Tab"`);
+  assert.equal(linuxShortcutText(`"⇧⌘S" "⌘Z" "⌥⌘I" "⌃⇧Tab"`), `"Ctrl+Shift+S" "Ctrl+Z" "Ctrl+Alt+I" "Super+Shift+Tab"`);
   const stray = componentFiles("components").filter((path) => (linuxCopy(path).match(/\+-[a-z]/g) ?? []).length > (read(path).match(/\+-[a-z]/g) ?? []).length);
   assert.deepEqual(stray, []);
 });

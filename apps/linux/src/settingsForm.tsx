@@ -16,8 +16,12 @@ export function Anchor(props: ComponentProps<typeof shared.Anchor>) {
   return settingUnavailable(props.id) ? null : <shared.Anchor {...props} />;
 }
 
+export const LINKS_FROM_OTHER_APPS_NOTE = " Links from other apps follow Settings › General › Open links from other apps in Little Ardia.";
+
 export function Row(props: ComponentProps<typeof shared.Row>) {
-  return settingUnavailable(props.anchor) ? null : <shared.Row {...props} />;
+  if (settingUnavailable(props.anchor)) return null;
+  if (props.anchor !== "tabs.newTabLinksOpenIn" || props.description !== undefined || !settingUnavailable("general.openLinksInLittleArdia")) return <shared.Row {...props} />;
+  return <shared.Row {...props} description={setting(props.anchor).description?.replace(LINKS_FROM_OTHER_APPS_NOTE, "")} />;
 }
 
 export function SectionHeader(props: ComponentProps<typeof shared.SectionHeader>) {

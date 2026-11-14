@@ -12,13 +12,14 @@ import { BackdropFallback, HaloFallback, PowerUpFallback } from "./web/gl/fallba
 import { Vibrancy } from "./web/gl/Vibrancy";
 import { baseLine, baseStops, GRAIN_POINTS, GRAIN_SIDE, grainAlpha, overlayLine, overlayStops, padLayers, stopCss, swatchColors, type SwatchLine, type SwatchStop } from "./web/gl/themeSwatch";
 import { usePageHoleLayer } from "../shellAbove";
+import { useSurfaceDark } from "./web/chrome";
 
 export * from "@ardia-real/shaders";
 
 const FRAME = 1 / 60;
 
 export function WindowBackdrop({ colors, angle = 180, grainOpacity = 0.09, grainScale = 1, vibrancy, tintColor, tintAlpha, tintLightness, style }: WindowBackdropProps) {
-  const dark = useBrowser((s) => s.ui.appDark);
+  const dark = useSurfaceDark();
   const key = `${colors.join()}|${angle}|${grainOpacity}|${grainScale}`;
   const uniformsAt = useMemo(() => (css: [number, number]) => backdropUniforms({ colors, angle, grainOpacity, grainScale }, css), [key]);
   const layer = useRef<View & HTMLElement>(null);

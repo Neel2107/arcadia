@@ -1,9 +1,8 @@
 import type { PopoverBubbleProps } from "@ardia-real/shell";
 import { useId, useState } from "react";
 import { View, type LayoutChangeEvent } from "react-native";
-import { useBrowser } from "../../../../browser/src/state/browser/store";
 import { shellOverPages } from "../../shellAbove";
-import { opaqueColor } from "./chrome";
+import { opaqueColor, useSurfaceDark } from "./chrome";
 
 type Point = readonly [number, number];
 type Material = NonNullable<PopoverBubbleProps["material"]>;
@@ -86,7 +85,7 @@ export function PopoverBubble({
   onLayout,
   ...props
 }: PopoverBubbleProps) {
-  const appDark = useBrowser((s) => s.ui.appDark);
+  const surfaceDark = useSurfaceDark();
   const id = `bubble-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
   const measure = (event: LayoutChangeEvent) => {
@@ -96,7 +95,7 @@ export function PopoverBubble({
   };
   const shape = size && size.width > 0 && size.height > 0 ? bubblePath(size.width, size.height, cornerRadius, arrowEdge, arrowX, arrowWidth, arrowHeight) : null;
   const opaque = shellOverPages();
-  const glass = MATERIAL[material][(dark ?? appDark) ? "dark" : "light"];
+  const glass = MATERIAL[material][(dark ?? surfaceDark) ? "dark" : "light"];
   const fill = opaque ? opaqueColor(glass) : glass;
   const backdrop = opaque ? undefined : BACKDROP;
   const shadow = shadowOpacity > 0 && shadowRadius >= 0;

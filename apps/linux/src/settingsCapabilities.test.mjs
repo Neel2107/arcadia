@@ -54,6 +54,10 @@ test("Settings form primitives drop unavailable rows and keep available ones unc
   assert.deepEqual(group.props.children.map((child) => child.props.anchor), ["general.warnBeforeQuitting"]);
   assert.equal(form.Group({ children: [createElement(form.Row, { key: "a", anchor: "engines.defaultEngine" })] }), null);
   assert.equal(form.SettingsPaneContext, sharedForm.SettingsPaneContext);
+  const newTabLinks = form.Row({ anchor: "tabs.newTabLinksOpenIn" });
+  assert.ok(index.setting("tabs.newTabLinksOpenIn").description.endsWith(form.LINKS_FROM_OTHER_APPS_NOTE));
+  assert.equal(newTabLinks.type, sharedForm.Row);
+  assert.ok(newTabLinks.props.description.endsWith("sign-in pop-ups stay windows."));
 });
 
 test("every engine decision is Chromium on Linux even with stored WebKit settings, rules and streaming routes", () => {

@@ -77,7 +77,12 @@ export function unavailableSettingIds(capabilities: LinuxCapabilities, settingId
   return ids;
 }
 
-export const unavailableCommands = (capabilities: LinuxCapabilities): Set<string> => new Set(capabilities.externalLinks ? [] : ["emailPageLocation"]);
+export const unavailableCommands = (capabilities: LinuxCapabilities): Set<string> =>
+  new Set([
+    ...(capabilities.externalLinks ? [] : ["emailPageLocation"]),
+    ...(capabilities.linksFromOtherApps ? [] : ["toggleOpenLinksInLittleArdia"]),
+    ...(capabilities.webkit ? [] : ["togglePageEngine", "toggleJavaScriptFromAppleEvents"]),
+  ]);
 
 export const unavailablePanes = (capabilities: LinuxCapabilities): Set<string> => new Set(capabilities.webkit ? [] : ["engines"]);
 

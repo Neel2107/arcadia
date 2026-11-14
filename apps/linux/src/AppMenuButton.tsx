@@ -36,7 +36,9 @@ export async function openAppMenu(windowId: string, button: HTMLElement) {
   const focusOrder = [windowId, ...state.ui.focusOrder.filter((id) => id !== windowId)];
   const items = appMenuItems(menuState({ ...state, ui: { ...state.ui, focusOrder } }), shortcuts, hiddenCommands());
   const { left, bottom } = button.getBoundingClientRect();
+  const openedByPointer = !button.matches(":focus-visible");
   const id = await showMenu(items, { x: left, y: bottom + 4 });
+  if (openedByPointer && document.activeElement === button) button.blur();
   const choice = id ? appMenuChoice(id) : null;
   if (!choice) return;
   if (choice.kind === "about") return showAbout(windowId);

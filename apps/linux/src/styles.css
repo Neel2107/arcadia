@@ -1,7 +1,8 @@
 .ardia-profile-controls {
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  justify-content: flex-end;
+  flex: 1000 0 auto;
   height: 34px;
   gap: 2px;
   min-width: 0;
@@ -30,9 +31,19 @@
 }
 
 .ardia-current-space {
-  flex: 1;
+  flex: 0 0 auto;
+  margin-right: auto;
   min-width: 0;
   padding: 0 5px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ardia-current-space-measure {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
 }
@@ -87,6 +98,36 @@
 .ardia-linux button:focus-visible {
   outline: 2px solid #5a9bff;
   outline-offset: 2px;
+}
+
+.ardia-linux input,
+.ardia-linux textarea {
+  min-width: 0;
+}
+
+.ardia-linux ::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+.ardia-linux ::-webkit-scrollbar-track,
+.ardia-linux ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.ardia-linux ::-webkit-scrollbar-button {
+  display: none;
+}
+
+.ardia-linux ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-color: rgba(127, 127, 127, 0.5);
+  background-clip: padding-box;
+}
+
+.ardia-linux ::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(127, 127, 127, 0.75);
 }
 
 .ardia-linux.utility .ardia-window > div:first-child {

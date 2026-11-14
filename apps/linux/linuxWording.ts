@@ -40,6 +40,8 @@ export const LINUX_WORDING: readonly Wording[] = [
     file: "components/settings/rows/generalRows.ts",
     replacements: [
       ["description: `Asks before ${APP} quits with ⌘Q.`", "description: `Asks before ${APP} quits with Ctrl+Shift+Q.`"],
+      [`description: "Asks before ⇧⌘W or the close button closes its tabs."`, `description: "Asks before the close button or File › Close Window closes its tabs."`],
+      ["The window buttons stay at the top left.", "The window buttons move with the sidebar."],
     ],
   },
   {
@@ -49,6 +51,8 @@ export const LINUX_WORDING: readonly Wording[] = [
         `"Follow macOS uses System Settings › Appearance › Show scroll bars. Thin shows slim scroll bars over the page only while you scroll, even with a mouse."`,
         `"Follow system keeps the scroll bars your desktop shows. Thin shows slim scroll bars over the page only while you scroll, even with a mouse."`,
       ],
+      ["In macOS full screen the page goes edge to edge", "In full screen the page goes edge to edge"],
+      ["In macOS full screen with Auto-Hide Tabs,", "In full screen with Auto-Hide Tabs,"],
     ],
   },
   {
@@ -106,6 +110,15 @@ export const LINUX_WORDING: readonly Wording[] = [
       [`title: "Kept on this Mac"`, `title: "Kept on this computer"`],
       ["Saves the local copy to your Downloads folder and shows it in Finder.", "Saves the local copy to your Downloads folder and shows it in your file manager."],
       ["Never leaves this Mac unless sharing is on", "Never leaves this computer unless sharing is on"],
+      ["and how many times its Open System Settings button was pressed", "and how many times its settings button was pressed"],
+      ["how many Dock icon clicks brought a browser window forward", "how many taskbar icon clicks brought a browser window forward"],
+      ["How many times ⌘T kept a New Tab bar", "How many times Ctrl+T kept a New Tab bar"],
+      ["How many times ⌥↩ in the command bar", "How many times Alt+Enter in the command bar"],
+      ["how often the ⌃Tab switcher opens", "how often the Ctrl+Tab switcher opens"],
+      ["because the Touch ID or password request before it was declined", "because the system password request before it was declined"],
+      ["How many times ⌘W closed several", "How many times Ctrl+W closed several"],
+      ["Bringing your last window back from the Dock or at launch", "Bringing your last window back from the taskbar or at launch"],
+      ["How many times ⌘Y asked for the History", "How many times Ctrl+Y asked for the History"],
     ],
   },
   {
@@ -140,6 +153,72 @@ export const LINUX_WORDING: readonly Wording[] = [
   {
     file: "state/extensions/actions.ts",
     replacements: [[`"The extension's folder stays on your Mac."`, `"The extension's folder stays on this computer."`]],
+  },
+  {
+    file: "components/settings/panes/Advanced.tsx",
+    replacements: [
+      ["At 20% battery or less, or in Low Power Mode,", "At 20% battery or less, or in power saver mode,"],
+      ["On battery or in Low Power Mode,", "On battery or in power saver mode,"],
+    ],
+  },
+  {
+    file: "components/downloads/Downloads.tsx",
+    replacements: [
+      ["tooltip=\"Show in Finder\"", "tooltip=\"Show in Folder\""],
+    ],
+  },
+  {
+    file: "components/pages/DownloadsPage.tsx",
+    replacements: [
+      ["<Button title=\"Show in Finder\"", "<Button title=\"Show in Folder\""],
+    ],
+  },
+  {
+    file: "state/downloads/downloadMenu.ts",
+    replacements: [
+      ["{ id: \"reveal\", title: \"Show in Finder\"", "{ id: \"reveal\", title: \"Show in Folder\""],
+    ],
+  },
+  {
+    file: "state/bookmarks/exportHtml.ts",
+    replacements: [
+      ["action: { title: \"Show in Finder\"", "action: { title: \"Show in Folder\""],
+    ],
+  },
+  {
+    file: "state/browser/actions.ts",
+    replacements: [
+      ["stay installed on this Mac, turned off.` :", "stay installed on this computer, turned off.` :"],
+      ["\" Its extensions stay installed on this Mac, turned off.\"", "\" Its extensions stay installed on this computer, turned off.\""],
+    ],
+  },
+  {
+    file: "state/onboarding/tour.ts",
+    replacements: [
+      ["⌘L brings the command bar up from any page, and ⌘T opens a new tab.", "Ctrl+L brings the command bar up from any page, and Ctrl+T opens a new tab."],
+      ["⌘S hides the sidebar.", "Ctrl+S hides the sidebar."],
+      ["or press ⌃⇧=. ⌃⇧] and ⌃⇧[ move between the panes.", "or press Super+Shift+=. Super+Shift+] and Super+Shift+[ move between the panes."],
+      ["Everything else is in the menu bar and in Settings (⌘,).", "Everything else is in the menu button's menus and in Settings (Ctrl+,)."],
+    ],
+  },
+  {
+    file: "state/presets/setupCode.ts",
+    replacements: [
+      ["auto: \"Appearance follows your Mac\"", "auto: \"Appearance follows your desktop\""],
+      ["\"⌘T opens the command bar\" : \"⌘T opens the New Tab page\"", "\"Ctrl+T opens the command bar\" : \"Ctrl+T opens the New Tab page\""],
+    ],
+  },
+  {
+    file: "state/releaseNotes/releaseNotes.ts",
+    replacements: [
+      ["or from any page with ⌘L.", "or from any page with Ctrl+L."],
+    ],
+  },
+  {
+    file: "state/sync/scopeAdapters.ts",
+    replacements: [
+      ["\"This Mac\"", "\"This computer\""],
+    ],
   },
 ];
 
