@@ -67,7 +67,7 @@ Requirements: `openssl` and Node 22 or newer (for the built-in WebSocket client)
 | F23 | #33 | History jumps of two or more, zoom feedback, reset and per-site persistence |
 | F08 | #18 | Download events, controls, settings and restart |
 | F09 | #19 | Extension management, toolbar action, popup and side panel, with `fixtures/extension/` |
-| F10 | #20 | Online search suggestions through the native host, only when enabled |
+| F10 | #20 | Online search suggestions through the native host, only when enabled, and never from a private window |
 | F26 | #36 | Unsupported platform settings are hidden and startup has no backend rejections |
 | F27 | #37 | Onboarding starts once on a fresh profile and app services run once per launch |
 

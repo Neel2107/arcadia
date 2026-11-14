@@ -100,8 +100,6 @@ export const UNSUPPORTED_SETTINGS = [
   { id: "general.defaultBrowser", text: "Default browser", pane: "General" },
   { id: "general.openAtLogin", text: "Open Ardia at login", pane: "General" },
   { id: "appearance.pageScrollBars", text: "Scroll bars", pane: "Appearance" },
-  { id: "advanced.cliControl", text: "Let the ardia command control Ardia", pane: "Advanced" },
-  { id: "advanced.cliInstall", text: "The ardia command", pane: "Advanced" },
 ];
 
 export function visibleUnsupported(textByPane) {

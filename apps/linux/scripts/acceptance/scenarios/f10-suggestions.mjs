@@ -66,20 +66,21 @@ export default {
       if (text.includes(suggestionsFor(disabled)[0])) throw new Error("a remote suggestion rendered while disabled");
       return { requests: 0 };
     });
-    await t.check("a private window gets suggestions without cookies", async () => {
+    await t.check("a private window asks for no remote suggestions", async () => {
       await shell.state("s.updateSettings({ searchSuggestions: true }); return true;");
       const windowId = await shell.state(`return s.createWindow({ kind: "private", profileId: "default" });`);
       const privateShell = await app.shell(windowId, { timeout: 25000 });
       await onPage(privateShell, t.fixtures.url.page(2, run));
       const query = `ardia private ${run}`;
       await typeQuery(privateShell, query);
-      const want = suggestionsFor(query)[0];
-      await until(async () => (await privateShell.text()).includes(want), { timeout: 15000, label: "private window suggestion" });
+      await pause(2500);
+      const text = await privateShell.text();
       const requests = requestsFor(t.fixtures, query);
       await closePanel(privateShell);
       await shell.state(`s.closeWindow(${js(windowId)}); return true;`);
-      if (requests.some((r) => r.headers.cookie)) throw new Error("a private window's suggestion request sent cookies");
-      return { requests: requests.length };
+      if (requests.length) throw new Error(`a private window sent ${requests.length} suggestion requests`);
+      if (text.includes(suggestionsFor(query)[0])) throw new Error("a remote suggestion rendered in a private window");
+      return { requests: 0 };
     });
   },
 };
