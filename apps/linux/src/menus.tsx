@@ -126,7 +126,7 @@ function MenuList({ items, anchor }: { items: MenuItem[]; anchor: MenuAnchor }) 
     };
   }, []);
   return createPortal(
-    <div ref={menuRef} className={`ardia-menu${dark ? " dark" : ""}`} style={{ ...position, width: 240, maxWidth: "calc(100vw - 26px)", maxHeight: "calc(100vh - 26px)", overflowY: "auto" }} onPointerDown={(e) => e.stopPropagation()}>
+    <div ref={menuRef} className={`ardia-menu${dark ? " dark" : ""}`} style={{ ...position, width: "max-content", minWidth: 240, maxWidth: "min(420px, calc(100vw - 26px))", maxHeight: "calc(100vh - 26px)", overflowY: "auto" }} onPointerDown={(e) => e.stopPropagation()}>
       {items.map((item, i) => {
         if ("separator" in item) return <div key={i} className="ardia-menu-separator" />;
         const next = items[i + 1];
