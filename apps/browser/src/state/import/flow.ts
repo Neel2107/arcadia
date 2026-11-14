@@ -11,7 +11,7 @@ export type KindStatus = "pending" | "active" | "done" | "failed";
 export type ImportStatus = Partial<Record<ImportKind, KindStatus>>;
 export type ImportFailure = { kind: ImportKind; profiles: string[] };
 export type FoundExtensions = { profileId: string; list: ImportedExtension[]; opened: boolean; listing: ExtensionListing | null };
-export type ImportResults = { counts: ImportCounts; failures: ImportFailure[]; notes: string[]; extensions: FoundExtensions };
+export type ImportResults = { counts: ImportCounts; failures: ImportFailure[]; notes: string[]; extensions: FoundExtensions; searchEngine?: string };
 
 export type ImportStep =
   | { name: "loading" }
