@@ -181,7 +181,9 @@ int main(int argc, char** argv) {
   assert(host.ClaimedBinding(args));
   assert(host.OwnsHandler(&a, a_generation));
   if (std::string(argv[1]) == "replacement") {
+    const int forgotten = host.forgotten_page_options;
     host.CommitHandler(&b);
+    assert(host.forgotten_page_options == forgotten + 1);
     assert(host.Binding(7)->page_command_resets == 1 && host.Binding(8)->page_command_resets == 1);
     assert(!host.ClearHandler(&a));
     assert(!host.OwnsHandler(&a, a_generation));

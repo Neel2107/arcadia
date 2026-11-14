@@ -26,6 +26,7 @@ def body(source, signature):
 PRELUDE = r'''
 #include "fixtures/page_state.h"
 #include "ardia/linux/ac_linux_page_state.h"
+#include "ardia/linux/ac_linux_page_commits.h"
 #include <set>
 #include <functional>
 #include <string_view>
@@ -109,6 +110,7 @@ class TabBinding : public content::WebContentsObserver {
   raw_ptr<views::WebView> viewport_ = nullptr;
   std::string key_;
   uint64_t contents_generation_ = 1;
+  ardiacore::LinuxPageCommits commits_;
   std::unique_ptr<ardiacore::LinuxPageState> page_;
   base::WeakPtrFactory<TabBinding> weak_factory_{this};
 };
@@ -299,8 +301,10 @@ void DiscardedRebind() {
   w.Claim();
   w.second->discarded = true;
   w.binding->frozen = true;
+  w.binding->commits_.Note(1763112345678.0, 404);
   w.host.sent.clear();
   w.Swap();
+  assert(w.binding->commits_.at == 0 && w.binding->commits_.http_status == 0);
   assert(w.host.sent.size() == 1 && Text(w.host.sent[0].payload, "action") == "rebind");
   const auto& events = w.host.sent[0].payload.FindDict("creation")->FindDict("snapshot")->Find("events")->GetList();
   const auto* discarded = Named(events, "discarded");

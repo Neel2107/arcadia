@@ -19,6 +19,7 @@
 #include "ardia/linux/ac_linux_policy.h"
 #include "ardia/linux/ac_linux_contract.h"
 #include "ardia/linux/ac_linux_sidebar_edge.h"
+#include "ardia/linux/ac_linux_status_geometry.h"
 #include "ardia/linux/ac_linux_auto_pip_service.h"
 #include "ardia/linux/ac_linux_autoplay.h"
 #include "ardia/linux/ac_linux_web_store.h"
@@ -34,6 +35,7 @@
 #include "ardia/linux/ac_linux_search_engines.h"
 #include "ardia/linux/ac_linux_sync_service.h"
 #include "ardia/linux/ac_linux_desktop_core.h"
+#include "ardia/linux/ac_linux_hardware.h"
 #include "ardia/linux/ac_linux_dialog_views.h"
 #include "ardia/linux/ac_linux_document_service.h"
 #include "ardia/linux/ac_linux_downloads.h"
@@ -63,6 +65,8 @@
 #include "ardia/linux/ac_linux_tab_policy.h"
 #include "ardia/linux/ac_linux_launch_steps.h"
 #include "ardia/linux/ac_linux_launch_urls.h"
+#include "ardia/linux/ac_linux_link_tabs.h"
+#include "ardia/linux/ac_linux_page_commits.h"
 #include "ardia/linux/ac_linux_open_urls.h"
 #include "ardia/linux/ac_linux_page_state.h"
 #include "ardia/linux/ac_linux_pip_player.h"
@@ -193,6 +197,7 @@
 #include "crypto/sha2.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "net/base/net_errors.h"
+#include "net/http/http_response_headers.h"
 #include "services/network/public/mojom/content_security_policy.mojom.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -200,6 +205,7 @@
 #include "third_party/blink/public/common/frame/user_activation_state.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
 #include "ui/aura/client/focus_client.h"
+#include "ui/aura/env.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_targeter.h"
 #include "ui/compositor/compositor.h"
@@ -360,9 +366,12 @@ class ViewportView : public views::WebView {
 BEGIN_METADATA(ViewportView)
 END_METADATA
 
+bool g_new_tab_links_in_place = false;
+
 struct RequestedWindow {
   std::string id;
   std::string kind;
+  bool small = false;
   std::string title;
   base::DictValue utility;
   base::WeakPtr<BrowserWindowInterface> browser;
@@ -911,11 +920,12 @@ class TabBinding : public content::WebContentsObserver {
   void AttachPage(std::unique_ptr<ardiacore::LinuxPageState> page);
   void AttachPageChannel();
   std::optional<gfx::PointF> ShellPoint(gfx::PointF page_point) const;
+  bool PeeksOtherSites() const;
   void RetirePage();
   std::unique_ptr<ardiacore::LinuxPageState> TakePage();
   std::vector<int> replaced_ids;
   void ReportPresentation(std::string name, base::DictValue data);
-  void ReportOpened(content::WebContents* opened, const GURL& url, std::string_view disposition);
+  void ReportOpened(content::WebContents* opened, const GURL& url, std::string_view disposition, bool link = false);
   base::WeakPtr<TabBinding> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
   void MoveTo(ShellHostView* owner);
   void Rebind(content::WebContents* contents);
@@ -978,6 +988,12 @@ class TabBinding : public content::WebContentsObserver {
                             content::RenderFrameHost*, const GURL& url,
                             const content::Referrer&, WindowOpenDisposition disposition,
                             ui::PageTransition, bool, bool) override;
+  void AnnounceLinkTab(base::WeakPtr<content::WebContents> opened, std::string url, std::string disposition,
+                       int tries);
+  void MatchLinkTab(base::WeakPtr<content::WebContents> opened, std::string url, std::string disposition,
+                    bool hidden, int tries);
+  void ReportOpenedTab(content::WebContents* opened, const std::string& url, std::string_view disposition,
+                       const std::string& link_wait);
   raw_ptr<ShellHostView> owner_;
   raw_ptr<content::WebContents> contents_;
   raw_ptr<views::WebView> viewport_ = nullptr;
@@ -985,6 +1001,7 @@ class TabBinding : public content::WebContentsObserver {
   std::string key_;
   bool host_focusing_ = false;
   uint64_t contents_generation_ = 1;
+  ardiacore::LinuxPageCommits commits_;
   std::unique_ptr<ardiacore::LinuxPageState> page_;
   base::WeakPtrFactory<TabBinding> weak_factory_{this};
 };
@@ -1039,9 +1056,22 @@ class ShellHostView : public views::View,
   int id() const { return id_; }
   const std::string& window_id() const { return window_id_; }
   bool is_utility() const { return !kind_.empty(); }
+  void set_small(bool small) { small_ = small; }
+  bool ReportsCommits() const { return handler_ && reports_commits_; }
+  void SetReportsCommits(bool on) { reports_commits_ = on; }
+  bool OpensNewTabLinksInPlace() const { return g_new_tab_links_in_place && small_ && !is_utility(); }
+  bool PeeksOtherSites(std::string_view key) const { return handler_ && peek_site_tabs_.Has(key); }
+  void SetPeekSiteTabs(ardiacore::LinuxTabKeys tabs) { PushPeekSiteTabs(peek_site_tabs_.Set(std::move(tabs))); }
+  void ForgetRendererPageOptions() {
+    reports_commits_ = false;
+    PushPeekSiteTabs(peek_site_tabs_.Clear());
+  }
+  bool CloseOfferedTab(content::WebContents* contents);
+  void CloseOfferedTabInStrip(base::WeakPtr<content::WebContents> contents);
   void ConfigureWindow(RequestedWindow request) {
     window_id_ = std::move(request.id);
     kind_ = std::move(request.kind);
+    small_ = request.small;
     title_ = std::move(request.title);
     utility_ = std::move(request.utility);
     page_profile_ = std::move(request.page_profile);
@@ -1223,6 +1253,7 @@ class ShellHostView : public views::View,
       if (binding->temporary && binding->contents()) temporary.push_back(id);
     }
     utility_ready_ = false;
+    ForgetRendererPageOptions();
     switcher_capture_ = false;
     switcher_source_.reset();
     ReleaseDragEscape();
@@ -1285,6 +1316,7 @@ class ShellHostView : public views::View,
     }
     return nullptr;
   }
+  std::optional<double> PointerFromPageBottom(content::WebContents* contents);
   bool DialogsPending() const { return dialogs_ && dialogs_->controller().pending() > 0; }
   bool HoldsTab(content::WebContents* contents) const {
     for (const auto& [id, binding] : bindings_) {
@@ -1381,6 +1413,11 @@ class ShellHostView : public views::View,
   std::vector<base::DictValue> WindowState() const;
 
  private:
+  void PushPeekSiteTabs(const std::vector<std::string>& changed);
+  ardiacore::LinuxPeekSiteTabs peek_site_tabs_;
+  std::set<int> closing_offers_;
+  bool small_ = false;
+  bool reports_commits_ = false;
   std::map<int, base::WeakPtr<content::WebContents>> offered_;
   std::map<std::string, uint64_t> pending_restores_;
   uint64_t restore_tickets_ = 0;
@@ -1983,6 +2020,24 @@ class HostMessageHandler : public content::WebUIMessageHandler,
           return Fail(id, "ERR_ENGINE", "autofill.showSuggestions requires {tabId, passwords} for a tab of this window");
         return Resolve(id, base::Value(ardiacore::ShowLinuxAutofillSuggestions(binding->contents(), *passwords)));
       }
+      if (name == ardiacore::kLinuxPeekOtherSiteTabsRoute) {
+        auto tabs = ardiacore::LinuxPeekSiteTabIds(input);
+        if (!tabs) return Fail(id, "ERR_ENGINE", "webView.setPeekOtherSiteTabs requires {tabIds} as a list of tab ids");
+        host_->SetPeekSiteTabs(std::move(*tabs));
+        return Resolve(id, base::Value());
+      }
+      if (name == ardiacore::kLinuxReportCommitsRoute) {
+        const auto on = ardiacore::LinuxReportCommits(input);
+        if (!on) return Fail(id, "ERR_ENGINE", "tabs.reportCommits requires a boolean on");
+        host_->SetReportsCommits(*on);
+        return Resolve(id, base::Value());
+      }
+      if (name == ardiacore::kLinuxNewTabLinksInPlaceRoute) {
+        const auto enabled = ardiacore::LinuxNewTabLinksInPlace(input);
+        if (!enabled) return Fail(id, "ERR_ENGINE", "webView.setLittleArdiaOpensNewTabLinks requires a boolean enabled");
+        g_new_tab_links_in_place = *enabled;
+        return Resolve(id, base::Value());
+      }
       if (std::find(std::begin(ardiacore::kLinuxPageMessageRoutes), std::end(ardiacore::kLinuxPageMessageRoutes), name) !=
           std::end(ardiacore::kLinuxPageMessageRoutes)) {
         std::string error;
@@ -2502,7 +2557,7 @@ base::ListValue ShellHostView::UnclaimedTabsForShell() const {
     content::WebContents* contents = model->GetWebContentsAt(index);
     const int id = TabId(contents);
     const auto offer = offered_.find(id);
-    if (offer == offered_.end() || offer->second.get() != contents) continue;
+    if (offer == offered_.end() || offer->second.get() != contents || closing_offers_.contains(id)) continue;
     bool bound = false;
     for (const auto& [window, host] : Hosts()) bound |= host->BindsTab(contents);
     if (bound) continue;
@@ -2763,6 +2818,10 @@ base::DictValue ShellHostView::Bootstrap() const {
   for (const char* capability : linux_extensions::kSurfaceCapabilities) capabilities.Append(capability);
   for (const char* route : ardiacore::kLinuxPageMessageRoutes)
     capabilities.Append(route);
+  if (!is_utility()) {
+    for (const char* route : ardiacore::kLinuxLinkTabRoutes) capabilities.Append(route);
+    for (const char* route : ardiacore::kLinuxPageCommitRoutes) capabilities.Append(route);
+  }
   capabilities.Append("engine.systemState");
   capabilities.Append("profiles.deleteData");
   capabilities.Append("shell.inputRegions");
@@ -2782,6 +2841,7 @@ base::DictValue ShellHostView::Bootstrap() const {
   for (const char* capability : ardiacore::kLinuxCliCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxConfigCapabilities) capabilities.Append(capability);
   for (const char* capability : ardia::linux_desktop::kSystemCapabilities) capabilities.Append(capability);
+  for (const char* capability : ardia::linux_hardware::kHardwareCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxUserScriptsCapabilities) capabilities.Append(capability);
   if (TakesOpenUrls()) {
     for (const char* capability : ardia::linux_open_urls::kOpenUrlCapabilities) capabilities.Append(capability);
@@ -4666,6 +4726,12 @@ void ShellHostView::OnTabStripModelChanged(
   if (!browser_ || !MemberWithStrip(changed)) return;
   if (change.type() == TabStripModelChange::kInserted && !app_operation_ && !is_utility()) {
     for (const auto& inserted : change.GetInsert()->contents) {
+      if (closing_offers_.contains(TabId(inserted.contents))) {
+        base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+            FROM_HERE, base::BindOnce(&ShellHostView::CloseOfferedTabInStrip, GetWeakPtr(),
+                                      inserted.contents->GetWeakPtr()));
+        continue;
+      }
       NoteUnclaimedTab(inserted.contents, inserted.contents == selection.new_contents);
     }
   }
@@ -5699,6 +5765,7 @@ void RefuseRequestedWindow(BrowserWindowInterface* browser,
 struct WindowOpening {
   std::string id;
   std::string kind;
+  bool small = false;
   std::string title;
   std::string page_profile;
   int opener_host = 0;
@@ -5784,6 +5851,7 @@ void OpenNativeWindow(WindowOpening opening, uint64_t generation, Profile* page,
   RequestedWindow request;
   request.id = id;
   request.kind = opening.kind;
+  request.small = opening.small;
   request.title = opening.title;
   if (opening.utility) request.utility = std::move(*opening.utility);
   request.browser = created->GetWeakPtr();
@@ -6564,6 +6632,7 @@ void ShellHostView::Invoke(
       if (host->window_id() != id) continue;
       if (!Reaches(host)) return std::move(done).Run(false, base::Value("No such native window"));
       if (utility_navigation && host->is_utility()) host->NavigateUtility(utility_navigation->Clone());
+      if (!utility && !host->is_utility()) host->set_small(kind == "small");
       ActivateNativeWindow(host->browser(), WindowFocus().Reuse(native_id, intent, host == this));
       if (host == this) host->RendererReady();
       return std::move(done).Run(true, base::Value());
@@ -6578,6 +6647,7 @@ void ShellHostView::Invoke(
         return std::move(done).Run(false, ProfileFailure(ardiacore::linux_profiles::ProfileError::kWindowMismatch));
       }
       if (utility_navigation) request.utility = utility_navigation->Clone();
+      if (!utility && request.kind.empty()) request.small = kind == "small";
       ActivateNativeWindow(request.browser.get(), WindowFocus().Reuse(native_id, intent, false));
       return std::move(done).Run(true, base::Value());
     }
@@ -6591,6 +6661,7 @@ void ShellHostView::Invoke(
     WindowOpening opening;
     opening.id = id;
     opening.kind = utility ? kind : "";
+    opening.small = kind == "small";
     opening.title = options ? String(*options, "title") : "";
     opening.page_profile = profile_name->id;
     opening.requested = requested;
@@ -6688,6 +6759,9 @@ void TabBinding::AttachPageChannel() {
       base::BindRepeating([](base::WeakPtr<TabBinding> binding, gfx::PointF point) -> std::optional<gfx::PointF> {
         return binding ? binding->ShellPoint(point) : std::nullopt;
       }, weak),
+      base::BindRepeating([](base::WeakPtr<TabBinding> binding) {
+        return binding && binding->PeeksOtherSites();
+      }, weak),
   });
   page_->SetMessageSnapshot(base::BindRepeating([](base::WeakPtr<content::WebContents> contents) {
     auto* channel = contents ? ardiacore::LinuxPageChannel::FromWebContents(contents.get()) : nullptr;
@@ -6699,6 +6773,56 @@ std::optional<gfx::PointF> TabBinding::ShellPoint(gfx::PointF page_point) const 
   return owner_ ? owner_->ShellPoint(*this, page_point) : std::nullopt;
 }
 
+bool TabBinding::PeeksOtherSites() const {
+  return owner_ && page_ && owner_->PeeksOtherSites(key_);
+}
+
+void ShellHostView::PushPeekSiteTabs(const std::vector<std::string>& changed) {
+  std::vector<base::WeakPtr<content::WebContents>> pages;
+  for (const auto& [id, binding] : bindings_) {
+    if (binding->contents() && std::ranges::find(changed, binding->key()) != changed.end())
+      pages.push_back(binding->contents()->GetWeakPtr());
+  }
+  for (const auto& page : pages) {
+    auto* channel = page ? ardiacore::LinuxPageChannel::FromWebContents(page.get()) : nullptr;
+    if (channel) channel->PushOptions();
+  }
+}
+
+bool ShellHostView::CloseOfferedTab(content::WebContents* contents) {
+  if (!contents) return false;
+  const int id = TabId(contents);
+  const auto offer = offered_.find(id);
+  if (offer == offered_.end() || offer->second.get() != contents) return false;
+  for (const auto& [window, host] : Hosts()) {
+    if (host->BindsTab(contents)) return false;
+  }
+  std::erase_if(closing_offers_, [this](int waiting) {
+    const auto kept = offered_.find(waiting);
+    return kept == offered_.end() || !kept->second;
+  });
+  closing_offers_.insert(id);
+  CloseOfferedTabInStrip(contents->GetWeakPtr());
+  return true;
+}
+
+void ShellHostView::CloseOfferedTabInStrip(base::WeakPtr<content::WebContents> contents) {
+  if (!contents || !browser_) return;
+  const int id = TabId(contents.get());
+  BrowserWindowInterface* owner = OwnerOf(contents.get());
+  const int index = owner ? owner->GetTabStripModel()->GetIndexOfWebContents(contents.get()) : TabStripModel::kNoTab;
+  if (index == TabStripModel::kNoTab || !closing_offers_.erase(id)) return;
+  offered_.erase(id);
+  unclaimed_.erase(id);
+  announced_.erase(id);
+  const auto weak = GetWeakPtr();
+  app_operation_ = true;
+  owner->GetTabStripModel()->CloseWebContentsAt(index, TabCloseTypes::CLOSE_NONE);
+  if (!weak) return;
+  app_operation_ = false;
+  QueueTransaction(-1);
+}
+
 std::optional<gfx::PointF> ShellHostView::ShellPoint(const TabBinding& binding, gfx::PointF page_point) {
   if (!binding.pane_visible || binding.pane_bounds.IsEmpty() || !shell()) return std::nullopt;
   const double scale = blink::ZoomLevelToZoomFactor(zoom::ZoomController::GetZoomLevelForWebContents(shell()));
@@ -6707,6 +6831,22 @@ std::optional<gfx::PointF> ShellHostView::ShellPoint(const TabBinding& binding, 
   const double x = std::clamp<double>(page_point.x(), 0, pane.width());
   const double y = std::clamp<double>(page_point.y(), 0, pane.height());
   return gfx::PointF((pane.x() + x) / scale, (pane.y() + y) / scale);
+}
+
+std::optional<double> ShellHostView::PointerFromPageBottom(content::WebContents* contents) {
+  for (const auto& [id, binding] : bindings_) {
+    if (binding->contents() != contents) continue;
+    if (!binding->pane_visible || !shell() || !GetWidget()) return std::nullopt;
+    gfx::Point pointer = aura::Env::GetInstance()->last_mouse_location();
+    views::View::ConvertPointFromScreen(this, &pointer);
+    const gfx::Rect& pane = binding->pane_bounds;
+    return ardiacore::LinuxPointerFromPageBottom(
+        pointer.x(), pointer.y(),
+        {static_cast<double>(pane.x()), static_cast<double>(pane.y()), static_cast<double>(pane.width()),
+         static_cast<double>(pane.height())},
+        blink::ZoomLevelToZoomFactor(zoom::ZoomController::GetZoomLevelForWebContents(shell())));
+  }
+  return std::nullopt;
 }
 
 std::unique_ptr<ardiacore::LinuxPageState> TabBinding::TakePage() {
@@ -6798,6 +6938,7 @@ void TabBinding::Rebind(content::WebContents* contents) {
   RetirePage();
   if (contents_ != contents) ardiacore::ForgetDeferredLinuxHangs(contents_);
   ++contents_generation_;
+  commits_.Reset();
   ResetPageCommands();
   devtools_watch.reset();
   devtools_had_focus = false;
@@ -6842,18 +6983,68 @@ void TabBinding::DidOpenRequestedURL(
     case WindowOpenDisposition::NEW_WINDOW: target = "window"; break;
     default: return;
   }
-  ReportOpened(opened, url, target);
+  ReportOpened(opened, url, target, disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB);
 }
 
 void TabBinding::ReportOpened(content::WebContents* opened, const GURL& url,
-                              std::string_view disposition) {
+                              std::string_view disposition, bool link) {
   if (!contents_ || !opened) return;
   const int id = TabId(opened);
   if (id <= 0 || opened->GetBrowserContext() != contents_->GetBrowserContext()) return;
   owner_->OfferTab(opened);
-  ReportPresentation("openWindow", base::DictValue()
-      .Set("url", url.spec()).Set("disposition", disposition)
-      .Set("adoptId", "tab:" + base::NumberToString(id)).Set("profile", ""));
+  if (link && page_ && owner_->OpensNewTabLinksInPlace())
+    return AnnounceLinkTab(opened->GetWeakPtr(), url.spec(), std::string(disposition), 0);
+  ReportOpenedTab(opened, url.spec(), disposition, std::string());
+}
+
+void TabBinding::ReportOpenedTab(content::WebContents* opened, const std::string& url, std::string_view disposition,
+                                 const std::string& link_wait) {
+  base::DictValue open = base::DictValue()
+      .Set("url", url).Set("disposition", disposition)
+      .Set("adoptId", "tab:" + base::NumberToString(TabId(opened))).Set("profile", "");
+  if (!link_wait.empty()) open.Set("linkWait", link_wait);
+  ReportPresentation("openWindow", std::move(open));
+}
+
+void TabBinding::AnnounceLinkTab(base::WeakPtr<content::WebContents> opened, std::string url, std::string disposition,
+                                 int tries) {
+  if (!opened || opened->IsBeingDestroyed()) return;
+  if (ardiacore::LinuxTabUrlBlank(url)) url = opened->GetVisibleURL().spec();
+  if (ardiacore::LinuxTabUrlBlank(url) && tries < ardiacore::kLinuxBlankTabTries) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE, base::BindOnce(&TabBinding::AnnounceLinkTab, GetWeakPtr(), std::move(opened), std::move(url),
+                                  std::move(disposition), tries + 1),
+        base::Milliseconds(ardiacore::kLinuxLinkTabRetryMs));
+    return;
+  }
+  MatchLinkTab(std::move(opened), std::move(url), std::move(disposition), tries > 0, 0);
+}
+
+void TabBinding::MatchLinkTab(base::WeakPtr<content::WebContents> opened, std::string url, std::string disposition,
+                              bool hidden, int tries) {
+  if (!opened || opened->IsBeingDestroyed()) return;
+  auto* channel = contents_ ? ardiacore::LinuxPageChannel::FromWebContents(contents_) : nullptr;
+  if (!channel || !page_) return ReportOpenedTab(opened.get(), url, disposition, std::string());
+  ardiacore::LinuxLinkTabMatch match =
+      channel->MatchLinkTab(url, opened->GetVisibleURL().spec(), hidden, tries, owner_->OpensNewTabLinksInPlace());
+  switch (match.step) {
+    case ardiacore::LinuxLinkTabStep::kInPlace: {
+      const auto weak = GetWeakPtr();
+      owner_->CloseOfferedTab(opened.get());
+      if (!weak) return;
+      return ReportPresentation("openWindow", base::DictValue()
+          .Set("url", match.clicked).Set("disposition", "current").Set("userGesture", true)
+          .Set("linkWait", match.link_wait));
+    }
+    case ardiacore::LinuxLinkTabStep::kRetry:
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE, base::BindOnce(&TabBinding::MatchLinkTab, GetWeakPtr(), std::move(opened), std::move(url),
+                                    std::move(disposition), hidden, tries + 1),
+          base::Milliseconds(ardiacore::kLinuxLinkTabRetryMs));
+      return;
+    case ardiacore::LinuxLinkTabStep::kReport:
+      return ReportOpenedTab(opened.get(), url, disposition, match.link_wait);
+  }
 }
 
 base::DictValue TabBinding::Navigation() const {
@@ -6867,6 +7058,7 @@ base::DictValue TabBinding::Navigation() const {
       .Set("isLoading", contents_->IsLoading());
   const GURL& committed = contents_->GetLastCommittedURL();
   if (committed.is_valid()) state.Set("committedUrl", committed.spec());
+  if (owner_ && owner_->ReportsCommits()) commits_.Report(state);
   return state;
 }
 
@@ -6875,7 +7067,13 @@ void TabBinding::ReportNavigation() {
 }
 
 void TabBinding::DidFinishNavigation(content::NavigationHandle* handle) {
-  if (handle->IsInPrimaryMainFrame()) ReportNavigation();
+  if (!handle->IsInPrimaryMainFrame()) return;
+  if (handle->HasCommitted() && !handle->IsSameDocument()) {
+    const net::HttpResponseHeaders* headers = handle->GetResponseHeaders();
+    commits_.Note(static_cast<double>(base::Time::Now().InMillisecondsSinceUnixEpoch()),
+                  headers ? headers->response_code() : 0);
+  }
+  ReportNavigation();
 }
 void TabBinding::DidStartLoading() { ReportNavigation(); }
 
@@ -7186,7 +7384,7 @@ void StartLinuxHost() {
   };
   g_ardia_linux_target_url = [](content::WebContents* contents, const GURL& url) {
     for (const auto& [id, host] : Hosts()) {
-      if (auto* status = host->PageStatus(contents)) return status->TargetURL(url);
+      if (auto* status = host->PageStatus(contents)) return status->TargetURL(url, host->PointerFromPageBottom(contents));
     }
     return false;
   };

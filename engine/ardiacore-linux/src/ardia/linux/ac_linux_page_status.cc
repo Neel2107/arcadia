@@ -198,14 +198,17 @@ void LinuxPageStatus::AppendSnapshot(base::ListValue& events) {
   }
 }
 
-bool LinuxPageStatus::TargetURL(const GURL& url) {
+bool LinuxPageStatus::TargetURL(const GURL& url, std::optional<double> from_bottom) {
   auto* contents = Live();
   if (!contents || !contents->GetPrimaryMainFrame()) return false;
   std::string text = url.is_valid() ? url.spec() : std::string();
   if (text == status_ && CurrentDocument(status_document_)) return true;
   status_ = text;
   status_document_ = contents->GetPrimaryMainFrame()->GetWeakDocumentPtr();
-  Present("status", base::Value(base::DictValue().Set("text", std::move(text))));
+  base::DictValue status;
+  if (from_bottom && !text.empty()) status.Set("fromBottom", *from_bottom);
+  status.Set("text", std::move(text));
+  Present("status", base::Value(std::move(status)));
   return true;
 }
 

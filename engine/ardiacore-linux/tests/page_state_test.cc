@@ -474,6 +474,11 @@ void PageStatus() {
   const auto before=m.deliveries.size();assert(status->TargetURL(GURL("https://example.test/link")) && m.deliveries.size()==before);
   assert(Text(*Named(Created(m,created),"status"),"text")=="https://example.test/link");
   assert(status->TargetURL(GURL()) && Text(m.LastData(),"text").empty());
+  assert(!m.LastData().Find("fromBottom"));
+  assert(status->TargetURL(GURL("https://example.test/low"),12.5) && m.LastData().FindDouble("fromBottom")==12.5 && Text(m.LastData(),"text")=="https://example.test/low");
+  assert(status->TargetURL(GURL(),3.0) && Text(m.LastData(),"text").empty() && !m.LastData().Find("fromBottom"));
+  assert(status->TargetURL(GURL("https://example.test/outside")) && !m.LastData().Find("fromBottom"));
+  assert(status->TargetURL(GURL()));
   content::NavigationHandle pending;m.Start(pending);
   assert(status->TargetURL(GURL("https://example.test/during")) && m.LastName()=="status" && Text(m.LastData(),"text")=="https://example.test/during");
   m.Finish(pending);

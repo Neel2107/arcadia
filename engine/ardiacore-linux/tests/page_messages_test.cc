@@ -7,8 +7,11 @@
 #include <utility>
 
 #include "ardia/linux/ac_linux_link_gesture.h"
+#include "ardia/linux/ac_linux_link_tabs.h"
+#include "ardia/linux/ac_linux_page_commits.h"
 #include "ardia/linux/ac_linux_page_evaluation.h"
 #include "ardia/linux/ac_linux_page_messages.h"
+#include "ardia/linux/ac_linux_status_geometry.h"
 
 using namespace ardiacore;
 
@@ -411,6 +414,208 @@ void NowPlayingReports() {
   Expect(LinuxNowPlayingReport(true, true, "playing").size() < 64, "the reduced report is tiny");
 }
 
+LinuxLinkRequest SiteRequest(uintptr_t surface, double now, bool other_sites = true, bool main = true) {
+  LinuxLinkRequest request = Request(surface, "site", now);
+  request.main = main;
+  request.other_sites = other_sites;
+  return request;
+}
+
+void OtherSites() {
+  Expect(LinuxPageMessageKindOf("newTabLink") == LinuxPageMessageKind::kNewTabLink, "new tab link kind");
+  auto site = NormalizeLinuxPageMessage(LinuxPageMessageKind::kPeek, Dict(base::DictValue()
+      .Set("url", "https://other.test/story").Set("key", "site").Set("origin", "https://page.test").Set("x", 4).Set("y", 5)
+      .Set("moved", 0)));
+  Expect(site && *site->data.GetDict().FindString("key") == "site" &&
+         *site->data.GetDict().FindString("url") == "https://other.test/story", "the other-site key is accepted");
+  for (const char* key : {"Site", "sites", "site ", "current"})
+    Expect(!NormalizeLinuxPageMessage(LinuxPageMessageKind::kPeek, Dict(base::DictValue().Set("url", "https://a.test/").Set("key", key))), key);
+  Expect(!NormalizeLinuxPageMessage(LinuxPageMessageKind::kPeek, Dict(base::DictValue().Set("url", "javascript:1").Set("key", "site"))),
+         "a site peek is http(s) only");
+
+  LinuxPageOptions options;
+  Expect(options.PeekConfig().FindBool("otherSites") == false, "other sites are off unless the tab is eligible");
+  Expect(options.PeekConfig(true).FindBool("otherSites") == true, "an eligible tab's page hears it");
+  Expect(!options.PageConfig(true).Find("peekOtherSites") && !options.PageConfig(false, false, true).Find("peekOtherSites"),
+         "the page config says nothing for an ineligible tab or a subframe");
+  Expect(options.PageConfig(true, false, true).FindBool("peekOtherSites") == true, "the page config keeps an eligible main frame eligible");
+  Expect(!options.ActionFor("site"), "the other-site key is never a modifier action");
+  Expect(LinuxLinkKeyFlags("site") == 0, "a site click carries no modifier");
+
+  LinuxLinkGestureGate gate;
+  auto early = gate.Decide(SiteRequest(1, 0.5), options);
+  Expect(early.outcome == LinuxLinkOutcome::kFollow && early.refused == "no left mouse-up yet" && early.site,
+         "without a real mouse-up the page follows the link itself");
+  gate.NotePress(1);
+  gate.NoteRelease(1, 0, 1.0, LinuxLinkPoint{12, 34});
+  auto off = gate.Decide(SiteRequest(1, 1.1, false), options);
+  Expect(off.outcome == LinuxLinkOutcome::kFollow && off.refused == "that key opens nothing now", "an ineligible tab follows");
+  auto frame = gate.Decide(SiteRequest(1, 1.1, true, false), options);
+  Expect(frame.outcome == LinuxLinkOutcome::kFollow && frame.refused == "only the page itself peeks links to other sites",
+         "a subframe follows");
+  auto hidden = SiteRequest(1, 1.1);
+  hidden.visible = false;
+  Expect(gate.Decide(hidden, options).outcome == LinuxLinkOutcome::kFollow, "a hidden page follows");
+  auto peek = gate.Decide(SiteRequest(1, 1.2), options);
+  Expect(peek.outcome == LinuxLinkOutcome::kPeek && peek.site && peek.refused.empty() && peek.point && peek.point->x == 12,
+         "a plain click on an eligible tab peeks at the click point, and the refusals before it used nothing up");
+  auto again = gate.Decide(SiteRequest(1, 1.3), options);
+  Expect(again.outcome == LinuxLinkOutcome::kFollow && again.refused == "that mouse-up already opened a peek", "one peek per click");
+  gate.NotePress(1);
+  gate.NoteRelease(1, kLinuxLinkShift, 2.0, std::nullopt);
+  auto shifted = gate.Decide(SiteRequest(1, 2.1), options);
+  Expect(shifted.outcome == LinuxLinkOutcome::kFollow && shifted.refused == "the mouse-up's keys aren't the page's key alone",
+         "a modified click is never a site peek");
+  Expect(gate.Decide(Request(1, "shift", 2.2), options).outcome == LinuxLinkOutcome::kPeek,
+         "a refused site peek leaves the click for the modifier peek");
+  gate.NotePress(2);
+  gate.NoteRelease(2, 0, 3.0, std::nullopt);
+  Expect(gate.Decide(SiteRequest(1, 3.1), options).refused == "the mouse-up wasn't over this page", "another tab's click");
+  gate.NotePress(1);
+  gate.NoteRelease(1, 0, 4.0, std::nullopt);
+  Expect(gate.Decide(SiteRequest(1, 4.0 + LinuxLinkGestureGate::kGestureLifetime + 1), options).outcome == LinuxLinkOutcome::kFollow,
+         "a stale click follows");
+  gate.NotePress(1);
+  gate.NoteRelease(1, 0, 20.0, std::nullopt);
+  gate.NotePress(1);
+  Expect(gate.Decide(SiteRequest(1, 20.1), options).refused == "the mouse was pressed again since that mouse-up", "pressed since");
+  LinuxPageOptions no_peek;
+  no_peek.SetPeek("off");
+  gate.NoteRelease(1, 0, 21.0, std::nullopt);
+  Expect(gate.Decide(SiteRequest(1, 21.1), no_peek).outcome == LinuxLinkOutcome::kPeek, "site peeks don't depend on the peek modifier");
+  auto plain = gate.Decide(Request(1, "shift", 21.2), LinuxPageOptions());
+  Expect(plain.outcome == LinuxLinkOutcome::kNone && !plain.site, "modifier requests never follow");
+}
+
+void StatusGeometry() {
+  const LinuxStatusPane pane{200, 50, 800, 600};
+  Expect(LinuxPointerFromPageBottom(300, 640, pane, 1) == std::optional<double>(10), "ten points above the page's bottom edge");
+  Expect(LinuxPointerFromPageBottom(300, 50, pane, 1) == std::optional<double>(600), "the top edge is the whole height away");
+  Expect(LinuxPointerFromPageBottom(300, 640, pane, 2) == std::optional<double>(5), "the distance is in the shell's own points");
+  Expect(LinuxPointerFromPageBottom(300, 640, pane, 0.5) == std::optional<double>(20), "a zoomed-out shell");
+  for (auto [x, y] : {std::pair<double, double>{199, 300}, {1000, 300}, {300, 49}, {300, 650}})
+    Expect(!LinuxPointerFromPageBottom(x, y, pane, 1), "a pointer outside the page has no distance");
+  Expect(!LinuxPointerFromPageBottom(300, 640, LinuxStatusPane{200, 50, 0, 600}, 1), "an empty page");
+  Expect(!LinuxPointerFromPageBottom(300, 640, pane, 0) && !LinuxPointerFromPageBottom(300, 640, pane, std::numeric_limits<double>::quiet_NaN()),
+         "an unusable shell scale");
+  Expect(!LinuxPointerFromPageBottom(std::numeric_limits<double>::infinity(), 640, pane, 1), "a pointer that isn't finite");
+}
+
+void Commits() {
+  Expect(LinuxReportCommits(base::DictValue().Set("on", true)) == true && LinuxReportCommits(base::DictValue().Set("on", false)) == false, "on and off");
+  Expect(!LinuxReportCommits(base::DictValue()) && !LinuxReportCommits(base::DictValue().Set("on", 1)), "a boolean is required");
+  LinuxPageCommits commits;
+  base::DictValue fresh;
+  commits.Report(fresh);
+  Expect(fresh.FindDouble("committedAt") == 0.0 && !fresh.Find("httpStatus") && fresh.size() == 1, "no document has committed yet");
+  commits.Note(1763112345678.0, 404);
+  base::DictValue missing;
+  commits.Report(missing);
+  Expect(missing.FindDouble("committedAt") == 1763112345678.0 && missing.FindInt("httpStatus") == 404, "a commit carries its time and status");
+  commits.Note(1763112345999.0, 0);
+  base::DictValue local;
+  commits.Report(local);
+  Expect(local.FindDouble("committedAt") == 1763112345999.0 && !local.Find("httpStatus"), "a document without a response has no status");
+  commits.Reset();
+  base::DictValue replaced;
+  commits.Report(replaced);
+  Expect(replaced.FindDouble("committedAt") == 0.0 && !replaced.Find("httpStatus"), "new contents start over");
+}
+
+void LinkTabs() {
+  auto ids = [](base::ListValue list) { return LinuxPeekSiteTabIds(base::DictValue().Set("tabIds", std::move(list))); };
+  Expect(ids(base::ListValue()) && ids(base::ListValue())->empty(), "an empty list turns it off");
+  auto two = ids(base::ListValue().Append("tab-a").Append("tab-b").Append("tab-a"));
+  Expect(two && two->size() == 2, "ids are a set");
+  Expect(!LinuxPeekSiteTabIds(base::DictValue()), "the list is required");
+  Expect(!LinuxPeekSiteTabIds(base::DictValue().Set("tabIds", "tab-a")), "a string is not a list");
+  Expect(!ids(base::ListValue().Append("tab-a").Append(7)), "every id is a string");
+  Expect(!ids(base::ListValue().Append("")), "no empty id");
+  Expect(!ids(base::ListValue().Append(std::string(kLinuxTabKeyMax + 1, 'k'))), "no oversized id");
+  Expect(!ids(base::ListValue().Append(std::string("a\0b", 3))), "no nul in an id");
+  base::ListValue many;
+  for (size_t i = 0; i <= kLinuxPeekSiteTabsMax; ++i) many.Append("tab-" + std::to_string(i));
+  Expect(!ids(std::move(many)), "the list is bounded");
+
+  LinuxPeekSiteTabs tabs;
+  Expect(!tabs.Has("tab-a") && !tabs.Has(""), "nothing peeks by default");
+  auto first = tabs.Set({"tab-a", "tab-b"});
+  Expect(first == std::vector<std::string>({"tab-a", "tab-b"}) && tabs.Has("tab-a"), "new tabs are the change");
+  auto second = tabs.Set({"tab-b", "tab-c"});
+  Expect(second == std::vector<std::string>({"tab-a", "tab-c"}) && !tabs.Has("tab-a") && tabs.Has("tab-b") && tabs.Has("tab-c"),
+         "only added and removed tabs hear about it");
+  Expect(tabs.Set({"tab-b", "tab-c"}).empty(), "the same list changes nothing");
+  Expect(tabs.Clear() == std::vector<std::string>({"tab-b", "tab-c"}) && !tabs.Has("tab-b"), "a new renderer starts empty");
+
+  Expect(LinuxNewTabLinksInPlace(base::DictValue().Set("enabled", true)) == true, "enabled");
+  Expect(!LinuxNewTabLinksInPlace(base::DictValue().Set("enabled", "yes")) && !LinuxNewTabLinksInPlace(base::DictValue()), "a boolean is required");
+  Expect(LinuxTabUrlBlank("") && LinuxTabUrlBlank("about:blank") && !LinuxTabUrlBlank("https://a.test/"), "blank urls");
+
+  auto link = NormalizeLinuxPageMessage(LinuxPageMessageKind::kNewTabLink, Dict(base::DictValue().Set("url", "https://a.test/x").Set("extra", 1)));
+  Expect(link && *link->data.GetDict().FindString("url") == "https://a.test/x" && link->data.GetDict().size() == 1, "new tab link keeps only its url");
+  Expect(!NormalizeLinuxPageMessage(LinuxPageMessageKind::kNewTabLink, Dict(base::DictValue().Set("url", "javascript:1"))), "http(s) only");
+  Expect(!NormalizeLinuxPageMessage(LinuxPageMessageKind::kNewTabLink, base::Value()), "a dictionary is required");
+  Expect(LinuxPageSenderAccepted(LinuxPageMessageKind::kNewTabLink, LinuxPageSender{false, true, true}), "a subframe's link opens a tab too");
+
+  LinuxNewTabLinks links;
+  links.Note("", 0);
+  Expect(links.size() == 0, "nothing to note");
+  links.Note("https://a.test/1", 10.0);
+  Expect(!links.TakeFor("https://a.test/other", "", 10.1), "another url doesn't match");
+  Expect(links.TakeFor("https://a.test/other", "https://a.test/1", 10.2) == std::optional<std::string>("https://a.test/1"), "the tab's current url matches");
+  Expect(!links.TakeFor("https://a.test/1", "", 10.3), "a link is taken once");
+  links.Note("https://a.test/2", 20.0);
+  Expect(!links.TakeFor("https://a.test/2", "", 20.0 + LinuxNewTabLinks::kLifetime), "a link is kept for two seconds");
+  for (int i = 0; i < 6; ++i) links.Note("https://a.test/" + std::to_string(i), 30.0 + i * 0.1);
+  Expect(links.size() == LinuxNewTabLinks::kKept, "four links are kept");
+  Expect(!links.TakeFor("https://a.test/1", "", 30.6) && links.TakeFor("https://a.test/2", "", 30.6), "the oldest are dropped");
+  Expect(links.TakeNoted(1, 30.7) == std::optional<std::string>("https://a.test/5"), "the newest note stands in for a hidden url");
+  Expect(!links.TakeNoted(0.05, 30.7), "only a note that recent");
+  Expect(!links.TakeFor("https://a.test/3", "", 29.0) && links.size() == 0, "a clock going backwards drops the notes");
+
+  LinuxNewTabLinks ledger;
+  auto attempt = [](std::string_view first, std::string_view current, bool hidden, int tries, bool activated, bool in_place, double now) {
+    LinuxLinkTabAttempt a;
+    a.first_url = first;
+    a.current_url = current;
+    a.hidden = hidden;
+    a.tries = tries;
+    a.activated = activated;
+    a.in_place = in_place;
+    a.now = now;
+    return a;
+  };
+  ledger.Note("https://a.test/clicked", 1.0);
+  auto in_place = MatchLinuxLinkTab(ledger, attempt("https://a.test/clicked", "", false, 0, false, true, 1.1));
+  Expect(in_place.step == LinuxLinkTabStep::kInPlace && in_place.clicked == "https://a.test/clicked" && in_place.link_wait == "matched",
+         "a clicked link stays in a Little Ardia window");
+  ledger.Note("https://a.test/clicked", 2.0);
+  auto as_tab = MatchLinuxLinkTab(ledger, attempt("https://a.test/clicked", "", false, 0, false, false, 2.1));
+  Expect(as_tab.step == LinuxLinkTabStep::kReport && as_tab.link_wait == "matched", "elsewhere the tab is reported as matched");
+  auto skipped = MatchLinuxLinkTab(ledger, attempt("https://a.test/script", "", false, 0, false, true, 3.0));
+  Expect(skipped.step == LinuxLinkTabStep::kReport && skipped.link_wait == "skipped" && skipped.clicked.empty(),
+         "a tab no input could have opened is reported at once");
+  auto waiting = MatchLinuxLinkTab(ledger, attempt("https://a.test/late", "", false, 0, true, true, 3.0));
+  Expect(waiting.step == LinuxLinkTabStep::kRetry, "after recent input the note may still be on its way");
+  Expect(MatchLinuxLinkTab(ledger, attempt("https://a.test/late", "", false, kLinuxLinkTabTries - 1, false, true, 3.2)).step == LinuxLinkTabStep::kRetry,
+         "a retry keeps waiting");
+  auto timed_out = MatchLinuxLinkTab(ledger, attempt("https://a.test/late", "", false, kLinuxLinkTabTries, true, true, 3.3));
+  Expect(timed_out.step == LinuxLinkTabStep::kReport && timed_out.link_wait == "timedOut", "eight tries, then the tab opens as a tab");
+  ledger.Note("https://a.test/late", 3.25);
+  auto late = MatchLinuxLinkTab(ledger, attempt("https://a.test/late", "", false, 3, true, true, 3.3));
+  Expect(late.step == LinuxLinkTabStep::kInPlace && late.clicked == "https://a.test/late", "a note that arrives during the wait matches");
+  ledger.Note("https://a.test/redirector", 5.0);
+  auto hidden = MatchLinuxLinkTab(ledger, attempt("https://b.test/landing", "https://b.test/landing", true, 0, true, true, 5.5));
+  Expect(hidden.step == LinuxLinkTabStep::kInPlace && hidden.clicked == "https://a.test/redirector",
+         "a tab that started blank takes the newest link noted in the last second");
+  ledger.Note("https://a.test/redirector", 6.0);
+  Expect(MatchLinuxLinkTab(ledger, attempt("https://b.test/landing", "", false, kLinuxLinkTabTries, true, true, 6.5)).link_wait == "timedOut",
+         "a tab that never was blank needs its own url noted");
+  Expect(kLinuxLinkTabTries == 8 && kLinuxBlankTabTries == 20 && kLinuxLinkTabRetryMs == 25 && kLinuxActivationLifespan == 5 &&
+         LinuxNewTabLinks::kLifetime == 2 && LinuxNewTabLinks::kHiddenLifetime == 1 && LinuxNewTabLinks::kKept == 4,
+         "the waits are the Mac's");
+}
+
 int main(int argc, char** argv) {
   if (argc != 2) return 2;
   const std::string name = argv[1];
@@ -425,6 +630,10 @@ int main(int argc, char** argv) {
   else if (name == "drag-over") DragOver();
   else if (name == "activity") Activity();
   else if (name == "now-playing-reports") NowPlayingReports();
+  else if (name == "other-sites") OtherSites();
+  else if (name == "link-tabs") LinkTabs();
+  else if (name == "status-geometry") StatusGeometry();
+  else if (name == "commits") Commits();
   else return 2;
   return 0;
 }

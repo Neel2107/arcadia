@@ -83,11 +83,14 @@ void LinuxLinkGestureGate::Forget(uintptr_t surface) {
 }
 
 LinuxLinkDecision LinuxLinkGestureGate::Decide(const LinuxLinkRequest& request, const LinuxPageOptions& options) {
-  const auto action = options.ActionFor(request.key);
+  const bool site = request.key == kLinuxOtherSiteKey;
+  const auto action = site ? (request.other_sites ? std::optional<std::string>("peek") : std::nullopt)
+                           : options.ActionFor(request.key);
   const int flags = LinuxLinkKeyFlags(request.key);
   const double since = up_at_ < 0 ? -1 : request.now - up_at_;
   std::string refused;
   if (!action) refused = "that key opens nothing now";
+  else if (site && !request.main) refused = "only the page itself peeks links to other sites";
   else if (!request.visible) refused = "page not shown";
   else if (!request.http) refused = "not http(s)";
   else if (up_at_ < 0) refused = "no left mouse-up yet";
@@ -100,6 +103,7 @@ LinuxLinkDecision LinuxLinkGestureGate::Decide(const LinuxLinkRequest& request, 
   used_sequence_ = up_sequence_;
   LinuxLinkDecision decision;
   decision.outcome = *action == "split" ? LinuxLinkOutcome::kSplit : LinuxLinkOutcome::kPeek;
+  decision.site = site;
   if (decision.outcome == LinuxLinkOutcome::kPeek) decision.point = up_point_;
   return decision;
 }
@@ -108,6 +112,11 @@ LinuxLinkDecision LinuxLinkGestureGate::FallBack(const LinuxLinkRequest& request
                                                  std::string reason) {
   LinuxLinkDecision decision;
   decision.refused = std::move(reason);
+  if (request.key == kLinuxOtherSiteKey) {
+    decision.site = true;
+    decision.outcome = LinuxLinkOutcome::kFollow;
+    return decision;
+  }
   const int flags = LinuxLinkKeyFlags(request.key);
   const bool split = options.ActionFor(request.key) == std::optional<std::string>("split");
   const double since = up_at_ < 0 ? -1 : request.now - up_at_;

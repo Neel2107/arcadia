@@ -59,9 +59,8 @@ class WheelZoomTests(unittest.TestCase):
         self.assertNotIn('PushOptions', gate)
         host = (LINUX / 'ac_linux_host.cc').read_text()
         self.assertIn('for (const char* route : ardiacore::kLinuxPageMessageRoutes)\n    capabilities.Append(route);', host)
-        for unrouted in ('webView.setPeekOtherSiteTabs', 'webView.setLittleArdiaOpensNewTabLinks'):
-            self.assertNotIn(unrouted, routes)
-            self.assertNotIn(unrouted, host)
+        for elsewhere in ('webView.setPeekOtherSiteTabs', 'webView.setLittleArdiaOpensNewTabLinks'):
+            self.assertNotIn(elsewhere, routes)
 
 
 if __name__ == '__main__':

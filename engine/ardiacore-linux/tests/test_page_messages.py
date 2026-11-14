@@ -7,7 +7,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'src'
-FILES = [SOURCE / 'ardia/linux' / f'ac_linux_{name}.cc' for name in ['page_messages', 'link_gesture', 'page_evaluation']]
+FILES = [SOURCE / 'ardia/linux' / f'ac_linux_{name}.cc' for name in ['page_messages', 'link_gesture', 'link_tabs', 'page_evaluation']]
 FIXTURE = ROOT / 'tests/fixtures/page_state.h'
 
 
@@ -69,6 +69,77 @@ class PageMessageTests(unittest.TestCase):
 
     def test_input_activity_is_announced_at_most_twice_a_second(self):
         self.run_case('activity')
+
+    def test_a_plain_click_peeks_only_on_an_eligible_tab_and_otherwise_follows(self):
+        self.run_case('other-sites')
+
+    def test_new_tab_links_are_matched_with_the_macs_waits(self):
+        self.run_case('link-tabs')
+
+    def test_a_link_status_carries_the_pointers_distance_from_the_pages_bottom(self):
+        self.run_case('status-geometry')
+        host = (SOURCE / 'ardia/linux/ac_linux_host.cc').read_text()
+        self.assertIn('return status->TargetURL(url, host->PointerFromPageBottom(contents));', host)
+        status = (SOURCE / 'ardia/linux/ac_linux_page_status.cc').read_text()
+        self.assertIn('if (from_bottom && !text.empty()) status.Set("fromBottom", *from_bottom);', status)
+
+    def test_page_commits_are_stamped_per_document_and_reported_only_when_asked(self):
+        self.run_case('commits')
+        host = (SOURCE / 'ardia/linux/ac_linux_host.cc').read_text()
+        self.assertIn('for (const char* route : ardiacore::kLinuxPageCommitRoutes) capabilities.Append(route);', host)
+        self.assertIn('if (name == ardiacore::kLinuxReportCommitsRoute) {', host)
+        finished = host[host.index('void TabBinding::DidFinishNavigation('):host.index('void TabBinding::DidStartLoading()')]
+        self.assertIn('if (handle->HasCommitted() && !handle->IsSameDocument()) {', finished)
+        self.assertIn('headers ? headers->response_code() : 0', finished)
+        self.assertIn('if (owner_ && owner_->ReportsCommits()) commits_.Report(state);', host)
+        forget = host[host.index('  void ForgetRendererPageOptions() {'):]
+        self.assertIn('reports_commits_ = false;', forget[:forget.index('\n  }\n')])
+        mac = (ROOT.parents[1] / 'packages/ardiacore/ios/ArdiaWebView+Navigation.mm').read_text()
+        self.assertIn('withInitial[@"committedAt"] = @(_commits.at);', mac)
+        self.assertIn('if (_commits.httpStatus > 0) withInitial[@"httpStatus"] = @(_commits.httpStatus);', mac)
+
+    def test_the_host_routes_and_advertises_the_link_tab_calls(self):
+        linux = SOURCE / 'ardia/linux'
+        routes = (linux / 'ac_linux_link_tabs.h').read_text()
+        self.assertIn('kLinuxLinkTabRoutes[] = {"webView.setPeekOtherSiteTabs",\n'
+                      '                                                      "webView.setLittleArdiaOpensNewTabLinks"};', routes)
+        host = (linux / 'ac_linux_host.cc').read_text()
+        self.assertIn('for (const char* route : ardiacore::kLinuxLinkTabRoutes) capabilities.Append(route);', host)
+        self.assertIn('if (name == ardiacore::kLinuxPeekOtherSiteTabsRoute) {', host)
+        self.assertIn('if (name == ardiacore::kLinuxNewTabLinksInPlaceRoute) {', host)
+        retire = host[host.index('  void RetireRenderer() {'):]
+        self.assertIn('ForgetRendererPageOptions();', retire[:retire.index('\n  }\n')])
+        forget = host[host.index('  void ForgetRendererPageOptions() {'):]
+        self.assertIn('PushPeekSiteTabs(peek_site_tabs_.Clear());', forget[:forget.index('\n  }\n')])
+        self.assertIn('if (link && page_ && owner_->OpensNewTabLinksInPlace())', host)
+        self.assertIn('ReportOpened(opened, url, target, disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB);', host)
+
+    def test_a_link_kept_in_place_closes_its_tab_once_chromium_has_put_it_in_a_strip(self):
+        host = (SOURCE / 'ardia/linux/ac_linux_host.cc').read_text()
+        close = host[host.index('bool ShellHostView::CloseOfferedTab('):host.index('void ShellHostView::CloseOfferedTabInStrip(')]
+        self.assertLess(close.index('if (host->BindsTab(contents)) return false;'), close.index('closing_offers_.insert(id);'))
+        self.assertNotIn('offered_.erase(', close)
+        in_strip = host[host.index('void ShellHostView::CloseOfferedTabInStrip('):host.index('std::optional<gfx::PointF> ShellHostView::ShellPoint(')]
+        self.assertIn('if (index == TabStripModel::kNoTab || !closing_offers_.erase(id)) return;', in_strip)
+        self.assertLess(in_strip.index('!closing_offers_.erase(id)'), in_strip.index('CloseWebContentsAt(index, TabCloseTypes::CLOSE_NONE);'))
+        inserted = host[host.index('void ShellHostView::OnTabStripModelChanged('):]
+        inserted = inserted[:inserted.index('if (selection.active_tab_changed())')]
+        self.assertLess(inserted.index('if (closing_offers_.contains(TabId(inserted.contents))) {'),
+                        inserted.index('NoteUnclaimedTab(inserted.contents'))
+        self.assertIn('base::BindOnce(&ShellHostView::CloseOfferedTabInStrip, GetWeakPtr(),', inserted)
+        listed = host[host.index('base::ListValue ShellHostView::UnclaimedTabsForShell() const {'):]
+        self.assertIn('|| closing_offers_.contains(id)) continue;', listed[:listed.index('void ShellHostView::DetachViewports()')])
+
+    def test_a_site_click_the_host_cannot_take_is_handed_back_to_the_page(self):
+        channel = (SOURCE / 'ardia/linux/ac_linux_page_channel.cc').read_text()
+        peek = channel[channel.index('void LinuxPageChannel::Peek('):channel.index('base::CallbackListSubscription LinuxPageChannel::AddPageVideoListener')]
+        self.assertEqual(peek.count('Follow(frame, asked,'), 5)
+        self.assertIn('if (decision.outcome == LinuxLinkOutcome::kFollow) return Follow(frame, asked, decision.refused);', peek)
+        self.assertIn('if (site && !sent && weak', peek)
+        self.assertIn('.Set("url", url).Set("reason", reason).Set("follow", true)', channel)
+        detach = channel[channel.index('void LinuxPageChannel::Detach() {'):channel.index('bool LinuxPageChannel::PeeksOtherSites() const')]
+        self.assertIn('Call(main, "peekConfig", Json(base::Value(Options().PeekConfig())));', detach)
+        self.assertIn('*type == LinuxPageMessageKind::kPeek ? budget->link_click : budget->budget', channel)
 
 
 if __name__ == '__main__':

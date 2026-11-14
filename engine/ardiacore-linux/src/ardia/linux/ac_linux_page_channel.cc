@@ -127,6 +127,11 @@ base::RepeatingClosure& ActivityListener() {
   return *listener;
 }
 
+bool ActivatingInput(blink::WebInputEvent::Type type) {
+  return type == blink::WebInputEvent::Type::kMouseDown || type == blink::WebInputEvent::Type::kMouseUp ||
+         type == blink::WebInputEvent::Type::kRawKeyDown || type == blink::WebInputEvent::Type::kKeyDown;
+}
+
 bool UserActivity(blink::WebInputEvent::Type type) {
   return blink::WebInputEvent::IsKeyboardEventType(type) || blink::WebInputEvent::IsMouseEventType(type) ||
          blink::WebInputEvent::IsTouchEventType(type) || type == blink::WebInputEvent::Type::kMouseWheel;
@@ -178,7 +183,8 @@ const char* Disposition(LinuxLinkOutcome outcome) {
     case LinuxLinkOutcome::kWindow: return "window";
     case LinuxLinkOutcome::kBackground: return "background";
     case LinuxLinkOutcome::kNone:
-    case LinuxLinkOutcome::kDownload: return nullptr;
+    case LinuxLinkOutcome::kDownload:
+    case LinuxLinkOutcome::kFollow: return nullptr;
   }
   return nullptr;
 }
@@ -243,8 +249,31 @@ void LinuxPageChannel::RefreshPageConfig() {
 }
 
 void LinuxPageChannel::Detach() {
+  const bool peeked_other_sites = PeeksOtherSites();
   hooks_.reset();
   ForgetDocument();
+  if (!peeked_other_sites || GetWebContents().IsBeingDestroyed()) return;
+  if (content::RenderFrameHost* main = GetWebContents().GetPrimaryMainFrame())
+    Call(main, "peekConfig", Json(base::Value(Options().PeekConfig())));
+}
+
+bool LinuxPageChannel::PeeksOtherSites() const {
+  return hooks_ && hooks_->peeks_other_sites && hooks_->peeks_other_sites.Run();
+}
+
+LinuxLinkTabMatch LinuxPageChannel::MatchLinkTab(std::string_view first_url, std::string_view current_url, bool hidden,
+                                                 int tries, bool in_place) {
+  const double now = Now();
+  LinuxLinkTabAttempt attempt;
+  attempt.first_url = first_url;
+  attempt.current_url = current_url;
+  attempt.hidden = hidden;
+  attempt.tries = tries;
+  attempt.activated = activating_input_at_ >= 0 && now >= activating_input_at_ &&
+                      now - activating_input_at_ <= kLinuxActivationLifespan;
+  attempt.in_place = in_place;
+  attempt.now = now;
+  return MatchLinuxLinkTab(new_tab_links_, attempt);
 }
 
 void LinuxPageChannel::ForgetDocument() {
@@ -279,18 +308,22 @@ void LinuxPageChannel::Call(content::RenderFrameHost* frame, const std::string& 
 void LinuxPageChannel::Greet(content::RenderFrameHost& frame) {
   const bool block_autoplay =
       LinuxAutoplayBlocked(frame.GetOutermostMainFrame()->GetLastCommittedURL(), frame.GetBrowserContext());
-  Call(&frame, "peekConfig", Json(base::Value(Options().PeekConfig())));
-  Call(&frame, "config", Json(base::Value(Options().PageConfig(frame.IsInPrimaryMainFrame(), block_autoplay))));
+  const bool main = frame.IsInPrimaryMainFrame();
+  const bool other_sites = main && PeeksOtherSites();
+  Call(&frame, "peekConfig", Json(base::Value(Options().PeekConfig(other_sites))));
+  Call(&frame, "config", Json(base::Value(Options().PageConfig(main, block_autoplay, other_sites))));
 }
 
 void LinuxPageChannel::PushOptions() {
   if (!hooks_) return;
   const std::string peek = Json(base::Value(Options().PeekConfig()));
+  const std::string main_peek = Json(base::Value(Options().PeekConfig(PeeksOtherSites())));
   const std::string popover = Options().selection_popover ? "true" : "false";
   GetWebContents().ForEachRenderFrameHost([&](content::RenderFrameHost* frame) {
     if (!frame->GetPage().IsPrimary()) return;
-    Call(frame, "peekConfig", peek);
-    if (frame->IsInPrimaryMainFrame()) Call(frame, "selectionPopover", popover);
+    const bool main = frame->IsInPrimaryMainFrame();
+    Call(frame, "peekConfig", main ? main_peek : peek);
+    if (main) Call(frame, "selectionPopover", popover);
   });
 }
 
@@ -303,8 +336,9 @@ void LinuxPageChannel::Post(const std::string& kind, const std::string& json) {
                                frame.IsActive() && frame.IsRenderFrameLive() && Scriptable(&frame)};
   if (!LinuxPageSenderAccepted(*type, sender)) return;
   auto* budget = LinuxPageDocumentBudget::GetOrCreateForCurrentDocument(&frame);
-  if (!(*type == LinuxPageMessageKind::kNowPlaying ? budget->now_playing : budget->budget).Admit(Now(), kind.size() + json.size()))
-    return;
+  LinuxPageMessageBudget& bucket = *type == LinuxPageMessageKind::kNowPlaying ? budget->now_playing
+                                   : *type == LinuxPageMessageKind::kPeek ? budget->link_click : budget->budget;
+  if (!bucket.Admit(Now(), kind.size() + json.size())) return;
   std::optional<base::Value> value = json == "null"
       ? std::optional<base::Value>(base::Value())
       : base::JSONReader::Read(json, base::JSON_PARSE_RFC, kLinuxPageMessageDepthMax + 1);
@@ -339,6 +373,8 @@ void LinuxPageChannel::Accept(content::RenderFrameHost& frame, LinuxPageMessage 
     }
     case LinuxPageMessageKind::kLinkDrop:
       return LinkDrop(*message.data.GetDict().FindString("url"));
+    case LinuxPageMessageKind::kNewTabLink:
+      return new_tab_links_.Note(*message.data.GetDict().FindString("url"), Now());
     case LinuxPageMessageKind::kNowPlaying:
       return NoteVideo(frame, message.data);
     case LinuxPageMessageKind::kTheme: {
@@ -352,18 +388,38 @@ void LinuxPageChannel::Accept(content::RenderFrameHost& frame, LinuxPageMessage 
   }
 }
 
+void LinuxPageChannel::Follow(content::RenderFrameHost& frame, const std::string& url, const std::string& reason) {
+  Call(&frame, "peekRefused", Json(base::Value(base::DictValue()
+      .Set("url", url).Set("reason", reason).Set("follow", true))));
+}
+
 void LinuxPageChannel::Peek(content::RenderFrameHost& frame, const base::DictValue& data) {
-  const GURL url(*data.FindString("url"));
-  if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS()) return;
+  const std::string asked = *data.FindString("url");
+  const std::string key = *data.FindString("key");
+  const bool site = key == kLinuxOtherSiteKey;
+  const GURL url(asked);
+  if (!url.is_valid() || !url.SchemeIsHTTPOrHTTPS()) {
+    if (site) Follow(frame, asked, "not http(s)");
+    return;
+  }
+  const auto weak = weak_factory_.GetWeakPtr();
+  const content::WeakDocumentPtr document = frame.GetWeakDocumentPtr();
   LinuxLinkRequest request;
   request.surface = surface_;
-  request.key = *data.FindString("key");
+  request.key = key;
   request.http = true;
   request.visible = hooks_->visible && hooks_->visible.Run();
   request.same_origin = url::Origin::Create(url).IsSameOriginWith(frame.GetLastCommittedOrigin());
+  request.main = frame.IsInPrimaryMainFrame();
+  request.other_sites = site && PeeksOtherSites();
   request.now = Now();
-  if (!hooks_) return;
+  if (!weak || document.AsRenderFrameHostIfValid() != &frame) return;
+  if (!hooks_) {
+    if (site) Follow(frame, asked, "page not shown");
+    return;
+  }
   const LinuxLinkDecision decision = Gate().Decide(request, Options());
+  if (decision.outcome == LinuxLinkOutcome::kFollow) return Follow(frame, asked, decision.refused);
   if (decision.outcome == LinuxLinkOutcome::kDownload) {
     return Call(&frame, "peekRefused", Json(base::Value(base::DictValue()
         .Set("url", url.spec()).Set("reason", decision.refused).Set("download", true))));
@@ -375,9 +431,15 @@ void LinuxPageChannel::Peek(content::RenderFrameHost& frame, const base::DictVal
     if (auto point = hooks_->shell_point.Run(gfx::PointF(decision.point->x, decision.point->y)))
       open.Set("point", base::DictValue().Set("x", point->x()).Set("y", point->y()));
   }
-  if (!hooks_) return;
+  if (decision.site) open.Set("site", true);
+  if (!weak) return;
+  if (!hooks_) {
+    if (site && document.AsRenderFrameHostIfValid() == &frame) Follow(frame, asked, "page not shown");
+    return;
+  }
   auto emit = hooks_->emit;
-  emit.Run("openWindow", base::Value(std::move(open)));
+  const bool sent = emit.Run("openWindow", base::Value(std::move(open)));
+  if (site && !sent && weak && document.AsRenderFrameHostIfValid() == &frame) Follow(frame, asked, "page not shown");
 }
 
 base::CallbackListSubscription LinuxPageChannel::AddPageVideoListener(base::RepeatingClosure listener) {
@@ -439,6 +501,7 @@ void LinuxPageChannel::WebContentsDestroyed() {
 void LinuxPageChannel::OnInputEvent(const content::RenderWidgetHost& widget, const blink::WebInputEvent& event,
                                     input::InputEventSource source) {
   const auto type = event.GetType();
+  if (!shell_ && ActivatingInput(type)) activating_input_at_ = Now();
   if (UserActivity(type) && Activity().Note(Now()) && ActivityListener())
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE, ActivityListener());
   if (shell_ && blink::WebInputEvent::IsMouseEventType(type)) {

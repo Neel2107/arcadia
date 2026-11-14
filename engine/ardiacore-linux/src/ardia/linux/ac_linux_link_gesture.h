@@ -29,15 +29,18 @@ struct LinuxLinkRequest {
   bool http = false;
   bool visible = false;
   bool same_origin = false;
+  bool main = false;
+  bool other_sites = false;
   double now = 0;
 };
 
-enum class LinuxLinkOutcome { kNone, kPeek, kSplit, kWindow, kBackground, kDownload };
+enum class LinuxLinkOutcome { kNone, kPeek, kSplit, kWindow, kBackground, kDownload, kFollow };
 
 struct LinuxLinkDecision {
   LinuxLinkOutcome outcome = LinuxLinkOutcome::kNone;
   std::string refused;
   std::optional<LinuxLinkPoint> point;
+  bool site = false;
 };
 
 class LinuxInputActivity {

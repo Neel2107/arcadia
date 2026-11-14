@@ -57,7 +57,8 @@ std::optional<LinuxPageMessage> Peek(const base::DictValue& dict) {
   const std::string* url = BoundedString(dict, "url", kLinuxPageUrlMax);
   const std::string* key = BoundedString(dict, "key", 8);
   if (!url || !IsLinuxPageHttpUrl(*url) || !key ||
-      std::find(std::begin(kLinkKeys), std::end(kLinkKeys), *key) == std::end(kLinkKeys)) {
+      (*key != kLinuxOtherSiteKey &&
+       std::find(std::begin(kLinkKeys), std::end(kLinkKeys), *key) == std::end(kLinkKeys))) {
     return std::nullopt;
   }
   base::DictValue data;
@@ -122,6 +123,7 @@ std::optional<LinuxPageMessageKind> LinuxPageMessageKindOf(std::string_view kind
   if (kind == "theme") return LinuxPageMessageKind::kTheme;
   if (kind == "linkDrop") return LinuxPageMessageKind::kLinkDrop;
   if (kind == "nowPlaying") return LinuxPageMessageKind::kNowPlaying;
+  if (kind == "newTabLink") return LinuxPageMessageKind::kNewTabLink;
   return std::nullopt;
 }
 
@@ -171,7 +173,8 @@ std::optional<LinuxPageMessage> NormalizeLinuxPageMessage(LinuxPageMessageKind k
     }
     case LinuxPageMessageKind::kTheme:
       return Message(kind, Theme(value));
-    case LinuxPageMessageKind::kLinkDrop: {
+    case LinuxPageMessageKind::kLinkDrop:
+    case LinuxPageMessageKind::kNewTabLink: {
       const std::string* url = dict ? BoundedString(*dict, "url", kLinuxPageUrlMax) : nullptr;
       if (!url || !IsLinuxPageHttpUrl(*url)) return std::nullopt;
       return Message(kind, base::Value(base::DictValue().Set("url", *url)));
@@ -235,14 +238,16 @@ std::optional<std::string> LinuxPageOptions::ActionFor(std::string_view key) con
   return std::nullopt;
 }
 
-base::DictValue LinuxPageOptions::PeekConfig() const {
-  return base::DictValue().Set("modifier", peek).Set("split", EffectiveSplit()).Set("trace", false);
+base::DictValue LinuxPageOptions::PeekConfig(bool other_sites) const {
+  return base::DictValue().Set("modifier", peek).Set("split", EffectiveSplit()).Set("trace", false)
+      .Set("otherSites", other_sites);
 }
 
-base::DictValue LinuxPageOptions::PageConfig(bool main, bool block_autoplay) const {
+base::DictValue LinuxPageOptions::PageConfig(bool main, bool block_autoplay, bool other_sites) const {
   base::DictValue config;
   config.Set("peek", peek);
   config.Set("split", EffectiveSplit());
+  if (main && other_sites) config.Set("peekOtherSites", true);
   if (main) config.Set("selectionPopover", selection_popover);
   if (block_autoplay) config.Set("blockAutoplay", true);
   return config;

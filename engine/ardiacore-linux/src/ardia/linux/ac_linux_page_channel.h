@@ -6,6 +6,7 @@
 #include <string>
 
 #include "ardia/linux/ac_linux_link_gesture.h"
+#include "ardia/linux/ac_linux_link_tabs.h"
 #include "ardia/linux/ac_linux_page_messages.h"
 #include "ardia/linux/ac_linux_theme.h"
 #include "ardia/linux/mojom/page.mojom.h"
@@ -36,6 +37,7 @@ class LinuxPageDocumentBudget : public content::DocumentUserData<LinuxPageDocume
   ~LinuxPageDocumentBudget() override;
   LinuxPageMessageBudget budget;
   LinuxPageMessageBudget now_playing;
+  LinuxPageMessageBudget link_click;
 
  private:
   explicit LinuxPageDocumentBudget(content::RenderFrameHost* frame);
@@ -60,6 +62,7 @@ struct LinuxPageChannelHooks {
   base::RepeatingCallback<bool(std::string name, base::Value data)> emit;
   base::RepeatingCallback<bool(std::optional<LinuxTheme::Sample> sample, content::WeakDocumentPtr document)> theme;
   base::RepeatingCallback<std::optional<gfx::PointF>(gfx::PointF page_point)> shell_point;
+  base::RepeatingCallback<bool()> peeks_other_sites;
 };
 
 class LinuxPageChannel : public content::WebContentsObserver,
@@ -75,6 +78,8 @@ class LinuxPageChannel : public content::WebContentsObserver,
   base::ListValue SnapshotEvents();
   void PushOptions();
   void RefreshPageConfig();
+  LinuxLinkTabMatch MatchLinkTab(std::string_view first_url, std::string_view current_url, bool hidden, int tries,
+                                 bool in_place);
   void Post(const std::string& kind, const std::string& json) override;
   base::CallbackListSubscription AddPageVideoListener(base::RepeatingClosure listener);
   void Bind(content::RenderFrameHost* frame,
@@ -86,6 +91,8 @@ class LinuxPageChannel : public content::WebContentsObserver,
   void Accept(content::RenderFrameHost& frame, LinuxPageMessage message);
   void Peek(content::RenderFrameHost& frame, const base::DictValue& data);
   void LinkDrop(const std::string& spec);
+  void Follow(content::RenderFrameHost& frame, const std::string& url, const std::string& reason);
+  bool PeeksOtherSites() const;
   void NoteVideo(content::RenderFrameHost& frame, const base::Value& data);
   friend void NoteLinuxDragEnded(base::FunctionRef<bool(content::WebContents*)> in_window);
   friend void WatchLinuxShellInput(content::WebContents* shell);
@@ -118,6 +125,8 @@ class LinuxPageChannel : public content::WebContentsObserver,
   base::Value selection_;
   content::WeakDocumentPtr message_document_;
   base::WeakPtr<LinuxPageDropTrack> drop_track_;
+  LinuxNewTabLinks new_tab_links_;
+  double activating_input_at_ = -1;
   base::RepeatingClosureList page_video_listeners_;
   base::WeakPtrFactory<LinuxPageChannel> weak_factory_{this};
   WEB_CONTENTS_USER_DATA_KEY_DECL();

@@ -13,6 +13,7 @@
 
 #include "ardia/core/ac_launch_switches.h"
 #include "ardia/linux/ac_linux_desktop_core.h"
+#include "ardia/linux/ac_linux_hardware.h"
 #include "ardia/linux/ac_linux_launch_config.h"
 #include "base/base_paths.h"
 #include "base/files/file_path.h"
@@ -25,12 +26,18 @@
 #include "base/process/kill.h"
 #include "base/process/launch.h"
 #include "base/process/process.h"
+#include "base/system/sys_info.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "base/time/time.h"
 #include "chrome/browser/platform_util.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/gpu_data_manager.h"
+#include "gpu/config/gpu_info.h"
+#include "ui/display/display.h"
+#include "ui/display/screen.h"
+#include "ui/native_theme/native_theme.h"
 #include "url/gurl.h"
 
 namespace ardiacore {
@@ -158,13 +165,64 @@ void OpenExternalUrl(const base::ListValue& args, Done done) {
 
 }
 
+namespace {
+
+namespace hardware = ardia::linux_hardware;
+
+static_assert(gpu::H264PROFILE_BASELINE == hardware::kH264First && gpu::H264PROFILE_MULTIVIEWHIGH == hardware::kH264Last);
+static_assert(gpu::VP9PROFILE_PROFILE0 == hardware::kVp9First && gpu::VP9PROFILE_PROFILE3 == hardware::kVp9Last);
+static_assert(gpu::HEVCPROFILE_MAIN == hardware::kHevcFirst && gpu::HEVCPROFILE_MAIN_STILL_PICTURE == hardware::kHevcLast);
+static_assert(gpu::AV1PROFILE_PROFILE_MAIN == hardware::kAv1First && gpu::AV1PROFILE_PROFILE_PRO == hardware::kAv1Last);
+static_assert(gpu::HEVCPROFILE_REXT == hardware::kHevcExtendedFirst &&
+              gpu::HEVCPROFILE_HIGH_THROUGHPUT_SCREEN_EXTENDED == hardware::kHevcExtendedLast);
+
+std::string ReadChip() {
+  base::ScopedBlockingCall blocking(FROM_HERE, base::BlockingType::MAY_BLOCK);
+  return base::SysInfo::CPUModelName();
+}
+
+void ReplyHardware(Done done, std::string chip) {
+  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  hardware::Hardware info;
+  info.chip = std::move(chip);
+  info.memory_bytes = base::SysInfo::AmountOfTotalPhysicalMemory().InBytes();
+  if (content::GpuDataManager* manager = content::GpuDataManager::GetInstance()) {
+    const gpu::GPUInfo gpu_info = manager->GetGPUInfo();
+    info.gpu = hardware::GpuName(gpu_info.active_gpu().device_string, gpu_info.gl_renderer);
+    for (const auto& supported : gpu_info.video_decode_accelerator_supported_profiles)
+      hardware::NoteDecodeProfile(info.decode, static_cast<int>(supported.profile));
+  }
+  if (display::Screen* screen = display::Screen::Get()) {
+    info.displays = screen->GetNumDisplays();
+    for (const display::Display& attached : screen->GetAllDisplays())
+      info.max_scale = std::max<double>(info.max_scale, attached.device_scale_factor());
+  }
+  std::move(done).Run(true, base::Value(hardware::Reply(info)));
+}
+
+}
+
 bool LinuxSystemInvokes(std::string_view method) {
-  return std::ranges::any_of(desktop::kSystemCapabilities, [method](const char* handled) { return method == handled; });
+  return std::ranges::any_of(desktop::kSystemCapabilities, [method](const char* handled) { return method == handled; }) ||
+         std::ranges::any_of(hardware::kHardwareCapabilities, [method](const char* handled) { return method == handled; });
 }
 
 void LinuxSystemInvoke(std::string_view method, const base::ListValue& args, Done done) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   if (method == "ArdiaApp.openExternalURL") return OpenExternalUrl(args, std::move(done));
+  if (method == hardware::kHardwareInfoCall) {
+    if (!args.empty()) return Fail(std::move(done), "ERR_SYSTEM_REQUEST", "The hardware details take no arguments");
+    Worker()->PostTaskAndReplyWithResult(FROM_HERE, base::BindOnce(&ReadChip),
+                                         base::BindOnce(&ReplyHardware, std::move(done)));
+    return;
+  }
+  if (method == hardware::kThinScrollBarsCall) {
+    if (args.size() != 1 || !args[0].is_bool()) {
+      return Fail(std::move(done), "ERR_SYSTEM_REQUEST", "The scroll bar style takes one boolean");
+    }
+    ui::NativeTheme::SetArdiaLinuxThinScrollBars(args[0].GetBool());
+    return std::move(done).Run(true, base::Value());
+  }
   const bool changing = method == "ArdiaSystem.setAsDefaultBrowser";
   if (method == "ArdiaSystem.isDefaultBrowser" || changing) {
     if (!args.empty()) return Fail(std::move(done), "ERR_SYSTEM_REQUEST", "The default browser calls take no arguments");

@@ -229,7 +229,10 @@ test("problem reports, the local telemetry copy and hardware details answer on L
   assert.deepEqual(await settle(resolve("ArdiaReport", "startRecording")("main", false, "/tmp/r.mp4", 60)), { code: "ERR_UNAVAILABLE" });
   assert.deepEqual(await settle(resolve("ArdiaReport", "stopRecording")()), { answer: false });
   assert.equal((await resolve("ArdiaReport", "upload")("f", "https://ardia.dev", "PUT", {}, "/tmp/f")).status, 0);
-  assert.deepEqual(await settle(resolve("ArdiaApp", "hardwareInfo")()), { code: "ERR_UNAVAILABLE" });
+  const withoutHardware = olderEngine("ArdiaApp.hardwareInfo");
+  withoutHardware.invoke = host.invoke;
+  assert.deepEqual(await settle(resolveHostModule(withoutHardware, "ArdiaApp", "hardwareInfo")()), { code: "ERR_UNAVAILABLE" });
+  assert.equal(reachesNativeHostUnchecked(resolveHostModule(host, "ArdiaApp", "hardwareInfo")), true, "a host that advertises hardware details is asked for them");
   assert.deepEqual(await settle(resolve("ArdiaApp", "diagnosticsSample")()), { answer: {} });
   assert.deepEqual(await settle(resolve("ArdiaDockSelection", "iconAccent")("https://example.com/favicon.ico")), { answer: null });
   for (const method of ["locationPermission", "requestLocationPermission"]) assert.deepEqual(await settle(resolve("ArdiaLocation", method)()), { answer: "granted" }, method);

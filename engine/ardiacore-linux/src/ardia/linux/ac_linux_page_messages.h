@@ -18,6 +18,7 @@ inline constexpr size_t kLinuxNowPlayingBytesMax = 1280 * 1024;
 inline constexpr size_t kLinuxPageMessageDepthMax = 4;
 inline constexpr size_t kLinuxPageUrlMax = 8192;
 inline constexpr size_t kLinuxSelectionTextMax = 4000;
+inline constexpr std::string_view kLinuxOtherSiteKey = "site";
 inline constexpr const char* kLinuxPageMessageRoutes[] = {
     "webView.setPeekModifier", "webView.setSplitLinkModifier", "webView.setSelectionPopover",
     "webView.setCommandScrollZoom"};
@@ -32,6 +33,7 @@ enum class LinuxPageMessageKind {
   kTheme,
   kLinkDrop,
   kNowPlaying,
+  kNewTabLink,
 };
 
 struct LinuxPageMessage {
@@ -80,8 +82,8 @@ struct LinuxPageOptions {
   bool SetSplit(std::string_view modifier);
   std::string EffectiveSplit() const;
   std::optional<std::string> ActionFor(std::string_view key) const;
-  base::DictValue PeekConfig() const;
-  base::DictValue PageConfig(bool main, bool block_autoplay = false) const;
+  base::DictValue PeekConfig(bool other_sites = false) const;
+  base::DictValue PageConfig(bool main, bool block_autoplay = false, bool other_sites = false) const;
 };
 
 }

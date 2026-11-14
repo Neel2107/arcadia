@@ -64,7 +64,8 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   (`webView.setVideoUpscaling`, `setCommandScrollZoom`, `setDisplayMediaPicker`, `setPeekOtherSiteTabs`,
   `setLittleArdiaOpensNewTabLinks`). While a host doesn't advertise one, the shell settles that call itself with
   `null` (`PAGE_OPTION_CALLS` in `hostModules.ts`) instead of sending it to be refused with `ERR_UNKNOWN_CALL`; its
-  Settings row is hidden by the same capability. A host that advertises the call gets it.
+  Settings row is hidden by the same capability. A host that advertises the call gets it. The current host
+  advertises `setCommandScrollZoom`, `setPeekOtherSiteTabs` and `setLittleArdiaOpensNewTabLinks`.
 - **Theme swatches.** `ThemeSwatch` (the Mac's `ThemeSwatchView`: the anonymous-ID avatar, the theme editor's
   swatches, preview and colour pad) is drawn by the shell (`shims/shaders.tsx`, `shims/web/gl/themeSwatch.ts`): the
   same 17 Oklab samples and start and end points as `ArcGradientLayer`, the third colour's overlay, the hue pad, and
@@ -583,6 +584,17 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
   - Older engines: one with only `ArdiaShell.watchLeftEdge` keeps the native watcher for a left sidebar and the
     shell-side watcher (`shims/web/motion/sidebarEdge.ts`) for a right one; its `leftEdge` events are renamed to
     `sidebarEdge`. An engine with neither uses the shell-side watcher on both sides.
+- **Top-strip peek.** With Auto-hide tabs in the top-strip layout, the strip's hover zone and its peeked panel are a
+  page overlay region (`TopStripPeekRegion.tsx`, swapped in for `App.tsx`'s import), so the host gives the shell the
+  pointer where they cover a page: 2 px of the panel with the default toolbar, 15 px with the compact one. The window
+  buttons are off screen while the strip is hidden, as on macOS; the peeked strip's menu button reaches Window ›
+  Minimize, Maximize and File › Close Window.
+- **Header.** The menu button always shows. The profile name beside it follows the Mac's rule
+  (`ProfileIndicator.tsx`): only in an Incognito window or with two or more profiles, cut when at least 52 px of it
+  fit, a person icon below that, and nothing when not even the icon fits (a 190 px sidebar with the Downloads button).
+- **Materials.** `VisualEffect`, `GlassEffect`, popover bubbles and the window's vibrancy take light or dark from the
+  theme scope they render in (`useSurfaceDark`), not the app appearance, so an Incognito window is dark in a light
+  app and a toast is light there.
 - **Window controls with the sidebar on the right.** They ride the sidebar, as on macOS: `setTrafficLightsCenter`'s
   `trailing` flag measures the first button's center from the window's right edge, and the Linux buttons are placed
   from that edge with CSS (`shims/web/windowChrome.tsx`), so a resize moves them with no round trip.
@@ -1130,6 +1142,65 @@ Mac leaves `source` out too when it doesn't know.
   as `tab.edit`.
 - The app menu doesn't offer either yet (see Windows, focus and input › Menu button).
 
+### Links in pinned tabs and Little Ardia windows
+
+Both are ports of the Mac's native code (`ArdiaWebView+Peek.mm`, `ArdiaWebView+Tab.mm`), with the rules in
+`ac_linux_link_tabs.cc` and `ac_linux_link_gesture.cc` (no Chromium in either) and the same page script.
+
+- **`webView.setPeekOtherSiteTabs {tabIds}`** (Settings › Tabs › Open a Peek window when clicking on links to other
+  sites). Each window's shell sends the tabs that peek, and the host keeps that window's list (at most 4,096 ids of
+  256 bytes) until its renderer goes away. A tab on the list hears `otherSites: true` in its main frame's `peekConfig`
+  and `config`, when the list changes and whenever a document greets; subframes and every other tab hear `false`.
+  - The page script then holds back a plain left click on a link to another site and asks with a `peek` message whose
+    key is `site`. The host peeks only when the tab is still on the list, the message came from the main frame, the
+    page is shown, and the last left mouse-up was over this page, at most 10 s ago, with no modifier and not used or
+    pressed again since. The shell gets `openWindow` with `disposition: "peek"`, `site: true` and the click point.
+  - In every other case the host answers `peekRefused` with `follow: true` and the link's own text, and the page
+    follows the link as the click would have. That includes a tab that left the list, a hidden page, a shell that
+    isn't attached and an `openWindow` the shell's lease refused. A tab whose page loses its shell is told
+    `otherSites: false` at once, so it stops holding clicks back.
+  - With the setting off, or in a tab that isn't on the list, the page script never holds a click back and nothing
+    here runs. Link clicks have their own message allowance per document (64, refilled at 32 a second), so a page
+    that floods the channel can't make a held click vanish.
+- **`webView.setLittleArdiaOpensNewTabLinks {enabled}`** (Settings › General › Keep new-tab links inside a Little
+  Ardia window). The setting is one for the whole app, as on the Mac. A window is a Little Ardia window when its
+  shell opened it with `kind: "small"`.
+  - The page script notes each link it expects to open a tab (`newTabLink`: a `target` click or a `window.open` with
+    user activation). A tab keeps its last four notes for two seconds.
+  - When a page in such a window opens a foreground tab, the host waits for the tab's address if it starts blank (20
+    tries, 25 ms apart), then looks for the note: the tab's first or current address, or, for a tab that started
+    blank, the newest note of the last second. Without a note it tries again 8 times, 25 ms apart, if the tab had a
+    mouse or key press in the last 5 s. These are the Mac's numbers.
+  - On a match the opened tab is closed, unless a window has taken it, as soon as Chromium has put it in a tab
+    strip (Chromium reports a new tab before it adds it), and the shell gets `openWindow` with the
+    noted address, `disposition: "current"`, `userGesture: true` and `linkWait: "matched"`, so the page opens in
+    the Little Ardia window's own tab. Without one the tab is reported as before, with `linkWait` `skipped` or
+    `timedOut`.
+  - With the setting off, or in any other window, a new tab is reported at once, exactly as before.
+
+### Link status, scroll bars, hardware details and page commits
+
+- **Link status.** The `status` page event carries `fromBottom` beside `text`, as on the Mac: the pointer's distance
+  from the page's bottom edge, in the shell's points, when the pointer is over the page
+  (`ShellHostView::PointerFromPageBottom`, `ac_linux_status_geometry.h`). The shared UI moves the bubble to the top
+  when the pointer is near the bottom.
+- **`ArdiaSystem.setThinScrollBars(thin)`** (Settings › Appearance › Scroll bars). Helium turns on Chromium's
+  overlay scroll bars in the mode that follows the OS, which on Linux is GTK's `gtk-overlay-scrolling`.
+  `chromium-linux-thin-scroll-bars.patch` adds `ui::NativeTheme::SetArdiaLinuxThinScrollBars`: Thin makes
+  `NativeTheme::CalculateUseOverlayScrollbar` prefer overlay scroll bars whatever GTK says, and the change runs the
+  path an OS setting change takes, so open pages switch without a reload and new ones start that way. The shell
+  sends the setting at every launch.
+- **`ArdiaApp.hardwareInfo`** answers the Mac's `{chip, gpu?, memoryGB, displays, maxScale, hardwareDecode}`
+  (`ac_linux_hardware.h`): the chip from `base::SysInfo::CPUModelName`, read off the UI thread; memory from
+  `AmountOfTotalPhysicalMemory`, rounded to gigabytes; the GPU's device name, else its GL renderer, from Chromium's
+  GPU info, left out when unknown; the display count and the largest scale factor from `display::Screen`; and
+  `av1`, `vp9`, `hevc` and `h264` from the hardware decoder profiles the GPU process reports. Names are trimmed to
+  256 bytes. Telemetry's hardware fields and Copy Diagnostics get real values.
+- **`tabs.reportCommits {on}`** turns on the Mac's commit stamps for one window's tabs, until its renderer goes
+  away: each `navigation` event then carries `committedAt` (the time, in milliseconds, of the tab's last
+  cross-document commit in the main frame, 0 before the first) and `httpStatus` when that document had a response
+  status. The `ardia` command's page events (`page.error`, the held navigations) use them.
+
 ### Ardia's notifications
 
 `ArdiaApp.notificationPermission`, `requestNotificationPermission`, `postNotification` and `removeNotifications`
@@ -1277,21 +1348,14 @@ These were open at the time of the PR.
     folder as `Ardia Bookmarks.html`, follows Ask where to save each file, and shows in the downloads list. There is
     no Save dialog of its own, a folder's `LAST_MODIFIED` is its newest child's date (the tree carries no
     modification date), and the downloads list keeps the entry;
-  - `webView.setCommandScrollZoom`: Ctrl-scroll zoom is Chromium's own and can't be turned off;
-  - `webView.setPeekOtherSiteTabs` and `webView.setLittleArdiaOpensNewTabLinks`. Both are native code on the Mac
-    (`ArdiaWebView+Peek.mm`, `ArdiaWebView+Tab.mm`), not a shared service, so each needs a port:
-    - peeking links to other sites needs the tab ids mapped to their page channels (per window, since every window's
-      shell sends its own list), `otherSites` in each main frame's `peekConfig`, the `site` key accepted by
-      `NormalizeLinuxPageMessage` and decided by `LinuxLinkGestureGate` (main frame only, a plain left click), the
-      `follow` refusal the page script waits for when native declines, and `site: true` on the `openWindow` event;
-    - keeping new-tab links in a Little Ardia window needs the page script's `newTabLink` message allowed through the
-      page channel, a short per-tab ledger of those URLs, the match in `TabBinding::ReportOpened`, the host knowing
-      its window is a small one, and then closing the opened tab and reporting `openWindow` with
-      `disposition: "current"` and `linkWait: "matched"`.
-  - the `extensions.installFailed` event (it comes from the Mac's dropped-`.crx` install, which Linux doesn't have)
-    and `tabs.reportCommits` (the Mac's native page-commit reports for automation events);
+  - the `extensions.installFailed` event. The Mac sends it when a `.crx` dropped on the window fails to install
+    (`ArdiaHostEngineDelegate.mm`); Linux has no dropped-`.crx` install to fail, so it needs that install path first;
   - Paste and Go (the clipboard read answers empty);
-  - performance recording (`beginTracing`/`endTracing`), which stays hidden.
+  - performance recording (`engine.beginTracing`, `endTracing`, `isTracing`). It isn't a shared service: the Mac's is
+    Objective-C in its own layer (`engine/ardiacore/src/ardia/core/ardiacore_engine_tracing.mm`, about 150 lines over
+    `content::TracingController`, which Linux has too). Its only caller is the problem report sheet's slow-page
+    recording, which Linux never opens (see Report a Problem), so a port would advertise a call nothing uses. Port it
+    with the report sheet.
   - `ardia browse`'s off-screen tabs (`engine.cliMoveOffscreen`, `cliCloseOffscreenTabs`, `cliOwnsTab`): Linux has no
     off-screen automation window, so `ardia browse set viewport` is refused over the token connection.
 - **Profiles.** Deleting the data of an engine profile that was loaded in this run waits for the next launch
@@ -1327,12 +1391,16 @@ These were open at the time of the PR.
   (`unavailableSettingIds` in `hostCapabilities.ts`): Zoom with Ctrl and the mouse wheel
   (`webView.setCommandScrollZoom`), Keep new-tab links inside a Little Ardia window
   (`webView.setLittleArdiaOpensNewTabLinks`), Open a Peek window when clicking on links to other sites
-  (`webView.setPeekOtherSiteTabs`), Haptic feedback when reordering tabs (`ArdiaSystem.hapticTick`), and the two rows
+  (`webView.setPeekOtherSiteTabs`), Scroll bars (`ArdiaSystem.setThinScrollBars`), all four advertised by the
+  current host, Haptic feedback when reordering tabs (`ArdiaSystem.hapticTick`), and the two rows
   about links from other apps, Open links from other apps in Little Ardia and Put links from other apps first
   (`ArdiaShell.onOpenURLs`, which the host advertises now that it sends that event; an older engine leaves such
   links to Chromium, which opens them as tabs). The command bar's Dictate button follows `ArdiaShell.startDictation`
-  the same way. With an older engine these are still shown though they point at a hidden row: the app menu's Open
-  Links from Other Apps in Little Ardia, and the sentence about links from other apps under Open new-tab links in.
+  the same way. With an older engine the app menu's Open Links from Other Apps entry, its row in Keyboard Shortcuts
+  and the sentence about links from other apps under Open new-tab links in are left out too (`unavailableCommands`,
+  `settingsForm.tsx`). Calendar › Show alerts is hidden until a host posts Ardia's own notifications
+  (`ArdiaApp.postNotification`), and the commands that need WebKit or AppleScript (Open Page in WebKit, Allow
+  JavaScript from Apple Events) have no menu entry or shortcut row.
 - **Session migrations.** The saved Linux session carries the shared `version`. `linuxSessionShape` runs the shared
   `SESSION_MIGRATIONS` from that version on the shape the Mac saves (windows, tabs, groups and splits as lists), and a
   session without the stamp counts as version 9, the last one Linux's own shape checks cover. A migration that changes
@@ -1352,12 +1420,21 @@ These were open at the time of the PR.
   `/etc/xdg/autostart/ardia.desktop`, which Ardia doesn't install, is neither read nor overridden.
 - **Ctrl-scroll zoom off** (`webView.setCommandScrollZoom`) stops the zoom, and the wheel then does nothing; on the
   Mac the page scrolls instead. A site that handles Ctrl-scroll itself still gets it either way.
-- **Link status bubble.** Upstream moves it to the top of the page while the pointer is near the bottom edge, from the
-  `fromBottom` the macOS page sends with each status. The Linux engine sends only the text, so the bubble stays at the
-  bottom. It needs the engine to report the pointer's distance from the page's bottom edge.
+- **Links to other sites and new-tab links** (Links in pinned tabs and Little Ardia windows). None of it has run in
+  a built engine yet. A site click the shell never answers (a shell that hangs after the host sent it `openWindow`)
+  is lost, as on the Mac. A window is a Little Ardia window only once its shell has opened it as one
+  (`kind: "small"` in `ArdiaShell.openWindow`); new-tab links there open as tabs until then, and in every other
+  window they are reported at once, without the Mac's `fromClick`, `point` or `linkWait`, so Open new-tab links in
+  Peek or Little Ardia still doesn't apply on Linux.
+- **Link status bubble.** The pointer's place is the last one Chromium saw in this window. With an older engine the
+  status carries no `fromBottom` and the bubble stays at the bottom.
+- **Scroll bars.** Follow the system and Thin look the same on a desktop whose GTK setting already prefers overlay
+  scroll bars, which is GTK's default. Thin needs Chromium's `OverlayScrollbar` feature, on by default here; with it
+  turned off by a flag the setting does nothing.
+- **Hardware details.** The GPU name and the hardware decoders are empty until Chromium's GPU process has reported,
+  and a software renderer reports none. The chip is `/proc/cpuinfo`'s `model name`, which some ARM kernels leave out.
 - **Small UI bugs.**
   - A sidebar hover card stays open when the pointer moves straight from the sidebar into the page.
-  - In the top-strip layout, the sidebar peek isn't cut out of the page.
   - A played video removed from the DOM keeps its media entry until the element is collected.
 - **Not available on Linux:**
   - casting (Cast shows a toast);
@@ -1365,8 +1442,7 @@ These were open at the time of the PR.
   - video upscaling;
   - the updater;
   - crash reports;
-  - sending problem reports (the shell CSP blocks it), so `ArdiaTelemetryLocal.exportForReport` answers null, and
-    hardware details (`ArdiaApp.hardwareInfo`);
+  - sending problem reports (the shell CSP blocks it), so `ArdiaTelemetryLocal.exportForReport` answers null;
   - the sidebar edge's `whilePressed`: the native edge watcher still peeks during any pressed drag;
   - `engine.cliTabTargets`, so `windows` from the control socket has no DevTools target ids;
   - notification icons, and a notification settings page to open (`openNotificationSettings`);
@@ -1374,7 +1450,6 @@ These were open at the time of the PR.
   - Handoff;
   - AppleScript;
   - alternate app icons;
-  - the scroll bar style setting;
   - automation's native signals (`ArdiaSystemSignals`): `user.idle`/`user.active`, sleep and wake never fire, incoming
     links aren't held at launch for a link rule, and a `download.deciding` folder outside the default doesn't move the
     file, which stays where it landed (`appModuleFallbacks.ts`).

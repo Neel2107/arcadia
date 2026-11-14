@@ -38,7 +38,7 @@ class LinuxPageStatus : public content::WebContentsObserver,
   LinuxPageStatus(const LinuxPageStatus&) = delete;
   LinuxPageStatus& operator=(const LinuxPageStatus&) = delete;
   void AppendSnapshot(base::ListValue& events);
-  bool TargetURL(const GURL& url);
+  bool TargetURL(const GURL& url, std::optional<double> from_bottom = std::nullopt);
   bool Unresponsive(content::RenderWidgetHost* host, base::RepeatingClosure restarter);
   bool Responsive(content::RenderWidgetHost* host);
   bool ResolveUnresponsive(const base::ListValue& args);
