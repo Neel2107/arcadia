@@ -276,6 +276,40 @@ def chromium_web_data(path):
 
 
 
+PREPOPULATED_GUID = "485bf7d3-0215-45af-87dc-5388680000{:02d}"
+GOOGLE = ("Google", "google.com", "{google:baseURL}search?q={searchTerms}&{google:RLZ}{google:originalQueryForSuggestion}"
+          "{google:assistedQueryStats}{google:searchFieldtrialParameter}{google:language}{google:prefetchSource}"
+          "{google:searchClient}{google:sourceId}{google:contextualSearchVersion}ie={inputEncoding}", 1,
+          PREPOPULATED_GUID.format(1))
+BING = ("Bing", "bing.com", "https://www.bing.com/search?q={searchTerms}&PC=U316&FORM=CHROMN", 3, PREPOPULATED_GUID.format(3))
+DUCKDUCKGO = ("DuckDuckGo", "duckduckgo.com", "https://duckduckgo.com/?q={searchTerms}", 92, PREPOPULATED_GUID.format(92))
+ARDIA_DOCS = ("Ardia Docs", "docs", "https://docs.ardia.example/find?q={searchTerms}&enc={inputEncoding}&{google:RLZ}", 0,
+              "00000000-0000-4000-8000-00000000e001")
+
+
+def chromium_keywords(path, engines):
+    db = sqlite3.connect(path) if os.path.exists(path) else new_db(path)
+    db.executescript("""
+        CREATE TABLE keywords (id INTEGER PRIMARY KEY, short_name VARCHAR NOT NULL, keyword VARCHAR NOT NULL,
+          favicon_url VARCHAR NOT NULL, url VARCHAR NOT NULL, safe_for_autoreplace INTEGER, originating_url VARCHAR,
+          date_created INTEGER DEFAULT 0, usage_count INTEGER DEFAULT 0, input_encodings VARCHAR, suggest_url VARCHAR,
+          prepopulate_id INTEGER DEFAULT 0, created_by_policy INTEGER DEFAULT 0, last_modified INTEGER DEFAULT 0,
+          sync_guid VARCHAR, alternate_urls VARCHAR, image_url VARCHAR, search_url_post_params VARCHAR,
+          suggest_url_post_params VARCHAR, image_url_post_params VARCHAR, new_tab_url VARCHAR,
+          last_visited INTEGER DEFAULT 0, created_from_play_api INTEGER DEFAULT 0, is_active INTEGER DEFAULT 0,
+          starter_pack_id INTEGER DEFAULT 0, enforced_by_policy INTEGER DEFAULT 0, featured_by_policy INTEGER DEFAULT 0);
+    """)
+    for name, keyword, url, prepopulate, guid in engines:
+        db.execute("INSERT INTO keywords(short_name, keyword, favicon_url, url, prepopulate_id, sync_guid, input_encodings) "
+                   "VALUES (?,?,?,?,?,?,?)", (name, keyword, "", url, prepopulate, guid, "UTF-8"))
+    db.commit()
+    db.close()
+
+
+def default_search(guid):
+    return {"default_search_provider": {"guid": guid}}
+
+
 def pad4(b):
     return b + b"\0" * ((4 - len(b) % 4) % 4)
 
@@ -376,7 +410,7 @@ def build_chrome():
     write_json(os.path.join(root, "System Profile", "junk.json"), {})
 
     d = os.path.join(root, "Default")
-    write_json(os.path.join(d, "Preferences"), {"profile": {"name": "Personal"}})
+    write_json(os.path.join(d, "Preferences"), {"profile": {"name": "Personal"}, **default_search(ARDIA_DOCS[4])})
     write(os.path.join(d, "Google Profile Picture.png"), PNG_1PX)
     t = BASE_UNIX - 86400 * 100
     chromium_bookmarks(os.path.join(d, "Bookmarks"),
@@ -444,6 +478,7 @@ def build_chrome():
     ])
     chromium_cookies_old(os.path.join(MISC, "Cookies-v23"))
     chromium_web_data(os.path.join(d, "Web Data"))
+    chromium_keywords(os.path.join(d, "Web Data"), [GOOGLE, BING, DUCKDUCKGO, ARDIA_DOCS])
 
     cmds = session_commands()
     sessions = os.path.join(d, "Sessions")
@@ -453,7 +488,9 @@ def build_chrome():
     write(os.path.join(MISC, "Session_v5_encrypted"), snss_encrypted(cmds))
 
     p1 = os.path.join(root, "Profile 1")
-    write_json(os.path.join(p1, "Preferences"), {"profile": {"name": "Work"}})
+    write_json(os.path.join(p1, "Preferences"), {"profile": {"name": "Work"}, "default_search_provider_data": {
+        "template_url_data": {"short_name": BING[0], "keyword": BING[1], "url": BING[2], "prepopulate_id": BING[3],
+                              "synced_guid": BING[4]}}})
     chromium_bookmarks(os.path.join(p1, "Bookmarks"),
                        bar=[bookmark("Work wiki", "https://wiki.work.example/", t, "00000000-0000-4000-8000-000000000301")],
                        other=[], synced=[])
@@ -464,7 +501,7 @@ def build_brave():
     root = os.path.join(SUPPORT, "BraveSoftware", "Brave-Browser")
     chromium_local_state(root, {"Default": {"name": "Person 1"}})
     d = os.path.join(root, "Default")
-    write_json(os.path.join(d, "Preferences"), {})
+    write_json(os.path.join(d, "Preferences"), default_search(""))
     chromium_bookmarks(os.path.join(d, "Bookmarks"), bar=[bookmark("Brave Search", "https://search.brave.example/",
                                                                    BASE_UNIX, "00000000-0000-4000-8000-000000000401")],
                        other=[], synced=[])
@@ -523,7 +560,8 @@ def build_helium():
     root = os.path.join(SUPPORT, "net.imput.helium")
     chromium_local_state(root, {"Default": {"name": "Helium", "user_name": ""}})
     d = os.path.join(root, "Default")
-    write_json(os.path.join(d, "Preferences"), {})
+    write_json(os.path.join(d, "Preferences"), default_search(GOOGLE[4]))
+    chromium_keywords(os.path.join(d, "Web Data"), [GOOGLE, DUCKDUCKGO])
     t = BASE_UNIX - 86400 * 5
     chromium_bookmarks(os.path.join(d, "Bookmarks"),
                        bar=[bookmark("Helium", "https://helium.example/", t, "00000000-0000-4000-8000-000000000601"),
@@ -579,7 +617,7 @@ def build_dia():
     ]
     write(os.path.join(d, "Sessions", f"Session_{webkit(BASE_UNIX)}"), snss_plain(cmds))
     p2 = os.path.join(root, "Profile 2")
-    write_json(os.path.join(p2, "Preferences"), {})
+    write_json(os.path.join(p2, "Preferences"), default_search("00000000-0000-4000-8000-00000000e404"))
     chromium_bookmarks(os.path.join(p2, "Bookmarks"),
                        bar=[bookmark("Work", "https://work.dia.example/", t, "00000000-0000-4000-8000-000000000705")],
                        other=[], synced=[])
@@ -731,7 +769,8 @@ def build_arc():
     root = os.path.join(arc, "User Data")
     chromium_local_state(root, {"Default": {"name": "Your Chromium"}, "Profile 1": {"name": "Work"}})
     d = os.path.join(root, "Default")
-    write_json(os.path.join(d, "Preferences"), {})
+    write_json(os.path.join(d, "Preferences"), default_search(DUCKDUCKGO[4]))
+    chromium_keywords(os.path.join(d, "Web Data"), [GOOGLE, BING, DUCKDUCKGO])
     chromium_history(os.path.join(d, "History"), [("https://arc-history.example/", "Arc history", 2, 0, BASE_UNIX - 30, 0)])
     chromium_logins(os.path.join(d, "Login Data"), [
         ("https://arc-login.example/", "https://arc-login.example/", "arc-user", v10(b"arc-pass"), 0, 1)])

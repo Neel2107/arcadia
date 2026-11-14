@@ -13,6 +13,7 @@ import { hasSavedSession } from "../session/sessionDocument";
 import { isLiquidGlass } from "../../platform/app";
 import { noteOnboarding } from "../telemetry/usage";
 import { openSettings } from "../settings/settingsWindows";
+import { withoutImportedSettings } from "../import/searchEngine";
 
 import { QUESTIONS, QUESTION_ORDER, type OnboardingStep, type Question, type QuestionId } from "./questionList";
 import { markCompleted, readSaved, saveOnboarding as save, type Saved } from "./onboardingDocument";
@@ -147,7 +148,11 @@ export function chooseSource(source: BrowserSourceId | null) {
 
 export const sourcePatch = (): Partial<Settings> => {
   const { source, prefill } = useOnboarding.getState();
-  return prefill === "preset" ? presetPatch(source) : {};
+  if (prefill !== "preset") return {};
+  const preset = presetPatch(source);
+  const patch = withoutImportedSettings(preset);
+  if (Object.keys(patch).length < Object.keys(preset).length) noteOnboarding("presetKeptImport");
+  return patch;
 };
 
 export function setOnboardingDraft(patch: Partial<Settings>) {

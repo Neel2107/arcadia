@@ -19,6 +19,7 @@ the file and its WAL before opening it.
 | autofill (addresses, cards) | `ChromiumAutofill.swift`: `Web Data` | same as Chromium | none |
 | extensions (listed, never installed) | `ChromiumExtensions.swift`: `Preferences`, `Secure Preferences`, `Extensions/*/manifest.json` | same as Chromium | none |
 | spaces, pinnedTabs, favorites | none | `ArcSidebar.swift`: `<Application Support>/Arc/StorableSidebar.json` | none |
+| default search engine (every import, not a kind; `ImportResult.searchEngine`) | `ChromiumSearchEngine.swift`: `Preferences` `default_search_provider.guid` (else `synced_guid`) → its `keywords` row in `Web Data`, else `default_search_provider_data.template_url_data`; none means the browser's own default. JS maps it onto a built-in or custom engine (`apps/browser/src/state/import/searchEngine.ts`) | same as Chromium | none |
 | favicons (for the imported tabs, favourites and bookmarks-bar links) | `ChromiumFavicons.swift`: `Favicons` (the page's own icon, else another page of the same site's; one PNG near 32 px, 16 KB each, up to 1,000 pages and 6 MB) | same as Chromium | none |
 
 | Source | Files | What it reads |
@@ -78,14 +79,14 @@ sqlite3 CLI: it checkpoints the WAL the tests depend on.
 
 | Function | Writes (under `fixtures/`) |
 |---|---|
-| `build_chrome` | `home/Library/Application Support/Google/Chrome/` (Default + Profile 1), `misc/Cookies-v23`, `misc/Session_v5_encrypted` |
+| `build_chrome` | `home/Library/Application Support/Google/Chrome/` (Default + Profile 1), `misc/Cookies-v23`, `misc/Session_v5_encrypted`. Default's search engine is a custom one (`keywords` in `Web Data`), Profile 1's is Bing from `template_url_data` |
 | `build_brave` | `home/Library/Application Support/BraveSoftware/Brave-Browser/` |
 | `build_opera` | `home/Library/Application Support/com.operasoftware.Opera/` (the root is the profile) |
 | `build_helium` | `home/Library/Application Support/net.imput.helium/` |
 | `build_dia` | `home/Library/Application Support/Dia/User Data/` (Default + Profile 2) |
 | `build_safari_direct` | `home/Library/Safari/{Bookmarks.plist, History.db, LastSession.plist}` |
 | `build_safari_cookies` | `home/Library/Containers/com.apple.Safari/Data/Library/Cookies/Cookies.binarycookies`, `misc/binarycookies/*` (malformed) |
-| `build_arc` | `home/Library/Application Support/Arc/` (`User Data/`, `StorableSidebar.json`) |
+| `build_arc` | `home/Library/Application Support/Arc/` (`User Data/`, `StorableSidebar.json`). Default searches with DuckDuckGo (`keywords` in `Web Data`), Profile 1 with Arc's own default |
 | `build_zen` | `home/Library/Application Support/zen/` (`profiles.ini`, a current profile with `zen-sessions.jsonlz4`, `logins.db` and `logins.json`, a legacy one with spaces only in the Firefox session, one recovered from a backup, one without spaces) |
 | `build_firefox` | `home/Library/Application Support/Firefox/` (`profiles.ini`, `Profiles/*`), `misc/nss-legacy-pbe.json` |
 | `build_exports` | `safari/Safari Export/`, `safari/Safari Export.zip`, `safari/not-an-export.zip`, `csv/*.csv`, `html/chrome-bookmarks.html` |

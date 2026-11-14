@@ -243,6 +243,13 @@ public struct ImportedFavicon: Codable, Equatable, Sendable {
   public var png: String
 }
 
+public struct ImportedSearchEngine: Codable, Equatable, Sendable {
+  public var name: String
+  public var keyword: String
+  public var url: String
+  public var prepopulateId: Int?
+}
+
 public struct ImportResult: Codable, Equatable, Sendable {
   public var browserId: String
   public var profileId: String
@@ -256,6 +263,7 @@ public struct ImportResult: Codable, Equatable, Sendable {
   public var spaces: [SpaceSuggestion] = []
   public var favorites: [ImportedTab] = []
   public var favicons: [ImportedFavicon] = []
+  public var searchEngine: ImportedSearchEngine?
   public var separateEssentials: Bool?
   public var failed: [ImportKind] = []
   public var warnings: [ImportWarning] = []
@@ -270,7 +278,7 @@ public struct ImportResult: Codable, Equatable, Sendable {
 
   enum CodingKeys: String, CodingKey {
     case browserId, profileId, profile, bookmarks, history, historyCount, tabs, tabGroups, credentials, spaces, favorites, favicons,
-         separateEssentials, failed, warnings, vaultToken, cookieCount, addressCount, cardCount
+         searchEngine, separateEssentials, failed, warnings, vaultToken, cookieCount, addressCount, cardCount
   }
 
   public init(browserId: String, profileId: String) {

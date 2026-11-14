@@ -63,6 +63,16 @@ function LeftBehind({ notes, failed }: { notes: string[]; failed: boolean }) {
   );
 }
 
+function SearchEngineLine({ flow, failed }: { flow: ImportFlow; failed: boolean }) {
+  const { source, step } = flow;
+  if (step.name !== "done" || !step.searchEngine) return null;
+  return (
+    <Text size="small" tone="textSecondary" style={failed ? { marginTop: space.s } : { textAlign: "center" }}>
+      {`Search uses ${step.searchEngine} now, as in ${source?.name ?? "your other browser"}. You can change it in Settings › Search Engine.`}
+    </Text>
+  );
+}
+
 function RestoreArcFolders() {
   const bookmarks = useBookmarks((b) => b);
   const profiles = useProfileRecords();
@@ -97,6 +107,7 @@ export function DoneBody({ flow }: { flow: ImportFlow }) {
           </Text>
         ))}
         {summary.length > 0 && <Text size="small" tone="textSecondary" style={{ marginTop: space.l }}>{`Imported ${summary.join(", ")}.`}</Text>}
+        <SearchEngineLine flow={flow} failed />
         <LeftBehind notes={notes} failed />
         <ExtensionList flow={flow} />
         <Text size="small" tone="textTertiary" style={{ marginTop: space.l }}>
@@ -113,6 +124,7 @@ export function DoneBody({ flow }: { flow: ImportFlow }) {
       <Text tone="textSecondary" style={{ textAlign: "center" }}>
         {summary.length ? `Imported ${summary.join(", ")}.` : "There was nothing new to import."}
       </Text>
+      <SearchEngineLine flow={flow} failed={false} />
       <LeftBehind notes={notes} failed={false} />
       <ExtensionList flow={flow} />
       <RestoreArcFolders />

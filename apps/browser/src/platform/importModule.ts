@@ -9,6 +9,7 @@ export type {
   DiaTabsResult,
   ImportedExtension,
   ImportedFavicon,
+  ImportedSearchEngine,
   ImportedTab,
   ImportKind,
   ImportResult,

@@ -119,6 +119,8 @@ export type ImportWarning =
 
 export type ImportedFavicon = { page: string; icon: string; png: string };
 
+export type ImportedSearchEngine = { name: string; keyword: string; url: string; prepopulateId?: number };
+
 export type ImportResult = {
   browserId: string;
   profileId: string;
@@ -136,6 +138,7 @@ export type ImportResult = {
   spaces: SpaceSuggestion[];
   favorites: ImportedTab[];
   favicons: ImportedFavicon[];
+  searchEngine?: ImportedSearchEngine;
   separateEssentials?: boolean;
   failed: ImportKind[];
   warnings: ImportWarning[];

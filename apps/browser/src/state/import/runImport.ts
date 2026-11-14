@@ -19,9 +19,11 @@ import {
   type ImportCounts,
   type ImportedExtension,
   type ImportKind,
+  type ImportedSearchEngine,
   type ImportResult,
 } from "./apply";
 import { diaProfilesFor } from "./diaTabs";
+import { adoptImportedEngine, sourceEngine } from "./searchEngine";
 import { planSidebar } from "./sidebarPlan";
 import {
   APP_TAB_KINDS,
@@ -137,6 +139,7 @@ export async function runImport(wanted: ReadonlySet<ImportKind>, withoutKey = fa
   const nextDestination = (name: string, color?: string, emoji?: string, shareWith?: string | null, shareTopApps?: boolean) =>
     destination(target, destinationIndex++, name, color, emoji, shareWith, shareTopApps);
   const found = new Map<string, ImportedExtension>();
+  const engines: { profile: BrowserProfile; engine?: ImportedSearchEngine }[] = [];
   const left: string[] = [];
   let extensionsProfile = "";
   const appTabs = fromApp.length ? readAppTabs() : null;
@@ -166,6 +169,7 @@ export async function runImport(wanted: ReadonlySet<ImportKind>, withoutKey = fa
       }
       continue;
     }
+    engines.push({ profile, engine: result.searchEngine });
     for (const k of result.failed) failed.set(k, [...(failed.get(k) ?? []), profile.name]);
     for (const w of result.warnings) {
       if ((w.code === "undecryptable" || w.code === "skipped" || w.code === "locked") && !result.failed.includes(w.kind)) left.push(`${w.message}.`);
@@ -229,11 +233,13 @@ export async function runImport(wanted: ReadonlySet<ImportKind>, withoutKey = fa
   }
   updateStatus(signal, (st) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, failed.has(k as ImportKind) ? "failed" : v === "failed" ? v : "done"])));
   api.forgetUnlockedKeys();
+  const engine = engines.length > 0 && (source.family === "chromium" || source.family === "arc") ? adoptImportedEngine(source.id, sourceEngine(engines)) : null;
   finishImport(signal, {
     counts: total,
     failures: [...failed].map(([kind, names]) => ({ kind, profiles: selected.length > 1 ? names : [] })),
     notes: left,
     extensions: { profileId: extensionsProfile, list: [...found.values()], opened: false },
+    searchEngine: engine?.changed ? (engine.name ?? undefined) : undefined,
   });
 }
 

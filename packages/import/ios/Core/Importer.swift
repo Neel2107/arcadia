@@ -234,6 +234,7 @@ public final class Importer: @unchecked Sendable {
     if def.family == .chromium || def.family == .arc {
       try cancellation.check()
       result.favicons = ChromiumFavicons.read(profiles: [dir], pages: ChromiumFavicons.pages(of: result))
+      result.searchEngine = ChromiumSearchEngine.read(profile: dir)
     }
     if let zen {
       result.favicons = zen.favicons(for: ChromiumFavicons.pages(of: result))
