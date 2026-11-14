@@ -4,7 +4,7 @@ import type { BrowserWindow, Tab } from "../../browser/src/state/browser/types";
 import type { ArdiaHost } from "./host";
 import { invokeHost, reportHostError } from "./host.ts";
 import { engineProfile, isIncognitoProfile } from "../../browser/src/state/browser/model";
-import { offerSmallWindow, smallWindowFrame, smallWindowSeed, withdrawSmallWindow, type ScreenArea, type SeedStorage } from "./hostSmallWindows.ts";
+import { offerSmallWindow, relayedSmallWindow, relaysSmallWindows, smallWindowFrame, smallWindowSeed, withdrawSmallWindow, type ScreenArea, type SeedStorage } from "./hostSmallWindows.ts";
 
 export type PrivateWindowSeed = { window: BrowserWindow; tabs: Record<string, Tab> };
 type OpenOptions = Record<string, unknown> & { incognito?: boolean; profile?: string; kind?: string; frame?: unknown; size?: unknown };
@@ -90,11 +90,13 @@ export function createHostWindowOpener(host: ArdiaHost, state: () => Pick<Browse
     const seed = given.incognito ? privateWindowSeed(state(), id) : undefined;
     const smallSeed = given.kind === "small" && !given.incognito && id !== host.bootstrap.windowId && !seeded.has(id) ? smallWindowSeed(state(), id) : undefined;
     if (smallSeed) seeded.add(id);
-    const offered = !!smallSeed && offerSmallWindow(smallSeed, small.storage);
-    const area = smallSeed && !given.frame ? (small.screen ?? ownScreen)() : undefined;
+    const relays = relaysSmallWindows(host);
+    const relayed = smallSeed && relays ? relayedSmallWindow(smallSeed) : undefined;
+    const offered = !!smallSeed && !relays && offerSmallWindow(smallSeed, small.storage);
+    const area = smallSeed && !relays && !given.frame ? (small.screen ?? ownScreen)() : undefined;
     const frame = area ? smallWindowFrame(given.size, area) : undefined;
-    const options = frame ? { ...given, frame } : given;
-    if (offered) {
+    const options = relayed ? { ...given, smallWindow: relayed } : frame ? { ...given, frame } : given;
+    if (offered || relayed) {
       void windowOpened(id).then((opened) => {
         if (!opened || !state().windows[id]) return;
         handedOver.add(id);

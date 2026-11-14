@@ -130,6 +130,25 @@ export const LINUX_WORDING: readonly Wording[] = [
     replacements: [["`macOS ${app.osVersion} (${app.osBuild}), ${app.arch}", "`${app.osVersion} (${app.osBuild}), ${app.arch}"]],
   },
   {
+    file: "state/report/details.ts",
+    replacements: [["`macOS ${app.osVersion}`, app.model", "`Linux ${app.osVersion}`, app.model"]],
+  },
+  {
+    file: "components/report/ReportPreview.tsx",
+    replacements: [["Exactly what leaves your Mac when you press Send.", "Exactly what leaves this computer when you press Send."]],
+  },
+  {
+    file: "components/report/ReportSheet.tsx",
+    replacements: [
+      ["Recordings, contact and details stay private.", "Contact and details stay private."],
+      ["Help confirm the fix: share crash reports and usage for 14 days", "Help confirm the fix: share errors and usage for 14 days"],
+    ],
+  },
+  {
+    file: "components/report/AttachedRow.tsx",
+    replacements: [[`title: "Usage, errors and crashes, last 7 days"`, `title: "Usage and errors, last 7 days"`]],
+  },
+  {
     file: "components/import/steps/ChooseStep.tsx",
     replacements: [["No other browsers with data to import were found on this Mac.", "No other browsers with data to import were found on this computer."]],
   },

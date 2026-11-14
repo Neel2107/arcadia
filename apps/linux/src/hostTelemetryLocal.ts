@@ -1,6 +1,7 @@
 import type { TelemetryLocalExport, TelemetryLocalNative, TelemetryLocalStats } from "../../../packages/shell/src/telemetryLocal";
 import { ardiaHost, callHost, type ArdiaHost } from "./host.ts";
 import { unavailableError } from "./hostCapabilities.ts";
+import { hostReportExport } from "./hostReport.ts";
 
 const DAY_MS = 86_400_000;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -130,6 +131,7 @@ export type TelemetryLocalDeps = {
   chunks: ChunkStore | null;
   writes: boolean;
   save(name: string, text: string): Promise<string | null>;
+  reportFile?(text: string): Promise<{ path: string; bytes: number } | null>;
   gather?(): Promise<void>;
   clock?(): number;
   now?(): number;
@@ -201,7 +203,15 @@ export function createTelemetryLocal(deps: TelemetryLocalDeps): TelemetryLocal {
       await deps.chunks?.clear();
       knownBytes = 0;
     }),
-    exportForReport: () => Promise.resolve(null),
+    async exportForReport(since): Promise<TelemetryLocalExport | null> {
+      const store = deps.chunks;
+      const write = deps.reportFile;
+      if (!store || !write) return null;
+      await deps.gather?.().catch(report);
+      const { text, lines } = await run(async () => collectSince(await store.all(), since));
+      const file = await write(text);
+      return file ? { ...file, lines } : null;
+    },
     async exportToDownloads(at): Promise<TelemetryLocalExport | null> {
       const store = deps.chunks;
       if (!store) return null;
@@ -392,6 +402,7 @@ function hostTelemetryLocal(host: ArdiaHost | undefined): TelemetryLocal {
     chunks: available ? indexedChunkStore(indexedDB) : null,
     writes: !host?.bootstrap.privateWindow,
     save: host && available ? downloadSaver(pageDownloads(host)) : () => Promise.resolve(null),
+    reportFile: available ? hostReportExport(host) : undefined,
     gather: relay?.gather,
     report: reportFailure,
   });

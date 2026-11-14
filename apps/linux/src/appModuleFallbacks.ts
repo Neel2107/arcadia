@@ -2,6 +2,7 @@ import { hostSupports, type ArdiaHost } from "./host.ts";
 import { unavailableError } from "./hostCapabilities.ts";
 import { linuxIconAccent } from "./iconAccent.ts";
 import { TELEMETRY_LOCAL_METHODS } from "./hostTelemetryLocal.ts";
+import { hostReportMethod } from "./hostReport.ts";
 import { shareLink, shareLinkVia, shareText, type ShareAnchor } from "./linkShare.ts";
 
 type Fallback = (...args: unknown[]) => unknown;
@@ -50,6 +51,7 @@ const REPORT_FALLBACKS: Record<string, Fallback> = {
   gzipFile: refuse("Compressing report files"),
   gzipText: refuse("Compressing report files"),
   upload: answer({ status: 0, body: "", error: "Sending problem reports is unavailable on Linux" }),
+  post: answer({ status: 0, body: "", error: "Sending problem reports is unavailable on Linux" }),
   cancelUploads: now(undefined),
 };
 
@@ -84,6 +86,8 @@ const DEVELOPER_MODULES = new Set(["ArdiaApp", "ArdiaMagnifyArea", "ArdiaFileDro
 
 export function appModuleFallback(host: ArdiaHost, name: string, method: string): Fallback | undefined {
   if (hostSupports(`${name}.${method}`, host)) return undefined;
+  const served = name === "ArdiaReport" ? hostReportMethod(host, method) : undefined;
+  if (served) return served;
   const fallback = MODULE_FALLBACKS[name]?.[method];
   if (fallback && Object.hasOwn(MODULE_FALLBACKS[name]!, method)) return fallback;
   if (DEVELOPER_MODULES.has(name) && /^dev[A-Z]/.test(method)) return refuse(`The developer hook ${name}.${method}`);

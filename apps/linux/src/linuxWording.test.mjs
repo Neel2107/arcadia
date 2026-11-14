@@ -26,7 +26,7 @@ const MODULES = [
   { name: "sync", list: SYNC_WORDING, reword: rewordSync, plugin: syncWording, pick: whole, macos: /\bMacs?\b|iCloud Drive|iCloud Settings|in Finder|iPhone|Universal Clipboard|Keychain|x-apple\.|\bUsers\b/, surfaces: ["components/settings/panes/Sync.tsx", "components/settings/panes/SyncSheets.tsx"], probe: "components/settings/panes/Sync.tsx" },
   {
     name: "linux", list: LINUX_WORDING, reword: rewordForLinux, plugin: linuxWording, pick: strings, macos: /\bMacs?\b|macOS|iCloud|Keychain|keychain|Tahoe/, probe: "components/onboarding/SourceStep.tsx",
-    surfaces: ["state/extensions/actions.ts", "components/onboarding/SourceStep.tsx", "components/onboarding/LookStep.tsx", "components/settings/panes/Appearance.tsx", "components/settings/panes/Privacy.tsx", "state/telemetry/copy.ts", "components/import/steps/ChooseStep.tsx", "components/import/steps/SafariStep.tsx", "state/import/runImport.ts", "components/onboarding/previews/MockWindow.tsx", "components/onboarding/previews/scenes/LookScenes.tsx", "components/settings/panes/ShareDiagnostics.tsx", "state/commands/appCommands.ts"],
+    surfaces: ["state/extensions/actions.ts", "components/onboarding/SourceStep.tsx", "components/onboarding/LookStep.tsx", "components/settings/panes/Appearance.tsx", "components/settings/panes/Privacy.tsx", "state/telemetry/copy.ts", "components/import/steps/ChooseStep.tsx", "components/import/steps/SafariStep.tsx", "state/import/runImport.ts", "components/onboarding/previews/MockWindow.tsx", "components/onboarding/previews/scenes/LookScenes.tsx", "components/settings/panes/ShareDiagnostics.tsx", "state/commands/appCommands.ts", "state/report/details.ts", "components/report/ReportPreview.tsx"],
   },
 ];
 
@@ -60,6 +60,10 @@ const EXPECTED = [
   ["state/releaseNotes/releaseNotes.ts", ["from any page with Ctrl+L."], ["⌘L"]],
   ["state/sync/scopeAdapters.ts", ["\"This computer\""], ["This Mac"]],
   ["state/telemetry/copy.ts", ["Ctrl+Tab switcher", "Alt+Enter in the command bar", "from the taskbar or at launch"], ["Dock", "Touch ID", "⌘", "⌥", "⌃"]],
+  ["state/report/details.ts", ["`Linux ${app.osVersion}`, app.model"], ["`macOS ${app.osVersion}`"]],
+  ["components/report/ReportPreview.tsx", ["Exactly what leaves this computer when you press Send."], ["leaves your Mac"]],
+  ["components/report/ReportSheet.tsx", ["Contact and details stay private.", "share errors and usage for 14 days"], ["Recordings, contact and details stay private.", "share crash reports and usage"]],
+  ["components/report/AttachedRow.tsx", ["title: \"Usage and errors, last 7 days\""], ["Usage, errors and crashes, last 7 days"]],
   ["components/tabstrip/NewTabButton.tsx", ["New Tab (Ctrl+T) — Alt-click to open in Split View"], []],
 ];
 

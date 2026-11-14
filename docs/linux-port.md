@@ -179,8 +179,11 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   window, on its command bar when its tab is blank. Once the native window has opened, the opener forgets its copy
   without closing the window, so the window lives in one store only and a tab it moves to the main window
   (Open in Ardia) arrives through the session like any other. The opener also sends the Mac's frame: the saved
-  Little Ardia size, at least 420 by 300, centred and lifted 5%. An engine that advertises `ArdiaShell.smallWindows`
-  needs neither: see Small windows below.
+  Little Ardia size, at least 420 by 300, centred and lifted 5%. With an engine that advertises
+  `ArdiaShell.smallWindows` the shell does neither: the opener passes the same window and tab as `smallWindow` in the
+  `openWindow` options and no frame, and the new renderer reads `windowKind` and `smallWindow` from its bootstrap
+  (a relayed window has no 60 s limit). A bootstrap whose `windowKind` isn't `"small"` takes no seed at all. See
+  Small windows below.
 - **Private data.** Private and transient state never reaches a persisted snapshot. `ValidLinuxSession` rejects a
   session that carries private data.
 - **Closing the last window.** When the native close ends the session, the window stays in the saved session and comes
@@ -546,13 +549,14 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
     Copy off without a selection; otherwise the window's page gets `tab.command` `edit`, which needs the host's
     `tab.edit`. With neither a field nor an editable page the entries are left out. Their shortcuts are Chromium's
     own and aren't registered or remappable.
-- **Report a Problem.** Help › Report a Problem… (and the New Tab check-in, the command bar and automation) opens a
-  new GitHub issue in a tab, its body a short template and Copy Diagnostics' report (`reportProblem.ts`, swapped in
-  for the shared report actions under `appCommands.ts`). The shared report sheet posts to ardia.dev and uploads files
-  through the native `ArdiaReport` module, and the shell's `connect-src 'none'` stops the post. The engine now serves
-  the part of `ArdiaReport` that needs no recording (Problem reports below), but the shell doesn't use it yet, so
-  Linux still never opens the sheet and `ArdiaReport` answers unavailable or empty values (`appModuleFallbacks.ts`).
-  A host `feedbackURL` with `%s` replaces the GitHub page.
+- **Report a Problem.** Help › Report a Problem… (and the New Tab check-in, the command bar and automation) goes
+  through `reportProblem.ts`, swapped in for the shared report actions under `appCommands.ts`. It decides when the
+  command runs:
+  - With an engine that advertises both `report.files` and `report.send` it opens the Mac's report sheet (Problem
+    reports below).
+  - Otherwise, or when the host sets a `feedbackURL` with `%s`, it opens a new issue in a tab (GitHub's, or that
+    page), its body a short template and Copy Diagnostics' report. The shell's `connect-src 'none'` stops the sheet's
+    own post, and `ArdiaReport` answers unavailable or empty values (`appModuleFallbacks.ts`).
 - **Favicon accents.** `ArdiaDockSelection.iconAccent` (the command bar's scope pulse) runs in the shell: a port of
   the Mac's dominant-hue pick over a 32 px canvas copy of a `data:` or `blob:` favicon (`iconAccent.ts`). Other URLs
   answer no accent.
@@ -1264,15 +1268,26 @@ Both are ports of the Mac's native code (`ArdiaWebView+Peek.mm`, `ArdiaWebView+T
   (`BrowserView::GetMinimumSize` asks the host). The new window's bootstrap carries `windowKind` (`"small"`,
   `"browser"`, or `"settings"`/`"import"`), and, when the opener passed a `smallWindow` object in the options (up
   to 1 MiB, refused for a private window), the same object as `smallWindow`, the way `privateWindow` travels. The
-  shell still hands the window over through `localStorage`; reading the bootstrap instead is a shell change
-  (Known gaps). Advertised as `ArdiaShell.smallWindows`.
+  shell uses both (`hostSmallWindows.ts`, `hostWindowProfiles.ts`) and keeps the `localStorage` handoff for older
+  engines. Advertised as `ArdiaShell.smallWindows`.
 
 ### Problem reports
 
 The engine serves the part of the Mac's `ArdiaReport` that needs no recording (`ac_linux_report.cc`, rules in
 `ac_linux_report_core.cc`). It advertises `report.files` (drafts and gzip) and `report.send` (the requests), not
 the method names: the shell sends a module method straight to a host that advertises it by name, and four of these
-answer at once on the Mac and with a promise here, so the shell has to opt in. It doesn't call them yet.
+answer at once on the Mac and with a promise here, so the shell has to opt in.
+
+- **The shell's side.** `hostReport.ts` sends the eight calls to the engine, each behind its capability
+  (`appModuleFallbacks.ts` keeps the old answers without it), and `reportProblem.ts` opens the sheet. The shared code
+  takes both kinds of answer through `platform/report.ts`, whose defaults are the Mac's: `removeReportFile` and
+  `cancelUploads` ignore a promise's failure, `fileSize` answers -1 when the size isn't known at once (the size the
+  draft recorded stands), `ensureDraftDir` awaits a promised folder, and `setReportPlatform` replaces the sheet's
+  `fetch` with `ArdiaReport.post` and turns recording off, which hides the Record section (and with it the trace
+  and the page choice). `ArdiaTelemetryLocal.exportForReport` gzips the last seven days of the IndexedDB copy into
+  one draft folder with `gzipText`; the folder's path is kept in `localStorage` (`ardia.report.exportFolder`) and
+  reused, so there is one export file at a time as on the Mac. The sheet's copy drops recordings and crash reports
+  (`linuxWording.ts`).
 
 - **Drafts.** `draftDirectory()` makes `<profile>/Ardia/Report Drafts/<uuid>` (mode 0700) and answers its path.
   Every other path a call names must lie inside one of those folders, as given and again after symbolic links are
@@ -1291,8 +1306,9 @@ answer at once on the Mac and with a promise here, so the shell has to opt in. I
   refusal or a network failure is status 0 with the reason in `error`, and `cancelUploads()` ends every transfer
   with `error: "cancelled"`. A background instance sends nothing.
 - **Not served.** Recording (`startRecording`, `stopRecording`, `cancelRecording`, `isRecording`,
-  `recordingThumbnail`), `ArdiaApp.crashReports`, `ArdiaApp.diagnosticsSample` and
-  `ArdiaTelemetryLocal.exportForReport`.
+  `recordingThumbnail`), `ArdiaApp.crashReports` and `ArdiaApp.diagnosticsSample`. The shell answers no crash
+  reports and an empty sample, so a report's `footprint_mb` and `free_disk_gb` are null: the shell can read neither
+  the app's memory footprint nor free disk space (`navigator.storage.estimate()` reports a quota, not free space).
 
 ### Ardia's notifications
 
@@ -1512,17 +1528,14 @@ These were open at the time of the PR.
   the Chromium 157 headers with fixture tests and have not run in a built engine.
 - **Little Ardia.** With an engine older than `ArdiaShell.smallWindows` the native window has no minimum size of
   its own, and with one older than `tab.unhandledEscape` Escape closes the window only from its blank command bar
-  and when nothing in the shell has focus, not while the page has focus (Peek's Escape too). The shell still learns
-  a new window's kind and tabs from `localStorage`, not from the bootstrap's `windowKind` and `smallWindow`. Pinch
+  and when nothing in the shell has focus, not while the page has focus (Peek's Escape too). Pinch
   and swipe to close have no Linux gesture.
 - **Meeting notifications.** Calendar › Show alerts › Always posts only while Ardia isn't active. With an engine
   older than `ArdiaShell.resignActive` the shell is never told, and only the in-window alert appears. Coming back
   to Ardia through a Settings or Import window sends no `focus` window event, so the shell counts Ardia as inactive
   until a browser window is active again.
-- **Problem reports.** The report sheet isn't used on Linux yet. The shell has to route `ArdiaReport` to the engine
-  (its `draftDirectory`, `fileSize`, `removeFile` and `cancelUploads` are synchronous on the Mac and answer a
-  promise here), send the sheet's two JSON requests through `ArdiaReport.post` instead of `fetch`, and keep
-  recording, the trace and crash reports switched off. The engine only accepts `https://ardia.dev/api/feedback`:
+- **Problem reports.** The sheet opens only with an engine that advertises `report.files` and `report.send`, and
+  has no recording, trace or crash reports. The engine only accepts `https://ardia.dev/api/feedback`:
   there is no override for a local feedback server, and a background instance sends nothing, so the sheet can't be
   exercised end to end from a hidden instance yet. Crash reports need more than the list Chromium keeps
   (`crash_reporter::GetReports` gives an id and a time): the Mac's fields come from parsed `.ips` files, so Linux
@@ -1560,8 +1573,8 @@ These were open at the time of the PR.
   - video upscaling;
   - the updater;
   - crash reports;
-  - sending problem reports from the sheet (see Problem reports), so `ArdiaTelemetryLocal.exportForReport` answers
-    null;
+  - sending problem reports from the sheet with an engine older than `report.files` and `report.send` (see Problem
+    reports), where `ArdiaTelemetryLocal.exportForReport` answers null;
   - `engine.cliTabTargets`, so `windows` from the control socket has no DevTools target ids;
   - notification icons, and a notification settings page to open (`openNotificationSettings`);
   - the share sheet;

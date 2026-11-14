@@ -207,7 +207,7 @@ test("the ardia command and the user-scripts folder route to the engine that adv
   await assert.rejects(resolveHostModule(linuxHost(), "ArdiaCli", "install")(), /Unsupported Linux host method: ArdiaCli.install/);
 });
 
-test("problem reports, the local telemetry copy and hardware details answer on Linux without reaching the host, and nothing throws where the shared code doesn't catch", async () => {
+test("problem reports without their engine, the local telemetry copy and hardware details answer on Linux without reaching the host, and nothing throws where the shared code doesn't catch", async () => {
   const host = linuxHost();
   host.invoke = async (method) => assert.fail(`${method} reached the host`);
   const resolve = (module, method) => {
@@ -222,13 +222,26 @@ test("problem reports, the local telemetry copy and hardware details answer on L
   assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", "clear")()), { answer: undefined });
   assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", "prune")(0)), { code: "ERR_UNAVAILABLE" });
   assert.equal(resolve("ArdiaReport", "isRecording")(), false);
-  assert.equal(resolve("ArdiaReport", "fileSize")("/tmp/x"), 0);
-  assert.equal(resolve("ArdiaReport", "removeFile")("/tmp/x"), undefined);
-  assert.equal(resolve("ArdiaReport", "cancelUploads")(), undefined);
-  assert.throws(() => resolve("ArdiaReport", "draftDirectory")(), { code: "ERR_UNAVAILABLE" });
   assert.deepEqual(await settle(resolve("ArdiaReport", "startRecording")("main", false, "/tmp/r.mp4", 60)), { code: "ERR_UNAVAILABLE" });
   assert.deepEqual(await settle(resolve("ArdiaReport", "stopRecording")()), { answer: false });
-  assert.equal((await resolve("ArdiaReport", "upload")("f", "https://ardia.dev", "PUT", {}, "/tmp/f")).status, 0);
+  const withoutReports = olderEngine("report.files", "report.send");
+  withoutReports.invoke = host.invoke;
+  const unserved = (method) => {
+    const resolved = resolveHostModule(withoutReports, "ArdiaReport", method);
+    assert.equal(reachesNativeHostUnchecked(resolved), false, `ArdiaReport.${method}`);
+    return resolved;
+  };
+  assert.equal(unserved("fileSize")("/tmp/x"), 0);
+  assert.equal(unserved("removeFile")("/tmp/x"), undefined);
+  assert.equal(unserved("cancelUploads")(), undefined);
+  assert.throws(() => unserved("draftDirectory")(), { code: "ERR_UNAVAILABLE" });
+  assert.equal((await unserved("upload")("f", "https://ardia.dev", "PUT", {}, "/tmp/f")).status, 0);
+  assert.equal((await unserved("post")("https://ardia.dev/api/feedback", "{}", {})).status, 0);
+  const served = linuxHost();
+  const reached = [];
+  served.invoke = async (method) => (reached.push(method), null);
+  for (const method of ["draftDirectory", "fileSize", "removeFile", "gzipFile", "gzipText", "upload", "post", "cancelUploads"]) await resolveHostModule(served, "ArdiaReport", method)();
+  assert.deepEqual(reached, ["draftDirectory", "fileSize", "removeFile", "gzipFile", "gzipText", "upload", "post", "cancelUploads"].map((method) => `ArdiaReport.${method}`), "an engine that advertises report.files and report.send is asked");
   const withoutHardware = olderEngine("ArdiaApp.hardwareInfo");
   withoutHardware.invoke = host.invoke;
   assert.deepEqual(await settle(resolveHostModule(withoutHardware, "ArdiaApp", "hardwareInfo")()), { code: "ERR_UNAVAILABLE" });

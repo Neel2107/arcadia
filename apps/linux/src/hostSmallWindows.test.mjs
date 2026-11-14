@@ -169,3 +169,62 @@ test("a blank Little Ardia window starts on its command bar; one with a page doe
   assert.equal(opensOnCommandBar(S(), page), false);
   assert.equal(opensOnCommandBar(S(), "main"), false);
 });
+
+test("an engine that relays small windows carries the window in the bootstrap, sizes it itself and needs no storage", async () => {
+  mainSession();
+  const saved = snapshotHostSession(S());
+  const id = S().createWindow({ kind: "small", url: "https://example.com/relayed" });
+  const tabId = S().windows[id].tabIds[0];
+  const store = storage();
+  const host = fakeHost({ pending: true });
+  host.bootstrap.capabilities = ["ArdiaShell.smallWindows"];
+  await opener(host, store)(id, { kind: "small", size: [700, 500], profile: "", frame: null });
+  const options = host.calls[0][1].args[1];
+  assert.equal(options.frame, null, "the engine places the window from its size");
+  assert.deepEqual(options.size, [700, 500]);
+  assert.equal(options.smallWindow.window.id, id);
+  assert.equal(options.smallWindow.tabs[tabId].url, "https://example.com/relayed");
+  assert.equal(store.items.size, 0, "nothing is left in localStorage");
+  const bootstrap = { windowId: id, profileId: "default", pageProfile: "", startup: false, windowKind: "small", smallWindow: structuredClone(options.smallWindow) };
+  const session = withSmallWindow({ bootstrap }, saved, store, Date.now() + SMALL_WINDOW_SEED_LIFE * 10);
+  assert.equal(session.windows[id].kind, "small");
+  assert.deepEqual(session.windows[id].tabIds, [tabId]);
+  assert.equal(session.tabs[tabId].url, "https://example.com/relayed");
+  assert.equal(session.focusedWindowId, id);
+  host.native({ type: "attached", id });
+  await tick();
+  assert.equal(S().windows[id], undefined, "the opener hands the window over as it does with a stored seed");
+  assert.equal(takeHandedOverWindow(id), true);
+});
+
+test("the bootstrap's window kind decides: a browser window takes no seed, and a small one falls back to storage", async () => {
+  mainSession();
+  const saved = snapshotHostSession(S());
+  const id = S().createWindow({ kind: "small", url: "https://example.com/stored" });
+  const seed = smallWindowSeed(S(), id);
+  const store = storage();
+  offerSmallWindow(seed, store);
+  const base = { windowId: id, profileId: "default", pageProfile: "", startup: false };
+  assert.equal(withSmallWindow({ bootstrap: { ...base, windowKind: "browser", smallWindow: seed } }, saved, store), undefined);
+  assert.equal(store.items.size, 1, "a browser window leaves another window's seed alone");
+  assert.equal(withSmallWindow({ bootstrap: { ...base, windowKind: "small", smallWindow: { ...seed, window: { ...seed.window, id: "other" } } } }, saved, storage()), undefined, "a seed for another window is refused");
+  assert.equal(withSmallWindow({ bootstrap: { ...base, windowKind: "small", smallWindow: "nonsense" } }, saved, storage()), undefined);
+  const session = withSmallWindow({ bootstrap: { ...base, windowKind: "small" } }, saved, store);
+  assert.equal(session.windows[id].kind, "small", "without a relayed object the stored seed still opens the window");
+  assert.equal(store.items.size, 0);
+  S().closeWindow(id);
+});
+
+test("a private small window relays nothing, and a seed over the engine's limit is left out", async () => {
+  mainSession();
+  const id = S().createWindow({ kind: "small", url: `https://example.com/${"x".repeat(1024 * 1024)}` });
+  const host = fakeHost();
+  host.bootstrap.capabilities = ["ArdiaShell.smallWindows"];
+  const store = storage();
+  await opener(host, store)(id, { kind: "small", profile: "" });
+  assert.equal("smallWindow" in host.calls[0][1].args[1], false);
+  assert.equal(store.items.size, 0);
+  await tick();
+  assert.equal(takeHandedOverWindow(id), false);
+  S().closeWindow(id);
+});

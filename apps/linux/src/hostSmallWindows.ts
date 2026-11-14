@@ -12,7 +12,10 @@ export type ScreenArea = { width: number; height: number; availLeft: number; ava
 export const SMALL_WINDOW_SEED_PREFIX = "ardia.smallWindow.";
 export const SMALL_WINDOW_SEED_LIFE = 60_000;
 export const SMALL_WINDOW_MIN_SIZE: [number, number] = [420, 300];
+export const SMALL_WINDOWS_CAPABILITY = "ArdiaShell.smallWindows";
+export const SMALL_WINDOW_KIND = "small";
 const SEED_LIMIT = 1024 * 1024;
+const seedBytes = new TextEncoder();
 
 const seedStorage = (): SeedStorage | undefined => {
   try {
@@ -45,11 +48,31 @@ function expiredSeeds(storage: SeedStorage, now: number): string[] {
   return expired;
 }
 
+const shapedSeed = (value: unknown): SmallWindowSeed | undefined => {
+  const seed = value as SmallWindowSeed | null;
+  return seed && typeof seed === "object" && typeof seed.at === "number" && seed.window && typeof seed.window === "object" && seed.tabs && typeof seed.tabs === "object" && seed.profile && typeof seed.profile === "object" ? seed : undefined;
+};
+
 function parsedSeed(text: string | null): SmallWindowSeed | undefined {
   if (!text || text.length > SEED_LIMIT) return undefined;
   try {
-    const seed = JSON.parse(text) as SmallWindowSeed | null;
-    return seed && typeof seed === "object" && typeof seed.at === "number" && seed.window && typeof seed.window === "object" && seed.tabs && typeof seed.tabs === "object" && seed.profile && typeof seed.profile === "object" ? seed : undefined;
+    return shapedSeed(JSON.parse(text));
+  } catch {
+    return undefined;
+  }
+}
+
+const seedFor = (seed: SmallWindowSeed | undefined, windowId: string): SmallWindowSeed | undefined => {
+  const w = seed?.window;
+  if (!seed || !w || w.id !== windowId || w.kind !== "small" || typeof w.profileId !== "string" || isIncognitoProfile(w.profileId) || seed.profile.id !== w.profileId || !Array.isArray(w.tabIds)) return undefined;
+  return seed;
+};
+
+export const relaysSmallWindows = (host: ArdiaHost) => !!host.bootstrap.capabilities?.includes(SMALL_WINDOWS_CAPABILITY);
+
+export function relayedSmallWindow(seed: SmallWindowSeed): SmallWindowSeed | undefined {
+  try {
+    return seedBytes.encode(JSON.stringify(seed)).length <= SEED_LIMIT ? seed : undefined;
   } catch {
     return undefined;
   }
@@ -83,18 +106,18 @@ export function takeSmallWindow(windowId: string, storage: SeedStorage | undefin
     const seed = parsedSeed(storage.getItem(key));
     storage.removeItem(key);
     if (!seed || Math.abs(now - seed.at) > SMALL_WINDOW_SEED_LIFE) return undefined;
-    const w = seed.window;
-    if (w.id !== windowId || w.kind !== "small" || typeof w.profileId !== "string" || isIncognitoProfile(w.profileId) || seed.profile.id !== w.profileId || !Array.isArray(w.tabIds)) return undefined;
-    return seed;
+    return seedFor(seed, windowId);
   } catch {
     return undefined;
   }
 }
 
 export function withSmallWindow(host: ArdiaHost, session: HydrateData, storage?: SeedStorage, now = Date.now()): HydrateData | undefined {
-  const { windowId, startup, pageProfile, privateWindow } = host.bootstrap;
+  const { windowId, startup, pageProfile, privateWindow, windowKind, smallWindow } = host.bootstrap;
   if (startup !== false || privateWindow || (pageProfile && isIncognitoProfile(pageProfile)) || session.windows?.[windowId]) return undefined;
-  const seed = storage ? takeSmallWindow(windowId, storage, now) : takeSmallWindow(windowId, undefined, now);
+  if (windowKind !== undefined && windowKind !== SMALL_WINDOW_KIND) return undefined;
+  const stored = storage ? takeSmallWindow(windowId, storage, now) : takeSmallWindow(windowId, undefined, now);
+  const seed = (windowKind === SMALL_WINDOW_KIND ? seedFor(shapedSeed(smallWindow), windowId) : undefined) ?? stored;
   if (!seed) return undefined;
   const w = seed.window;
   const tabs = Object.fromEntries(Object.entries(seed.tabs)

@@ -169,7 +169,7 @@ test("production graph uses current Linux adapters and one canonical shared stat
   assert.ok(!tabDrag.importedIds.includes(`${browser}platform/webviews.ts`));
 
   const appCommands = graph.get(`${browser}state/commands/appCommands.ts`);
-  assert.ok(appCommands.importedIds.includes(`${linux}reportProblem.ts`), "Report a Problem from any shared path reaches the Linux issue page, not the sheet that can't send");
+  assert.ok(appCommands.importedIds.includes(`${linux}reportProblem.ts`), "Report a Problem from any shared path reaches the Linux entry, which opens the sheet or the issue page");
   assert.ok(!appCommands.importedIds.includes(`${browser}state/report/actions.ts`));
 
   const passwordsPane = graph.get(`${browser}components/settings/panes/Passwords.tsx`);
