@@ -590,26 +590,46 @@ def thin(got: dict, selector: str | None) -> bool:
     return (selector and not got.get("matched")) or len((got.get("text") or "").strip()) < MIN_USEFUL
 
 
+NAVIGATED = ("document_changed", "page_navigated", "frame_gone")
+
+
+async def extract_once(page, selector: str | None) -> tuple[dict, int]:
+    seen = page.navigations
+    return await page.call(EXTRACT, selector, frame=page.main_frame, read=True), seen
+
+
 async def extract_filled(page, selector: str | None, timeout: float) -> dict:
     from ardia_cli import command_metrics
 
     loop = asyncio.get_running_loop()
     deadline = loop.time() + min(THIN_WAIT, timeout)
-    got = await page.call(EXTRACT, selector, frame=page.main_frame, read=True)
+    got, seen = await extract_once(page, selector)
     if (got.get("status") or 0) >= 400 or bot_check(got.get("title") or "", got.get("text") or "", got.get("status"), count=False):
         return got
     waited = False
-    while thin(got, selector) and loop.time() + THIN_POLL < deadline:
+    while (seen is None or thin(got, selector)) and loop.time() + THIN_POLL < deadline:
         waited = True
         await asyncio.sleep(THIN_POLL)
         try:
-            got = await page.call(EXTRACT, selector, frame=page.main_frame, read=True)
+            got, seen = await extract_once(page, selector)
         except BrowseError as error:
-            if error.code not in ("document_changed", "page_navigated", "frame_gone"):
+            if error.code not in NAVIGATED:
                 raise
+            seen = None
             await settle(page, min(deadline, loop.time() + SETTLE_LIMIT))
     if waited:
         command_metrics.flag("read_waited_for_content", True)
+    if page.navigations != seen:
+        command_metrics.flag("read_navigated_while_waiting", True)
+        await settle(page, loop.time() + SETTLE_LIMIT)
+        try:
+            got, seen = await extract_once(page, selector)
+        except BrowseError as error:
+            if error.code not in NAVIGATED:
+                raise
+            seen = None
+        if page.navigations != seen:
+            raise BrowseError("the page kept navigating while it was being read; read it again", code="page_navigated")
     return got
 
 

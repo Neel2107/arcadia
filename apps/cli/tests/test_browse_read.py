@@ -12,12 +12,87 @@ from pathlib import Path
 
 from ardia_cli import command_metrics
 from ardia_cli.browse import commands, daemon, readpages
-from ardia_cli.browse.errors import Usage
+from unittest import mock
+
+from ardia_cli.browse.errors import BrowseError, Usage
 
 CLI = Path(__file__).resolve().parents[1]
 REPO = CLI.parents[1]
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "browse"
 CHROME = os.environ.get("ARDIA_BROWSE_CHROME")
+
+
+class NavigatingPage:
+    main_frame = "main"
+
+    def __init__(self, answers):
+        self.answers = list(answers)
+        self.url = "http://x.test/old"
+        self.navigations = 1
+
+    def navigate(self):
+        self.url = "http://x.test/new"
+        self.navigations += 1
+
+    async def call(self, script, *args, **kwargs):
+        answer = self.answers.pop(0)
+        if callable(answer):
+            answer = answer(self)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+async def settle_past(page, deadline: float):
+    await asyncio.sleep(max(deadline - asyncio.get_running_loop().time(), 0) + 0.01)
+
+
+class ExtractAfterNavigation(unittest.TestCase):
+    OLD = {"title": "Redirecting", "text": "Redirecting…", "status": 200}
+    NEW = {"title": "Destination", "text": "The destination page. " * 10, "status": 200}
+
+    @staticmethod
+    def navigates_and_raises(page):
+        page.navigate()
+        return BrowseError("navigated", code="page_navigated")
+
+    @staticmethod
+    def navigates_after(answer):
+        def give(page):
+            page.navigate()
+            return answer
+        return give
+
+    def extract(self, answers, settle_limit=0.1):
+        page = NavigatingPage(answers)
+        with mock.patch.object(readpages, "THIN_WAIT", 0.6), mock.patch.object(readpages, "THIN_POLL", 0.05), mock.patch.object(readpages, "SETTLE_LIMIT", settle_limit), \
+                mock.patch.object(readpages, "settle", settle_past):
+            return asyncio.run(readpages.extract_filled(page, None, 10)), page
+
+    def test_a_navigation_that_uses_the_wait_still_reads_the_new_document(self):
+        got, page = self.extract([self.OLD, self.navigates_and_raises, self.NEW], settle_limit=1.0)
+        self.assertEqual(got["title"], "Destination")
+        self.assertEqual(page.answers, [])
+
+    def test_a_navigation_during_the_last_read_reads_the_new_document(self):
+        page = NavigatingPage([self.navigates_after(self.OLD), self.NEW])
+        with mock.patch.object(readpages, "THIN_WAIT", 0.01), mock.patch.object(readpages, "SETTLE_LIMIT", 0.1), mock.patch.object(readpages, "settle", settle_past):
+            got = asyncio.run(readpages.extract_filled(page, None, 10))
+        self.assertEqual(got["title"], "Destination")
+        self.assertEqual(page.answers, [])
+
+    def test_a_page_that_keeps_navigating_fails_rather_than_keeping_the_old_text(self):
+        with self.assertRaises(BrowseError) as caught:
+            self.extract([self.OLD] + [self.navigates_and_raises] * 40)
+        self.assertEqual(caught.exception.code, "page_navigated")
+
+    def test_a_same_document_route_change_keeps_its_text(self):
+        def push_state(page):
+            page.url = "http://x.test/old#more"
+            return self.OLD
+        got, page = self.extract([self.OLD] + [push_state] + [self.OLD] * 40)
+        self.assertEqual(got["title"], "Redirecting")
+        self.assertEqual(page.navigations, 1)
 
 
 def record(index: int, length: int) -> dict:
