@@ -137,6 +137,7 @@ export type StripLayout = {
   targets: (DropTarget | null)[];
   memberWidth: (m: StripMember) => number;
   spanOf: (tabId: string) => [number, number] | null;
+  tabsEnd: number;
 };
 
 const dockEntry = (entries: StripEntry[]) => entries.find((e): e is StripDock => e.kind === "dock");
@@ -193,5 +194,8 @@ export function layoutStrip(entries: StripEntry[], activeId: string, pageWidth: 
     const { widths, offsets } = groups.get(row)!;
     return [left + groupChip(row) + MEMBERS_INSET + (row.collapsed ? 0 : offsets[at]!), widths[at]!];
   };
-  return { chip, top, targets, memberWidth, spanOf };
+  const end = top.slots.length ? top.lefts.at(-1)! + top.slots.at(-1)!.width : 0;
+  return { chip, top, targets, memberWidth, spanOf, tabsEnd: dockSpan(dock) + end };
 }
+
+export const newTabPinned = (chip: number, tabsEnd: number, pageWidth: number) => chip <= MIN_CHIP && tabsEnd + GAP + NEW_TAB_ROOM > pageWidth + 0.5;
