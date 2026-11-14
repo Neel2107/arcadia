@@ -68,6 +68,12 @@ function raiseView(tag: unknown, levels: number, raised: boolean) {
   return Promise.resolve();
 }
 
+function readClipboardText(): Promise<string> {
+  const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+  if (!clipboard?.readText) return Promise.resolve("");
+  return clipboard.readText().catch(() => "");
+}
+
 const unavailable = (feature: string) => (..._args: unknown[]): Promise<never> => Promise.reject(unavailableError(feature));
 
 export const fetchBangList: (etag: string | null) => Promise<BangListReply> = unavailable("Bang list fetching");
@@ -100,7 +106,7 @@ const LINUX_SHELL_METHODS: Record<string, ShellMethod> = {
   startDictation: unavailable("Dictation"),
   pickFiles: unavailable("Choosing files to open"),
   replyToTerminate: resolved,
-  readText: () => Promise.resolve(""),
+  readText: readClipboardText,
 };
 
 export function watchSidebarEdgeBesideNativeLeftEdge(host: ArdiaHost) {

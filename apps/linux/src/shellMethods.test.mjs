@@ -233,8 +233,21 @@ test("every ArdiaShell method resolves to its Linux fallback while the native ho
   }
 });
 
-test("reading the clipboard answers empty text on Linux until the native host advertises ArdiaShell.readText", async () => {
-  assert.equal(await resolveHostModule(olderEngine("ArdiaShell.readText"), "ArdiaShell", "readText")(), "");
+test("reading the clipboard uses the shell's own clipboard on Linux until the native host advertises ArdiaShell.readText", async () => {
+  const read = resolveHostModule(olderEngine("ArdiaShell.readText"), "ArdiaShell", "readText");
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const withClipboard = (clipboard) => Object.defineProperty(globalThis, "navigator", { value: { clipboard }, configurable: true });
+  try {
+    withClipboard(undefined);
+    assert.equal(await read(), "");
+    withClipboard({ readText: async () => "https://ardia.dev/" });
+    assert.equal(await read(), "https://ardia.dev/");
+    withClipboard({ readText: async () => { throw new DOMException("denied", "NotAllowedError"); } });
+    assert.equal(await read(), "");
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "navigator", saved);
+    else delete globalThis.navigator;
+  }
   const host = linuxHost();
   host.bootstrap.capabilities.push("ArdiaShell.readText");
   host.invoke = async (method) => (method === "ArdiaShell.readText" ? "copied" : null);
