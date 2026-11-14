@@ -39,7 +39,16 @@
 #include "ardia/linux/ac_linux_live_service.h"
 #include "ardia/linux/ac_linux_search_engines.h"
 #include "ardia/linux/ac_linux_sync_service.h"
+#include "ardia/linux/ac_linux_capture.h"
+#include "ardia/linux/ac_linux_crx_drop.h"
+#include "ardia/linux/ac_linux_crx_drop_core.h"
 #include "ardia/linux/ac_linux_desktop_core.h"
+#include "ardia/linux/ac_linux_device_chooser.h"
+#include "ardia/linux/ac_linux_diagnostics.h"
+#include "ardia/linux/ac_linux_device_chooser_core.h"
+#include "ardia/linux/ac_linux_media_share.h"
+#include "ardia/linux/ac_linux_tracing.h"
+#include "ardia/linux/ac_linux_tracing_core.h"
 #include "ardia/linux/ac_linux_hardware.h"
 #include "ardia/linux/ac_linux_dialog_views.h"
 #include "ardia/linux/ac_linux_document_service.h"
@@ -1263,6 +1272,7 @@ class ShellHostView : public views::View,
     return base::NumberToString(id_) + "#" + base::NumberToString(renderer_generation_);
   }
   void RetireRenderer() {
+    ardiacore::LinuxDeviceChoosersWindowGone(id_);
     LinuxLiveCallerGone(LiveCaller());
     ardiacore::LinuxAutomationCallerGone(LiveCaller());
     ardiacore::LinuxConfigCallerGone(LiveCaller());
@@ -1322,6 +1332,7 @@ class ShellHostView : public views::View,
   bool ExtensionEvent(std::string_view name, base::DictValue data);
   std::string ExtensionTabKey(content::WebContents* contents) const;
   bool PromptEvent(std::string_view name, base::DictValue data);
+  bool MediaEvent(std::string_view name, base::DictValue data);
   bool PromptPageEvent(content::WebContents* contents, std::string_view name, base::Value data);
   bool ReportUnhandledEscape(content::WebContents* contents);
   bool ExtensionsListening() const { return browser_ && handler_ && !is_utility(); }
@@ -2057,6 +2068,45 @@ class HostMessageHandler : public content::WebUIMessageHandler,
           return Fail(id, "ERR_ENGINE", "autofill.showSuggestions requires {tabId, passwords} for a tab of this window");
         return Resolve(id, base::Value(ardiacore::ShowLinuxAutofillSuggestions(binding->contents(), *passwords)));
       }
+      if (ardia::linux_media_share::Handles(name)) {
+        namespace share = ardia::linux_media_share;
+        if (host_->is_utility()) return Fail(id, "ERR_UNKNOWN_CALL", "This call is unavailable in this window");
+        const bool change = name == share::kChangeCaptureSourceCall;
+        const std::string* capturer_id = input.FindString(change ? "capturer" : "tabId");
+        const std::string* target_id = change ? input.FindString("target") : nullptr;
+        if (!capturer_id || !share::ValidTabId(*capturer_id) || input.size() != (change ? 2u : 1u) ||
+            (change && (!target_id || !share::ValidTabId(*target_id)))) {
+          return Fail(id, "ERR_ENGINE", change ? "media.changeCaptureSource requires {capturer, target}"
+                                               : "media.stopCapture requires {tabId}");
+        }
+        TabBinding* capturer = host_->BindingForKey(*capturer_id);
+        if (!capturer) return Resolve(id, base::Value(false));
+        if (!change) return Resolve(id, base::Value(ardiacore::StopLinuxCapture(capturer->contents())));
+        content::WebContents* target = nullptr;
+        for (const auto& [window, other] : Hosts()) {
+          TabBinding* found = other->is_utility() ? nullptr : other->BindingForKey(*target_id);
+          if (found) target = found->contents();
+        }
+        return Resolve(id, base::Value(ardiacore::ShareLinuxTabInstead(target, capturer->contents())));
+      }
+      if (ardiacore::LinuxTracingHandles(name)) {
+        if (host_->is_utility()) return Fail(id, "ERR_UNKNOWN_CALL", "This call is unavailable in this window");
+        return ardiacore::LinuxTracingCall(
+            name, input, host_->profile() ? DocumentDirectory(host_->profile()) : base::FilePath(),
+            base::BindOnce([](base::WeakPtr<HostMessageHandler> handler, std::string id, bool ok, base::Value result) {
+              if (!handler) return;
+              if (ok) return handler->Resolve(id, std::move(result));
+              const std::string* code = result.is_dict() ? result.GetDict().FindString("code") : nullptr;
+              const std::string* message = result.is_dict() ? result.GetDict().FindString("message") : nullptr;
+              handler->Fail(id, code ? *code : "ERR_ENGINE", message ? *message : "Tracing request failed");
+            }, weak_factory_.GetWeakPtr(), id));
+      }
+      if (ardiacore::LinuxDeviceChooserHandles(name)) {
+        if (host_->is_utility()) return Fail(id, "ERR_UNKNOWN_CALL", "This call is unavailable in this window");
+        const std::string error = ardiacore::LinuxDeviceChooserCall(host_->id(), name, input);
+        if (!error.empty()) return Fail(id, "ERR_ENGINE", error);
+        return Resolve(id, base::Value());
+      }
       if (name == ardiacore::kLinuxPeekOtherSiteTabsRoute) {
         auto tabs = ardiacore::LinuxPeekSiteTabIds(input);
         if (!tabs) return Fail(id, "ERR_ENGINE", "webView.setPeekOtherSiteTabs requires {tabIds} as a list of tab ids");
@@ -2401,6 +2451,7 @@ ShellHostView::~ShellHostView() {
   WindowFocus().Forget(id_);
   NoteAppActivation();
   ardiacore::LinuxReportCallerGone(id_);
+  ardiacore::LinuxDeviceChoosersWindowGone(id_);
   DropPlayer();
   weak_factory_.InvalidateWeakPtrs();
   LinuxLiveCallerGone(LiveCaller());
@@ -2882,6 +2933,7 @@ base::DictValue ShellHostView::Bootstrap() const {
   for (const char* capability : ardiacore::kLinuxConfigCapabilities) capabilities.Append(capability);
   for (const char* capability : ardia::linux_desktop::kSystemCapabilities) capabilities.Append(capability);
   for (const char* capability : ardia::linux_hardware::kHardwareCapabilities) capabilities.Append(capability);
+  for (const char* capability : ardia::linux_diagnostics::kDiagnosticsCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxUserScriptsCapabilities) capabilities.Append(capability);
   if (TakesOpenUrls()) {
     for (const char* capability : ardia::linux_open_urls::kOpenUrlCapabilities) capabilities.Append(capability);
@@ -2898,6 +2950,12 @@ base::DictValue ShellHostView::Bootstrap() const {
   capabilities.Append("ArdiaShell.fetchBangList");
   if (!is_utility()) {
     for (const char* capability : ardia::linux_report::kReportCapabilities) capabilities.Append(capability);
+  }
+  if (!is_utility()) {
+    for (const char* capability : ardia::linux_media_share::kMediaShareCapabilities) capabilities.Append(capability);
+    for (const char* capability : ardia::linux_tracing::kTracingCapabilities) capabilities.Append(capability);
+    for (const char* capability : ardia::linux_crx_drop::kCrxDropCapabilities) capabilities.Append(capability);
+    for (const char* capability : ardia::linux_device_chooser::kDeviceChooserCapabilities) capabilities.Append(capability);
   }
   base::DictValue native_modules;
   native_modules.Set("ArdiaApp", base::DictValue().Set("systemInfo", std::move(info)));
@@ -4406,6 +4464,12 @@ bool ShellHostView::ExtensionEvent(std::string_view name, base::DictValue data) 
 bool ShellHostView::PromptEvent(std::string_view name, base::DictValue data) {
   if (!browser_ || !handler_ || is_utility()) return false;
   Event("ArdiaPermissions", "permissions", base::Value(base::DictValue().Set("name", name).Set("data", std::move(data))));
+  return true;
+}
+
+bool ShellHostView::MediaEvent(std::string_view name, base::DictValue data) {
+  if (!browser_ || !handler_ || is_utility()) return false;
+  Event("ArdiaMedia", "media", base::Value(base::DictValue().Set("name", name).Set("data", std::move(data))));
   return true;
 }
 
@@ -7721,6 +7785,73 @@ void StartLinuxHost() {
     return false;
   });
   ardiacore::StartLinuxPagePrompts(std::move(prompts));
+  ardiacore::LinuxDeviceChoosersDelegate choosers;
+  choosers.tab_for = base::BindRepeating([](content::WebContents* contents) {
+    ardiacore::LinuxChooserTab tab;
+    for (const auto& [id, host] : Hosts()) {
+      if (host->is_utility()) continue;
+      std::string key = host->ExtensionTabKey(contents);
+      if (key.empty()) continue;
+      tab.window = id;
+      tab.key = std::move(key);
+      break;
+    }
+    return tab;
+  });
+  choosers.deliver = base::BindRepeating([](int window, base::DictValue chooser) {
+    const auto found = Hosts().find(window);
+    return found != Hosts().end() &&
+           found->second->MediaEvent(ardia::linux_device_chooser::kEvent, std::move(chooser));
+  });
+  ardiacore::StartLinuxDeviceChoosers(std::move(choosers));
+  ardiacore::LinuxCrxDropDelegate crx_drops;
+  crx_drops.shown_by_a_window = base::BindRepeating([](content::WebContents* contents) {
+    return std::ranges::any_of(Hosts(), [contents](const auto& entry) {
+      return !entry.second->is_utility() && !entry.second->ExtensionTabKey(contents).empty();
+    });
+  });
+  crx_drops.failed = base::BindRepeating([](content::WebContents* contents, std::string message) {
+    ShellHostView* chosen = nullptr;
+    std::string key;
+    for (const auto& [id, host] : Hosts()) {
+      if (host->is_utility() || !host->ShellLive()) continue;
+      std::string shown = contents ? host->ExtensionTabKey(contents) : std::string();
+      if (!shown.empty()) {
+        chosen = host;
+        key = std::move(shown);
+        break;
+      }
+      if (!chosen || host->activation() > chosen->activation()) chosen = host;
+    }
+    if (!chosen) return;
+    base::DictValue failure;
+    failure.Set("message", std::move(message));
+    if (key.empty()) {
+      failure.Set("tabId", base::Value());
+    } else {
+      failure.Set("tabId", std::move(key));
+    }
+    chosen->ExtensionEvent(ardia::linux_crx_drop::kFailedEvent, std::move(failure));
+  });
+  ardiacore::StartLinuxCrxDrops(std::move(crx_drops));
+  ardiacore::WatchLinuxTabShares(base::BindRepeating([](content::WebContents* capturer, content::WebContents* shared) {
+    std::string captured;
+    for (const auto& [id, host] : Hosts()) {
+      if (captured.empty() && !host->is_utility()) captured = host->ExtensionTabKey(shared);
+    }
+    for (const auto& [id, host] : Hosts()) {
+      if (host->is_utility()) continue;
+      const std::string key = host->ExtensionTabKey(capturer);
+      if (key.empty()) continue;
+      const auto share = ardia::linux_media_share::ReportedTabShare(
+          id, key, captured, capturer->GetPrimaryMainFrame()->GetLastCommittedOrigin().Serialize());
+      if (share) {
+        host->MediaEvent(ardia::linux_media_share::kTabShareEvent, base::DictValue()
+            .Set("capturer", share->capturer).Set("captured", share->captured).Set("origin", share->origin));
+      }
+      return;
+    }
+  }));
   ac_engine_set_event_sink(EngineEvent, nullptr);
   ardiacore::InitLinuxAutomation(
       base::BindRepeating(

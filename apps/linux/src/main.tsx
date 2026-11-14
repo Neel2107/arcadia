@@ -44,6 +44,8 @@ import { startLinuxTabPolicies, TAB_POLICY_CHANNEL, watchHostInputActivity } fro
 import { watchInstallPromptCancellations } from "./extensionPrompts";
 import { watchUnclaimedTabs } from "./unclaimedTabs";
 import { listenForOpenUrls } from "./openUrls";
+import { watchTabShares } from "./tabShares";
+import { noteTabShare } from "../../browser/src/state/media/screenShare";
 import { followExtensionChanges, settingsShowsExtensions } from "./utilityExtensions";
 import { refreshExtensionsAfterChange } from "../../browser/src/state/extensions/actions";
 import { provideNativeModuleProvider, requireNativeModule } from "./shims/expo-modules-core";
@@ -132,6 +134,7 @@ async function start() {
     startTabPages();
     startNativeSync();
     listenForOpenUrls(ardiaHost);
+    watchTabShares(ardiaHost, noteTabShare);
     startHostDownloads(ardiaHost, useBrowser);
     watchUnclaimedTabs(ardiaHost, useBrowser);
     startLinuxTabPolicies({

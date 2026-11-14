@@ -246,7 +246,10 @@ test("problem reports without their engine, the local telemetry copy and hardwar
   withoutHardware.invoke = host.invoke;
   assert.deepEqual(await settle(resolveHostModule(withoutHardware, "ArdiaApp", "hardwareInfo")()), { code: "ERR_UNAVAILABLE" });
   assert.equal(reachesNativeHostUnchecked(resolveHostModule(host, "ArdiaApp", "hardwareInfo")), true, "a host that advertises hardware details is asked for them");
-  assert.deepEqual(await settle(resolve("ArdiaApp", "diagnosticsSample")()), { answer: {} });
+  const withoutSample = olderEngine("ArdiaApp.diagnosticsSample");
+  withoutSample.invoke = host.invoke;
+  assert.deepEqual(await settle(resolveHostModule(withoutSample, "ArdiaApp", "diagnosticsSample")()), { answer: {} });
+  assert.equal(reachesNativeHostUnchecked(resolveHostModule(host, "ArdiaApp", "diagnosticsSample")), true, "a host that advertises the diagnostics sample is asked for it");
   assert.deepEqual(await settle(resolve("ArdiaDockSelection", "iconAccent")("https://example.com/favicon.ico")), { answer: null });
   for (const method of ["locationPermission", "requestLocationPermission"]) assert.deepEqual(await settle(resolve("ArdiaLocation", method)()), { answer: "granted" }, method);
   assert.deepEqual(await settle(resolve("ArdiaLocation", "openLocationSettings")()), { answer: undefined });

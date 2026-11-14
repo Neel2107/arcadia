@@ -1,0 +1,26 @@
+A tab share that starts tells the Ardia Linux host which frame captures which tab, so the shell can show its own
+share bar (Stop Sharing, Share This Tab Instead) where Chromium's infobars are covered. Casting is left out.
+--- a/chrome/browser/ui/views/tab_sharing/tab_sharing_ui_views.cc
++++ b/chrome/browser/ui/views/tab_sharing/tab_sharing_ui_views.cc
+@@ -255,6 +255,10 @@
+   StopSharing("TabSharingUIViews destroyed");
+ }
+ 
++void (*g_ardia_linux_tab_share_started)(
++    content::GlobalRenderFrameHostId capturer,
++    content::WebContents* shared_tab) = nullptr;
++
+ gfx::NativeViewId TabSharingUIViews::OnStarted(
+     base::OnceClosure stop_callback,
+     content::MediaStreamUI::SourceCallback source_callback,
+@@ -265,6 +269,10 @@
+   CreateInfobarsForAllTabs();
+   UpdateTabCaptureData(shared_tab_, TabCaptureUpdate::kCaptureAdded);
+   CreateTabCaptureIndicator();
++  if (g_ardia_linux_tab_share_started && shared_tab_ &&
++      capture_type_ == TabSharingInfoBarDelegate::TabShareType::CAPTURE) {
++    g_ardia_linux_tab_share_started(capturer_, shared_tab_);
++  }
+   return 0;
+ }
+ 

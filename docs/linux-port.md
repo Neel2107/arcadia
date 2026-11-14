@@ -1063,8 +1063,9 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
 - **Opt-in, as on the Mac.** Sharing is off until the person turns it on: onboarding's last step asks, the new tab
   page asks once if onboarding didn't, and Settings › Privacy & Security has the toggle. With sharing off nothing is
   posted except the daily anonymous "opened today" count, which the Mac sends too (and a test instance skips).
-  Linux collects no native crash reports (`ArdiaApp.crashReports` answers an empty list), so "crash reports" there
-  means page-process exits and JavaScript errors; the group has no crash-report control of its own to hide.
+  Linux reports no native crash reports (`ArdiaApp.crashReports` answers an empty list; Known gaps › Crash
+  reports), so "crash reports" there means page-process exits and JavaScript errors; the group has no
+  crash-report control of its own to hide.
 - **One owner for the choice.** A window that isn't the telemetry owner (Settings, a second browser window) doesn't
   write `telemetry.json`. Turning sharing on or off, dismissing the new-tab question, starting or stopping a report's
   14-day watch and making the first anonymous ID are `choice` requests the owner runs (`telemetryChoice.ts`,
@@ -1306,9 +1307,83 @@ answer at once on the Mac and with a promise here, so the shell has to opt in.
   refusal or a network failure is status 0 with the reason in `error`, and `cancelUploads()` ends every transfer
   with `error: "cancelled"`. A background instance sends nothing.
 - **Not served.** Recording (`startRecording`, `stopRecording`, `cancelRecording`, `isRecording`,
-  `recordingThumbnail`), `ArdiaApp.crashReports` and `ArdiaApp.diagnosticsSample`. The shell answers no crash
-  reports and an empty sample, so a report's `footprint_mb` and `free_disk_gb` are null: the shell can read neither
-  the app's memory footprint nor free disk space (`navigator.storage.estimate()` reports a quota, not free space).
+  `recordingThumbnail`) and `ArdiaApp.crashReports`. The shell answers no crash reports (see Known gaps).
+- **`ArdiaApp.diagnosticsSample`** answers the Mac's `{footprintMB?, freeDiskGB?}` (`ac_linux_diagnostics.h`,
+  read in `ac_linux_system.cc` off the UI thread), so a report's and a saved context's `footprint_mb` and
+  `free_disk_gb` have values on Linux. The footprint is the browser process's anonymous resident memory plus what
+  of it is swapped out (`base::ProcessMetrics::GetMemoryInfo`: `rss_anon_bytes + vm_swap_bytes`, what Chromium's
+  own memory instrumentation calls the private footprint on Linux), in whole megabytes. The Mac's number is the
+  app process's physical footprint; neither counts renderer or GPU processes. Free disk is
+  `base::SysInfo::AmountOfFreeDiskSpace` for the volume of the home folder, cut to a tenth of a gigabyte the way
+  the Mac cuts it. A field that can't be read is left out.
+
+### Performance recording
+
+`engine.beginTracing`, `engine.endTracing {keep}` and `engine.isTracing` are a port of the Mac's
+`ardiacore_engine_tracing.mm` over `content::TracingController` (`ac_linux_tracing.cc`, with the session rules in
+`ac_linux_tracing_core.h`): one recording for the whole app with Chromium's default trace config, `beginTracing`
+answers false while one runs, a start that never arrives is given up after 100 checks 100 ms apart and stopped,
+and `endTracing` answers null when nothing was recording.
+
+- **Where the trace goes.** The Mac writes a kept trace to Downloads. The report sheet then asks `gzipFile` to
+  compress it into the draft, and on Linux `gzipFile` only reads inside the report drafts. So a kept trace is
+  written to `<profile>/Ardia/Report Drafts/00000000-0000-0000-0000-000000000000/trace.json` (the folder is made
+  0700 and reused, a link in its place is refused, and an older trace there is replaced), and that path is the
+  answer. `gzipFile(…, true)` removes it once compressed.
+- **A discarded trace** (`keep: false`) is drained into nothing and the call answers null once Chromium has
+  stopped; no file is written.
+- **Deadline.** The bridge gives `engine.endTracing` 180 s (`bootstrap.js`), since collecting and writing a
+  30-second trace can take longer than the 30 s other engine calls get.
+- **Who calls it.** Nothing yet. The shared sheet starts a trace only together with a window recording
+  (`startRecording` in `state/report/recording.ts`), and Linux has no window recording, so the sheet's Record
+  section stays hidden. The capability (`performanceRecording` in `hostCapabilities.ts`) is there for a trace-only
+  control or for window recording, whichever comes first.
+
+### Screen sharing and device choosers
+
+- **Picking what to share stays with Chromium.** `getDisplayMedia` shows Chromium's own picker, and on Wayland the
+  screen and window choice is made in the xdg-desktop-portal dialog (PipeWire), which is the only thing allowed to
+  list or grant them there. Ardia's own picker (`media.displayMediaSources`, `webView.setDisplayMediaPicker`,
+  `displayMediaRequest`) isn't routed: it would have to list screens and windows itself, which works only on X11,
+  so on the main desktop it could offer tabs and nothing else.
+- **A shared screen or window** keeps Chromium's own "sharing your screen" bar with its Stop button; the tab's
+  `mediaAccess.screen` state drives the sidebar's indicator as before.
+- **A shared tab** now gets Ardia's share bar. Chromium's controls for a tab share are infobars, which the shell
+  covers. `chromium-linux-tab-share.patch` tells the host when a tab share starts or moves to another tab
+  (`TabSharingUIViews::OnStarted`, captures only, not casting), and the host sends the capturer's window
+  `media.tabShare` `{capturer, captured, origin}` on the media channel. `tabShares.ts` notes it the way the Mac's
+  picker does (`noteTabShare`), so the shared `ShareBar` shows Stop Sharing on the shared tab and Share This Tab
+  Instead on the others.
+  - `media.stopCapture {tabId}` stops the tab's display capture (tab, window or screen, never the camera or
+    microphone) and answers whether it was capturing, as on the Mac.
+  - `media.changeCaptureSource {capturer, target}` presses Share this tab instead on the target tab's infobar for
+    that capturer (`chromium-tab-sharing-capturer.patch` names the capturer), and answers false when there is no
+    such offer.
+  - Both act on a capturer the calling window shows. `hostCast.ts` sends them to an engine that advertises them
+    and refuses them otherwise.
+- **Device choosers** (Web Bluetooth, USB, HID, Serial). The shared `chromium-device-chooser-hook.patch` already
+  offered each chooser to the host; the Linux host now takes it (`ac_linux_device_chooser.cc`, a port of the Mac's
+  `ac_device_chooser.mm`) for a tab a browser window shows, and Chromium's bubble, anchored to a toolbar the shell
+  covers, no longer opens for those tabs.
+  - The window that shows the tab gets `media.deviceChooser` with the Mac's fields, again on every change (a
+    device found, a rescan, the adapter turning off), and a last one with `open: false`.
+  - `media.selectDevice {id, index}`, `cancelDeviceChooser`, `refreshDeviceChooser` and `openBluetoothSettings`
+    are accepted only from that window. An index out of range is ignored unless the chooser lets Connect be
+    pressed without a row. `openBluetoothSettings` does nothing: Linux has no Bluetooth permission to grant, and
+    Chromium's own call for it exists only on the Mac.
+  - A chooser nobody can answer is cancelled: its tab leaves every window, its window's shell reloads or closes,
+    or the shell isn't listening. At most 64 are open at once; beyond that Chromium shows its own.
+
+### Extension packages dropped on a page
+
+A `.crx` dropped on the sidebar or a tab strip already installed through `extensions.installCrx`. Dropped on a
+page it reached the page. `chromium-linux-page-drop.patch` offers a page drop to the host first
+(`ChromeWebContentsViewDelegateViews::OnPerformingDrop`), and `ac_linux_crx_drop.cc` is the Mac's
+`ac_extension_drop.mm`: when every dropped file is a `.crx` (1 to 64 of them), the tab is shown by a browser
+window, the profile isn't private and policy doesn't block installs, each file is installed with Ardia's prompt
+in that tab and the page never sees the drop. A failure that isn't the person saying no is sent as
+`extensions.installFailed` `{message, tabId}` to the window that shows the tab (the most recently active browser
+window if the tab is gone), and the shared code shows its toast.
 
 ### Ardia's notifications
 
@@ -1457,14 +1532,10 @@ These were open at the time of the PR.
     folder as `Ardia Bookmarks.html`, follows Ask where to save each file, and shows in the downloads list. There is
     no Save dialog of its own, a folder's `LAST_MODIFIED` is its newest child's date (the tree carries no
     modification date), and the downloads list keeps the entry;
-  - the `extensions.installFailed` event. The Mac sends it when a `.crx` dropped on the window fails to install
-    (`ArdiaHostEngineDelegate.mm`); Linux has no dropped-`.crx` install to fail, so it needs that install path first;
   - Paste and Go (the clipboard read answers empty);
-  - performance recording (`engine.beginTracing`, `endTracing`, `isTracing`). It isn't a shared service: the Mac's is
-    Objective-C in its own layer (`engine/ardiacore/src/ardia/core/ardiacore_engine_tracing.mm`, about 150 lines over
-    `content::TracingController`, which Linux has too). Its only caller is the problem report sheet's slow-page
-    recording, which Linux never opens (see Report a Problem), so a port would advertise a call nothing uses. Port it
-    with the report sheet.
+  - Ardia's screen-share picker (`media.displayMediaSources`, `media.screenRecordingAllowed`,
+    `media.requestScreenRecording`, `webView.setDisplayMediaPicker`, the `displayMediaRequest` page event): see
+    Screen sharing and device choosers;
   - `ardia browse`'s off-screen tabs (`engine.cliMoveOffscreen`, `cliCloseOffscreenTabs`, `cliOwnsTab`): Linux has no
     off-screen automation window, so `ardia browse set viewport` is refused over the token connection.
 - **Profiles.** Deleting the data of an engine profile that was loaded in this run waits for the next launch
@@ -1524,8 +1595,19 @@ These were open at the time of the PR.
   which hasn't been checked on a real desktop. Links that arrive while a window exists but its shell never listens
   (a shell that failed to load) wait until one does.
 - **Not compiled yet.** The pointer hand-off, the unhandled Escape, app activation, small windows, the extension
-  popup's focus and the problem report calls (the two sections above Ardia's notifications) are written against
-  the Chromium 157 headers with fixture tests and have not run in a built engine.
+  popup's focus and the problem report calls (the two sections above Ardia's notifications), and the diagnostics
+  sample, performance recording, the share bar's calls and event, the device choosers and the `.crx` page drop
+  (the four sections after Problem reports) are written against the Chromium 157 headers with fixture tests and
+  have not run in a built engine.
+- **Screen sharing.** The share bar shows in the capturer's window only: each window's shell keeps its own page
+  state, so a tab shared from another window gets no bar there (the capturer's window still has Stop Sharing when
+  the shared tab is one of its own).
+- **Device choosers.** Chromium offers a chooser only for the tab its own tab strip has active; a request from
+  any other tab is cancelled before the host sees it, as before.
+- **Performance recording** has no caller on Linux (Performance recording). If Chromium can't put the finished
+  trace in place, its file endpoint never reports back and `endTracing` ends at the bridge's 180 s limit.
+- **Extension packages dropped on a page.** A drop that mixes a `.crx` with other files goes to the page, as on
+  the Mac.
 - **Little Ardia.** With an engine older than `ArdiaShell.smallWindows` the native window has no minimum size of
   its own, and with one older than `tab.unhandledEscape` Escape closes the window only from its blank command bar
   and when nothing in the shell has focus, not while the page has focus (Peek's Escape too). Pinch
@@ -1537,13 +1619,22 @@ These were open at the time of the PR.
 - **Problem reports.** The sheet opens only with an engine that advertises `report.files` and `report.send`, and
   has no recording, trace or crash reports. The engine only accepts `https://ardia.dev/api/feedback`:
   there is no override for a local feedback server, and a background instance sends nothing, so the sheet can't be
-  exercised end to end from a hidden instance yet. Crash reports need more than the list Chromium keeps
-  (`crash_reporter::GetReports` gives an id and a time): the Mac's fields come from parsed `.ips` files, so Linux
-  would have to read each minidump for the process type and frames, and frames of a stripped `chrome` are module
-  offsets, not names. The handler (`chrome_crashpad_handler`) ships, its folder is `Crash Reports` beside the
-  default user data folder (`chrome::DIR_CRASH_DUMPS`), and a build without Google's branding never has consent to
-  upload (`ChromeCrashReporterClient::GetCollectStatsConsent`); whether dumps are written there at all without
-  consent hasn't been checked in a built engine.
+  exercised end to end from a hidden instance yet.
+- **Crash reports** (`ArdiaApp.crashReports`) stay unanswered, on purpose.
+  - Dumps are written. Every process but the zygote starts Crashpad on Linux whatever the consent
+    (`ChromeMainDelegate`, `crash_reporter::InitializeCrashpad`), the handler (`chrome_crashpad_handler`) ships,
+    and its database is `Crash Reports` beside the default user data folder (`chrome::DIR_CRASH_DUMPS`). Nothing
+    is uploaded: Helium turns uploads off at every start (`DisableCrashpadUploadsAtStartup`) and consent is never
+    given. This is read from the 157 sources; no Ardia profile on the build machine had a dump to look at.
+  - What can be had without reading a dump is the database's own record (`crash_reporter::GetReports`): a local
+    id, the capture time and the upload state. The Mac's `CrashReport` needs the process (`browser` or a helper),
+    which decides the telemetry event, and `frames`. Both are inside the minidump: the process type is the `ptype`
+    annotation, and frames need the dump's thread stacks walked against the module list, with a stripped `chrome`
+    giving module offsets, not names.
+  - Answering id and time alone would file every crash as a helper crash with no frames. Attaching the dump to a
+    problem report instead would send stack memory, which can hold addresses and page text; the Mac's `.ips` is
+    text without memory. So the list stays empty until Linux reads its own minidumps (Crashpad's
+    `ProcessSnapshotMinidump` is the starting point).
 - **Ardia's notifications.** A desktop without a notification service falls back to Chromium's own popups, as sites'
   notifications do. A click activates the window through the same Wayland activation path as above.
 - **Launch at login** starts Ardia as any launch does; it doesn't start hidden. A system-wide

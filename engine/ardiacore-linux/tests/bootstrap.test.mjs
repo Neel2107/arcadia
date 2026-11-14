@@ -144,6 +144,15 @@ test("the bang list fetch outlives its native 60 s timeout", () => {
   assert.deepEqual([...f.delays.values()], [75000, 30000]);
 });
 
+test("ending a performance recording gets room to write the trace, and other engine calls keep the ordinary deadline", () => {
+  const f = fixture();
+  void f.host.call("engine.endTracing", "", JSON.stringify({ keep: true }));
+  void f.host.call("engine.beginTracing", "", "{}");
+  void f.host.call("engine.isTracing", "", "{}");
+  void f.host.invoke("engine.endTracing", { args: [] });
+  assert.deepEqual([...f.delays.values()], [180000, 30000, 30000, 30000]);
+});
+
 test("the ardia command's installer outlives its native 300 s deadline, kill grace and output drain", () => {
   const f = fixture();
   void f.host.invoke("ArdiaCli.install", { args: [] });

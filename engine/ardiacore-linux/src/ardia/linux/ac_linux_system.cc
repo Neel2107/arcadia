@@ -13,10 +13,12 @@
 
 #include "ardia/core/ac_launch_switches.h"
 #include "ardia/linux/ac_linux_desktop_core.h"
+#include "ardia/linux/ac_linux_diagnostics.h"
 #include "ardia/linux/ac_linux_hardware.h"
 #include "ardia/linux/ac_linux_launch_config.h"
 #include "base/base_paths.h"
 #include "base/files/file_path.h"
+#include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
 #include "base/location.h"
@@ -26,6 +28,7 @@
 #include "base/process/kill.h"
 #include "base/process/launch.h"
 #include "base/process/process.h"
+#include "base/process/process_metrics.h"
 #include "base/system/sys_info.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
@@ -200,11 +203,26 @@ void ReplyHardware(Done done, std::string chip) {
   std::move(done).Run(true, base::Value(hardware::Reply(info)));
 }
 
+namespace diagnostics = ardia::linux_diagnostics;
+
+diagnostics::Sample ReadDiagnosticsSample() {
+  base::ScopedBlockingCall blocking(FROM_HERE, base::BlockingType::MAY_BLOCK);
+  diagnostics::Sample sample;
+  if (const auto memory = base::ProcessMetrics::CreateCurrentProcessMetrics()->GetMemoryInfo(); memory.has_value()) {
+    sample.footprint_bytes = diagnostics::FootprintBytes(memory->rss_anon_bytes, memory->vm_swap_bytes);
+  }
+  if (const base::FilePath home = base::GetHomeDir(); !home.empty()) {
+    sample.free_disk_bytes = base::SysInfo::AmountOfFreeDiskSpace(home);
+  }
+  return sample;
+}
+
 }
 
 bool LinuxSystemInvokes(std::string_view method) {
   return std::ranges::any_of(desktop::kSystemCapabilities, [method](const char* handled) { return method == handled; }) ||
-         std::ranges::any_of(hardware::kHardwareCapabilities, [method](const char* handled) { return method == handled; });
+         std::ranges::any_of(hardware::kHardwareCapabilities, [method](const char* handled) { return method == handled; }) ||
+         std::ranges::any_of(diagnostics::kDiagnosticsCapabilities, [method](const char* handled) { return method == handled; });
 }
 
 void LinuxSystemInvoke(std::string_view method, const base::ListValue& args, Done done) {
@@ -214,6 +232,15 @@ void LinuxSystemInvoke(std::string_view method, const base::ListValue& args, Don
     if (!args.empty()) return Fail(std::move(done), "ERR_SYSTEM_REQUEST", "The hardware details take no arguments");
     Worker()->PostTaskAndReplyWithResult(FROM_HERE, base::BindOnce(&ReadChip),
                                          base::BindOnce(&ReplyHardware, std::move(done)));
+    return;
+  }
+  if (method == diagnostics::kSampleCall) {
+    if (!args.empty()) return Fail(std::move(done), "ERR_SYSTEM_REQUEST", "The diagnostics sample takes no arguments");
+    Worker()->PostTaskAndReplyWithResult(
+        FROM_HERE, base::BindOnce(&ReadDiagnosticsSample),
+        base::BindOnce([](Done done, diagnostics::Sample sample) {
+          std::move(done).Run(true, base::Value(diagnostics::Reply(sample)));
+        }, std::move(done)));
     return;
   }
   if (method == hardware::kThinScrollBarsCall) {

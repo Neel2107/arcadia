@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { PAGE_OPTION_CALLS, resolveHostModule } from "./hostModules.ts";
 import { CLI_CONTROL_METHODS, CLI_INSTALL_METHODS, DICTATION_METHOD, LINKS_FROM_OTHER_APPS, USER_SCRIPTS_METHODS, linuxCapabilities, unavailablePanes, unavailableSettingIds } from "./hostCapabilities.ts";
-import { CAST_UNAVAILABLE_TITLE, linuxMediaCall } from "./hostCast.ts";
+import { CAPTURE_CALLS, CAST_UNAVAILABLE_TITLE, linuxMediaCall } from "./hostCast.ts";
 import { USER_SCRIPTS_LOCK, leadUserScripts } from "./hostUserScripts.ts";
 import { useBrowser } from "../../browser/src/state/browser/store.ts";
 import { useToasts } from "../../browser/src/state/app/toasts.ts";
@@ -355,6 +355,25 @@ test("the media domain keeps reaching the host for everything but casting", asyn
   assert.equal(await call("selectDevice", "", JSON.stringify({ id: 1, index: 0 })), "null");
   assert.equal(await call("showCastDialog", "", JSON.stringify({ tabId: "missing" })), "false");
   assert.deepEqual(calls, ["media.selectDevice"]);
+});
+
+test("stopping and switching a share reach a host that advertises them, and are refused by one that doesn't", async () => {
+  const calls = [];
+  const host = (capabilities) => ({ bootstrap: { capabilities, nativeModules: {} }, call: async (name, profile, args) => { calls.push([name, args]); return "true"; }, invoke: async () => null, onEvent: () => {} });
+  const engine = readFileSync(new URL("../../../engine/ardiacore-linux/src/ardia/linux/ac_linux_media_share.h", import.meta.url), "utf8");
+  for (const verb of CAPTURE_CALLS) assert.ok(engine.includes(`"media.${verb}"`), verb);
+  const current = resolveHostModule(host(CAPTURE_CALLS.map((verb) => `media.${verb}`)), "ArdiaMedia", "call");
+  assert.equal(await current("stopCapture", "", JSON.stringify({ tabId: "meet" })), "true");
+  assert.equal(await current("changeCaptureSource", "", JSON.stringify({ capturer: "meet", target: "slides" })), "true");
+  assert.deepEqual(calls, [["media.stopCapture", JSON.stringify({ tabId: "meet" })], ["media.changeCaptureSource", JSON.stringify({ capturer: "meet", target: "slides" })]]);
+  await assert.rejects(current("startCasting", "", "{}"), (error) => error.code === "ERR_UNAVAILABLE");
+  calls.length = 0;
+  const half = resolveHostModule(host(["media.stopCapture"]), "ArdiaMedia", "call");
+  assert.equal(await half("stopCapture", "", JSON.stringify({ tabId: "meet" })), "true");
+  await assert.rejects(half("changeCaptureSource", "", "{}"), (error) => error.code === "ERR_UNAVAILABLE");
+  const old = resolveHostModule(host([]), "ArdiaMedia", "call");
+  for (const verb of CAPTURE_CALLS) await assert.rejects(old(verb, "", "{}"), (error) => error.code === "ERR_UNAVAILABLE", verb);
+  assert.equal(calls.length, 1);
 });
 
 test("a page option the host has no backend for is settled here, and reaches a host that advertises it", async () => {

@@ -1,0 +1,24 @@
+A drop on a page is offered to the Ardia Linux host first, so extension packages (.crx) dropped on a tab
+install with Ardia's prompt, as on the Mac, instead of reaching the page.
+--- a/chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.cc
++++ b/chrome/browser/ui/views/tab_contents/chrome_web_contents_view_delegate_views.cc
+@@ -181,9 +181,19 @@
+   return !!context_menu_;
+ }
+ 
++bool (*g_ardia_linux_page_drop)(content::WebContents*,
++                                const content::DropData&) = nullptr;
++
+ void ChromeWebContentsViewDelegateViews::OnPerformingDrop(
+     const content::DropData& drop_data,
+     DropCompletionCallback callback) {
++  if (g_ardia_linux_page_drop &&
++      g_ardia_linux_page_drop(web_contents_, drop_data)) {
++    if (!callback.is_null()) {
++      std::move(callback).Run(std::nullopt);
++    }
++    return;
++  }
+   if (!callback.is_null()) std::move(callback).Run(std::move(drop_data));
+ }
+ 
