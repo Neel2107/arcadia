@@ -137,6 +137,13 @@ test("interactive credential requests get longer deadlines than ordinary request
   assert.deepEqual([...f.delays.values()], [30000, 180000, 900000, 180000, 180000, 30000, 30000]);
 });
 
+test("the bang list fetch outlives its native 60 s timeout", () => {
+  const f = fixture();
+  void f.host.invoke("ArdiaShell.fetchBangList", { args: [null] });
+  void f.host.invoke("ArdiaShell.readText", { args: [] });
+  assert.deepEqual([...f.delays.values()], [75000, 30000]);
+});
+
 test("the ardia command's installer outlives its native 300 s deadline, kill grace and output drain", () => {
   const f = fixture();
   void f.host.invoke("ArdiaCli.install", { args: [] });

@@ -23,6 +23,8 @@
 #include "ardia/linux/ac_linux_autoplay.h"
 #include "ardia/linux/ac_linux_web_store.h"
 #include "ardia/linux/ac_linux_background_dialogs.h"
+#include "ardia/linux/ac_linux_bang_list.h"
+#include "ardia/linux/ac_linux_bang_list_policy.h"
 #include "ardia/linux/ac_linux_calendar_service.h"
 #include "ardia/linux/ac_linux_close.h"
 #include "ardia/linux/ac_linux_close_hooks.h"
@@ -41,6 +43,8 @@
 #include "ardia/linux/ac_linux_glass.h"
 #include "ardia/linux/ac_linux_extensions.h"
 #include "ardia/linux/ac_linux_native_messaging.h"
+#include "ardia/linux/ac_linux_notifications.h"
+#include "ardia/linux/ac_linux_notifications_core.h"
 #include "ardia/linux/ac_linux_files.h"
 #include "ardia/linux/ac_linux_automation.h"
 #include "ardia/linux/ac_linux_cli.h"
@@ -58,6 +62,8 @@
 #include "ardia/linux/ac_linux_power.h"
 #include "ardia/linux/ac_linux_tab_policy.h"
 #include "ardia/linux/ac_linux_launch_steps.h"
+#include "ardia/linux/ac_linux_launch_urls.h"
+#include "ardia/linux/ac_linux_open_urls.h"
 #include "ardia/linux/ac_linux_page_state.h"
 #include "ardia/linux/ac_linux_pip_player.h"
 #include "ardia/linux/ac_linux_private_services.h"
@@ -68,6 +74,7 @@
 #include "ardia/linux/ac_linux_session.h"
 #include "ardia/linux/ac_linux_site_controls_service.h"
 #include "ardia/linux/ac_linux_window_caption.h"
+#include "ardia/linux/ac_linux_window_commands.h"
 #include "ardia/linux/ac_linux_window_lifecycle.h"
 #include "ardia/linux/ac_linux_favicons.h"
 #include "ardia/linux/ac_linux_page_status.h"
@@ -1147,6 +1154,9 @@ class ShellHostView : public views::View,
   bool closing() const {
     return close_.phase() != LinuxClose::Phase::kIdle && close_.phase() != LinuxClose::Phase::kCancelled;
   }
+  bool TakesOpenUrls() const { return browser_ && !is_utility() && !private_window() && !closing(); }
+  bool OpenUrlsListening() const { return handler_ && open_urls_listener_ == renderer_generation_; }
+  bool ShellLive() const { return handler_ != nullptr; }
   bool Trusted(content::WebUI* ui) const;
   bool DeferChromeClose(const base::UnguessableToken& token, LinuxCloseStage stage,
                          base::OnceCallback<void(bool)> continuation);
@@ -1381,6 +1391,7 @@ class ShellHostView : public views::View,
   std::map<int, UnclaimedTab> unclaimed_;
   std::map<int, base::WeakPtr<content::WebContents>> announced_;
   std::optional<uint64_t> unclaimed_listener_;
+  std::optional<uint64_t> open_urls_listener_;
   friend class HostMessageHandler;
   static bool TabClaimed(content::WebContents* contents);
   void NoteUnclaimedTab(content::WebContents* contents, bool active);
@@ -2772,6 +2783,12 @@ base::DictValue ShellHostView::Bootstrap() const {
   for (const char* capability : ardiacore::kLinuxConfigCapabilities) capabilities.Append(capability);
   for (const char* capability : ardia::linux_desktop::kSystemCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxUserScriptsCapabilities) capabilities.Append(capability);
+  if (TakesOpenUrls()) {
+    for (const char* capability : ardia::linux_open_urls::kOpenUrlCapabilities) capabilities.Append(capability);
+  }
+  for (const char* capability : ardia::linux_commands::kWindowCommandCapabilities) capabilities.Append(capability);
+  for (const char* capability : ardia::linux_notifications::kNotificationCapabilities) capabilities.Append(capability);
+  capabilities.Append("ArdiaShell.fetchBangList");
   base::DictValue native_modules;
   native_modules.Set("ArdiaApp", base::DictValue().Set("systemInfo", std::move(info)));
   if (auto installed = ardiacore::LinuxCliBootstrapVersion()) {
@@ -3772,6 +3789,40 @@ void BroadcastWindowEvent(const base::DictValue& event) {
   for (const auto& [id, host] : Hosts()) {
     if (!host->is_utility()) host->Event("ArdiaShell", "onWindowEvent", base::Value(event.Clone()));
   }
+}
+
+bool AnyWindowTakesOpenUrls() {
+  return std::ranges::any_of(Hosts(), [](const auto& entry) { return entry.second->TakesOpenUrls(); });
+}
+
+void DeliverOpenUrls() {
+  if (!ardia::LinuxOpenUrlsPending()) return;
+  ShellHostView* chosen = nullptr;
+  for (const auto& [id, host] : Hosts()) {
+    if (!host->TakesOpenUrls() || !host->OpenUrlsListening()) continue;
+    if (!chosen || host->activation() > chosen->activation()) chosen = host;
+  }
+  if (!chosen) return;
+  base::ListValue urls;
+  for (std::string& url : ardia::TakeLinuxOpenUrls()) urls.Append(std::move(url));
+  if (urls.empty()) return;
+  chosen->Event("ArdiaShell", "onOpenURLs", base::Value(base::DictValue().Set("urls", std::move(urls))));
+}
+
+void ReportNotificationResponse(int owner, bool clicked, base::Value response) {
+  ShellHostView* chosen = nullptr;
+  const auto posted = Hosts().find(owner);
+  if (posted != Hosts().end() && posted->second->ShellLive()) {
+    chosen = posted->second;
+  } else {
+    for (const auto& [id, host] : Hosts()) {
+      if (!host->TakesOpenUrls() || !host->ShellLive()) continue;
+      if (!chosen || host->activation() > chosen->activation()) chosen = host;
+    }
+  }
+  if (!chosen) return;
+  if (clicked) chosen->FocusWindow();
+  chosen->Event("ArdiaApp", ardia::linux_notifications::kResponseEvent, std::move(response));
 }
 
 void BroadcastProfileLoaded(const std::string& profile) {
@@ -5049,6 +5100,20 @@ void ShellHostView::TabCommand(
           }
           std::move(done).Run(true, result && request.Valid() ? base::Value(std::move(*result)) : base::Value());
         }, std::move(*request), std::move(done)));
+  } else if (command == ardia::linux_commands::kEditCommand) {
+    using ardia::linux_commands::EditAction;
+    const auto action = values.size() == 1 && values[0].is_string()
+        ? ardia::linux_commands::ParseEditAction(values[0].GetString()) : std::nullopt;
+    if (!action) return std::move(done).Run(false, base::Value("edit requires one known editing action"));
+    switch (*action) {
+      case EditAction::kUndo: contents->Undo(); break;
+      case EditAction::kRedo: contents->Redo(); break;
+      case EditAction::kCut: contents->Cut(); break;
+      case EditAction::kCopy: contents->Copy(); break;
+      case EditAction::kPaste: contents->Paste(); break;
+      case EditAction::kPasteAndMatchStyle: contents->PasteAndMatchStyle(); break;
+      case EditAction::kSelectAll: contents->SelectAll(); break;
+    }
   } else if (command == "resolveUnresponsive") {
     auto* status = binding->page() ? binding->page()->status() : nullptr;
     if (!status || !status->ResolveUnresponsive(values)) {
@@ -5804,6 +5869,10 @@ void ShellHostView::Invoke(
   if (ardiacore::LinuxSystemInvokes(method)) {
     return ardiacore::LinuxSystemInvoke(method, values, std::move(done));
   }
+  if (method == ardia::linux_bang_list::kCall) return ardiacore::FetchLinuxBangList(values, std::move(done));
+  if (ardiacore::LinuxNotificationsInvokes(method)) {
+    return ardiacore::LinuxNotificationsInvoke(method, values, profile(), id_, std::move(done));
+  }
   if (ardiacore::LinuxConfigInvokes(method)) {
     base::FilePath user_data_directory;
     base::PathService::Get(chrome::DIR_USER_DATA, &user_data_directory);
@@ -6025,6 +6094,14 @@ void ShellHostView::Invoke(
   }
   if (method == "ArdiaTabs.claimLaunchTab") return ClaimLaunchTab(values, std::move(done));
   if (method == "ArdiaTabs.unclaimedTabs") return ListenForUnclaimedTabs(std::move(done));
+  if (method == ardia::linux_open_urls::kListenCall) {
+    if (!values.empty()) return std::move(done).Run(false, base::Value("listenForOpenURLs takes no arguments"));
+    if (!TakesOpenUrls()) return std::move(done).Run(false, base::Value("This window takes no links from other apps"));
+    open_urls_listener_ = renderer_generation_;
+    std::move(done).Run(true, base::Value());
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE, base::BindOnce(&DeliverOpenUrls));
+    return;
+  }
   if (method == "ArdiaTabs.prepareTransfer" || method == "ArdiaTabs.releaseTransfer") {
     auto* binding = BindingForKey(ArgumentString(values, 0));
     if (!binding) return std::move(done).Run(false, base::Value("No owned tab to transfer"));
@@ -6381,6 +6458,7 @@ void ShellHostView::Invoke(
   if (method == "ArdiaShell.windowFrame" || method == "ArdiaShell.closeWindow" ||
       method == "ArdiaShell.minimizeWindow" ||
       method == "ArdiaShell.toggleMaximizeWindow" ||
+      method == ardia::linux_commands::kToggleFullScreenCall ||
       method == "ArdiaShell.focusWindow" || method == "ArdiaShell.utilityReady" ||
       method == "ArdiaShell.setWindowTitle") {
     ShellHostView* target = nullptr;
@@ -6419,6 +6497,13 @@ void ShellHostView::Invoke(
       } else {
         window->Maximize();
       }
+    } else if (method == ardia::linux_commands::kToggleFullScreenCall) {
+      views::Widget* widget = target->GetWidget();
+      ExclusiveAccessManager* access = target->is_utility() ? nullptr : ExclusiveAccessManager::From(target->browser());
+      if (!widget || !access) return std::move(done).Run(false, base::Value("Only browser windows go full screen"));
+      const bool full_screen = ardia::linux_commands::FullScreenAfterToggle(widget->IsFullscreen());
+      access->fullscreen_controller()->ToggleBrowserFullscreenMode(true);
+      return std::move(done).Run(true, base::Value(full_screen));
     } else if (method == "ArdiaShell.focusWindow") {
       ActivateNativeWindow(target->browser(), WindowFocus().Focus(target->id()));
     } else {
@@ -7329,6 +7414,13 @@ void StartLinuxHost() {
           .Set("name", "contentBlocker.changed").Set("data", stats.Clone())));
     }
   }));
+  ardiacore::InitLinuxNotifications(base::BindRepeating(&ReportNotificationResponse));
+  ardia::LinuxOpenUrlsSink open_urls;
+  open_urls.has_window = base::BindRepeating(&AnyWindowTakesOpenUrls);
+  open_urls.arrived = base::BindRepeating([] {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(FROM_HERE, base::BindOnce(&DeliverOpenUrls));
+  });
+  ardia::SetLinuxOpenUrlsSink(std::move(open_urls));
   static base::NoDestructor<HostRegistry> registry;
   registry->Start();
 }

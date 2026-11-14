@@ -62,6 +62,20 @@ source_set("close_hooks") {
   deps = [ "//base" ]
 }
 
+source_set("open_urls") {
+  sources = [
+    "ac_linux_launch_urls.cc",
+    "ac_linux_launch_urls.h",
+    "ac_linux_open_urls.cc",
+    "ac_linux_open_urls.h",
+  ]
+  deps = [
+    "//ardia/core:launch_switches",
+    "//base",
+    "//url",
+  ]
+}
+
 source_set("devtools_authority") {
   sources = [
     "ac_linux_devtools_authority.cc",
@@ -99,6 +113,9 @@ source_set("linux") {
     "ac_linux_automation.h",
     "ac_linux_background_dialogs.cc",
     "ac_linux_background_dialogs.h",
+    "ac_linux_bang_list.cc",
+    "ac_linux_bang_list.h",
+    "ac_linux_bang_list_policy.h",
     "ac_linux_cli.cc",
     "ac_linux_cli.h",
     "ac_linux_config.cc",
@@ -194,6 +211,10 @@ source_set("linux") {
     "ac_linux_memory_saver.h",
     "ac_linux_native_messaging.cc",
     "ac_linux_native_messaging.h",
+    "ac_linux_notifications.cc",
+    "ac_linux_notifications.h",
+    "ac_linux_notifications_core.cc",
+    "ac_linux_notifications_core.h",
     "ac_linux_navigation_hold.cc",
     "ac_linux_navigation_hold.h",
     "ac_linux_page_commands.cc",
@@ -249,6 +270,7 @@ source_set("linux") {
     "ac_linux_web_store_queue.h",
     "ac_linux_window_caption.cc",
     "ac_linux_window_caption.h",
+    "ac_linux_window_commands.h",
     "ac_linux_window_lifecycle.cc",
     "ac_linux_window_lifecycle.h",
     "ac_linux_suggest.cc",
@@ -283,6 +305,7 @@ source_set("linux") {
     ":bootstrap",
     ":close_hooks",
     ":devtools_authority",
+    ":open_urls",
     ":page_messages",
     ":page_mojom",
     "//ardia/core:launch_switches",
@@ -308,6 +331,7 @@ source_set("linux") {
     "//chrome/browser/lifetime:termination_notification",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/net",
+    "//chrome/browser/notifications",
     "//chrome/browser/picture_in_picture",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_util",
@@ -391,6 +415,7 @@ source_set("linux") {
     "//ui/native_theme",
     "//ui/shell_dialogs",
     "//ui/linux:linux_ui",
+    "//ui/message_center/public/cpp",
     "//ui/ozone",
     "//ui/platform_window",
     "//ui/platform_window/wm",

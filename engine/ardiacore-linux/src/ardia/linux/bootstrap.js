@@ -37,6 +37,7 @@
     ["ArdiaCalendar.sources", 60000],
     ["ArdiaCalendar.objects", 120000],
     ["ArdiaCli.install", 330000],
+    ["ArdiaShell.fetchBangList", 75000],
   ]);
 
   const request = (method, args, deadline = 30000) => {
