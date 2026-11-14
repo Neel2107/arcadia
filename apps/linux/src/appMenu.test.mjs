@@ -104,3 +104,32 @@ test("a command the host can't carry out is left out of the menu instead of doin
   assert.equal(find(items, "emailPageLocation"), undefined);
   assert.ok(find(top(items, "File").children, "print"));
 });
+
+test("View carries the Mac's full screen entry between the zoom entries and Developer, and its title follows the window", () => {
+  const shortcuts = new Map([["std:toggleFullScreen:", { key: String.fromCharCode(0xf70e), modifiers: [] }]]);
+  const items = appMenuItems(state(), shortcuts);
+  const view = rows(items, "View");
+  assert.deepEqual(view.slice(view.indexOf("Zoom Out")), ["Zoom Out", "-", "Enter Full Screen", "-", "Developer"]);
+  assert.deepEqual(find(items, "std:toggleFullScreen:"), { id: "std:toggleFullScreen:", title: "Enter Full Screen", key: String.fromCharCode(0xf70e), modifiers: [] });
+  assert.equal(find(appMenuItems(state(), shortcuts, new Set(), { fullScreen: true }), "std:toggleFullScreen:").title, "Exit Full Screen");
+  assert.deepEqual(appMenuChoice("std:toggleFullScreen:"), { kind: "command", command: "toggleFullScreen", arg: null });
+  const without = rows(appMenuItems(state(), shortcuts, new Set(["std:toggleFullScreen:"])), "View");
+  assert.deepEqual(without.slice(without.indexOf("Zoom Out")), ["Zoom Out", "-", "Developer"], "a host without full screen leaves the entry out");
+});
+
+test("Edit shows the standard editing entries in the Mac's order only while something can take them", () => {
+  const bare = rows(appMenuItems(state()), "Edit");
+  assert.deepEqual(bare, ["Copy URL", "Copy URL as Markdown", "-", "Find", "AutoFill"]);
+  const items = appMenuItems(state(), new Map(), new Set(), { edit: { disabled: new Set(["std:cut:", "std:copy:"]) } });
+  assert.deepEqual(rows(items, "Edit"), ["Undo", "Redo", "-", "Cut", "Copy", "Copy URL", "Copy URL as Markdown", "Paste", "Paste and Match Style", "Select All", "-", "Find", "AutoFill"]);
+  assert.deepEqual(find(items, "std:undo:"), { id: "std:undo:", title: "Undo", enabled: true, key: "z", modifiers: ["command"] });
+  assert.deepEqual(find(items, "std:redo:").modifiers, ["command", "shift"]);
+  assert.deepEqual(find(items, "std:pasteAndMatchStyle:").modifiers, ["command", "shift"]);
+  assert.equal(find(items, "std:cut:").enabled, false);
+  assert.equal(find(items, "std:copy:").enabled, false);
+  assert.equal(find(items, "std:paste:").enabled, true);
+  assert.equal(find(appMenuItems(state(), new Map(), new Set(), { edit: null }), "std:undo:"), undefined);
+  for (const [id, action] of [["std:undo:", "undo"], ["std:redo:", "redo"], ["std:cut:", "cut"], ["std:copy:", "copy"], ["std:paste:", "paste"], ["std:pasteAndMatchStyle:", "pasteAndMatchStyle"], ["std:selectAll:", "selectAll"]])
+    assert.deepEqual(appMenuChoice(id), { kind: "edit", action });
+  assert.equal(appMenuChoice("std:delete:"), null);
+});

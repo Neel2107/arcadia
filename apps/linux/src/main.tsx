@@ -4,7 +4,7 @@ import "./styles.css";
 import { useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { unstable_batchedUpdates } from "react-native";
-import { emitCommand, menuShown, setWindowCloseDecider } from "@ardia/shell";
+import { emitAppEvent, emitCommand, menuShown, setWindowCloseDecider } from "@ardia/shell";
 import { WindowRoot } from "../../browser/src/App";
 import { startNativeSync } from "../../browser/src/state/app/nativeSync";
 import { startTabPages } from "../../browser/src/state/tabs/tabPages";
@@ -35,6 +35,7 @@ import { configRestoreSession, startConfigFiles } from "../../browser/src/state/
 import { colorRoles } from "../../browser/src/components/ui/tokens";
 import { startHostConfig } from "./hostConfig";
 import { COMMANDS } from "../../browser/src/state/commands/commandCatalog";
+import { opensOnCommandBar } from "./hostSmallWindows";
 import { linuxSessionShape, startHostPersistence } from "./hostSession";
 import { startHostData } from "./hostData";
 import { startHostDownloads } from "./hostDownloads";
@@ -51,6 +52,8 @@ import { applyHostPageTheme, forgetDepartedPage, resetHostPage } from "./hostPag
 import { setPopupDismissal } from "./popupDismissal";
 import { MenuHost } from "./menus";
 import { startPopoverEscape } from "./popoverEscape";
+import { startEditTargets } from "./editTargets";
+import { startNotificationResponses } from "../../browser/src/state/app/notificationResponses";
 import { inputRegions, startShellAbove } from "./shellAbove";
 import { InWindowPlayer } from "./InWindowPlayer";
 import { startPipPlayer } from "./pipPlayer";
@@ -110,14 +113,17 @@ async function start() {
     followExtensionChanges(ardiaHost, settingsShowsExtensions, refreshExtensionsAfterChange);
     await startUtility(ardiaHost);
   } else {
-    if (!ardiaHost.bootstrap.privateWindow) useBrowser.setState(adoptParkedPins(useBrowser.getState(), windowId, profileId));
+    if (useBrowser.getState().windows[windowId]?.kind === "main") useBrowser.setState(adoptParkedPins(useBrowser.getState(), windowId, profileId));
+    if (opensOnCommandBar(useBrowser.getState(), windowId)) useBrowser.getState().openPanel(windowId, "");
     watchActiveProfile(ardiaHost, useBrowser);
     startHostData();
     startHostTabLifecycle(ardiaHost, useBrowser);
     startShellAbove(ardiaHost);
     startPipPlayer(ardiaHost);
     setPopupDismissal({ popup: () => useExtensions.getState().popup, windowOf: (tabId) => useBrowser.getState().tabs[tabId]?.windowId, close: () => useExtensions.setState({ popup: null }) });
-    startPopoverEscape({ target: window, windowId, menuShown, activeElement: () => document.activeElement });
+    startEditTargets();
+    startNotificationResponses();
+    startPopoverEscape({ target: window, windowId, menuShown, activeElement: () => document.activeElement, unclaimed: () => emitAppEvent({ type: "unclaimedEscape", windowId }) });
     const persistence = startHostPersistence(ardiaHost, useBrowser, stored ?? {});
     setSessionFlush(persistence.flush);
     setSessionDeparture(persistence);

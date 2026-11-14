@@ -10,6 +10,7 @@ import { parkWindowPins } from "../../browser/src/state/pins/parkedPins";
 import { inPinnedContainer, isIncognitoProfile, snapshotTab } from "../../browser/src/state/browser/model";
 import { closedWindowEntry, MAX_CLOSED_WINDOWS } from "../../browser/src/state/pins/closedTabs";
 import { withPrivateWindow } from "./hostWindowProfiles.ts";
+import { withSmallWindow } from "./hostSmallWindows.ts";
 import { sessionWithSplitSlots, sessionWithTabPages, sessionWithTabPins } from "../../browser/src/state/session/savedShapes";
 import { splitTabIds } from "../../browser/src/state/splits/splits";
 import { sessionWithPinChoiceStamps } from "../../browser/src/state/pins/pinChoices";
@@ -218,6 +219,8 @@ export function initialHostSession(host: ArdiaHost, saved: HydrateData | null | 
   if (saved?.closedWindows) saved = { ...saved, closedWindows: inClosingOrder(saved.closedWindows) };
   const privateSession = withPrivateWindow(host, saved ?? {});
   if (privateSession) return privateSession;
+  const smallSession = withSmallWindow(host, saved ?? {}, undefined, now);
+  if (smallSession) return smallSession;
   if (saved && host.bootstrap.startup === true && windowId === LAUNCH_WINDOW_ID) saved = withLaunchWindowAdopted(saved, windowId);
   const profile = { id: profileId, name: "Personal", color: "plum" as const, icon: null, createdAt: now };
   const profiles = { ...saved?.profiles };
@@ -375,7 +378,7 @@ type StandIn = { windowId: string; profileId?: string };
 function windowStandIn(host: ArdiaHost, state: BrowserState, initial: HydrateData): StandIn | undefined {
   const { windowId, startup, chromeMade } = host.bootstrap;
   const w = state.windows[windowId];
-  if (startup !== false || chromeMade || !w || w.kind === "private" || initial.windows?.[windowId]) return undefined;
+  if (startup !== false || chromeMade || w?.kind !== "main" || initial.windows?.[windowId]) return undefined;
   return initial.profiles?.[w.profileId] ? { windowId } : { windowId, profileId: w.profileId };
 }
 

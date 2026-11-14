@@ -18,6 +18,8 @@ export type LinuxCapabilities = {
   haptics: boolean;
   linksFromOtherApps: boolean;
   dictation: boolean;
+  fullScreen: boolean;
+  pageEdits: boolean;
 };
 
 export const CLI_CONTROL_METHODS = [
@@ -36,6 +38,9 @@ export const USER_SCRIPTS_METHODS = ["ArdiaUserScripts.watch", "ArdiaUserScripts
 
 export const LINKS_FROM_OTHER_APPS = "ArdiaShell.onOpenURLs";
 export const DICTATION_METHOD = "ArdiaShell.startDictation";
+export const FULL_SCREEN_METHOD = "ArdiaShell.toggleFullScreen";
+export const FULL_SCREEN_ITEM = "std:toggleFullScreen:";
+export const PAGE_EDIT_COMMAND = "tab.edit";
 
 export function linuxCapabilities(host: ArdiaHost | undefined = ardiaHost): LinuxCapabilities {
   const has = (...methods: string[]) => !!host && methods.every((method) => hostSupports(method, host));
@@ -57,6 +62,8 @@ export function linuxCapabilities(host: ArdiaHost | undefined = ardiaHost): Linu
     haptics: has("ArdiaSystem.hapticTick"),
     linksFromOtherApps: has(LINKS_FROM_OTHER_APPS),
     dictation: has(DICTATION_METHOD),
+    fullScreen: has(FULL_SCREEN_METHOD),
+    pageEdits: has(PAGE_EDIT_COMMAND),
   };
 }
 
@@ -82,6 +89,7 @@ export const unavailableCommands = (capabilities: LinuxCapabilities): Set<string
     ...(capabilities.externalLinks ? [] : ["emailPageLocation"]),
     ...(capabilities.linksFromOtherApps ? [] : ["toggleOpenLinksInLittleArdia"]),
     ...(capabilities.webkit ? [] : ["togglePageEngine", "toggleJavaScriptFromAppleEvents"]),
+    ...(capabilities.fullScreen ? [] : [FULL_SCREEN_ITEM]),
   ]);
 
 export const unavailablePanes = (capabilities: LinuxCapabilities): Set<string> => new Set(capabilities.webkit ? [] : ["engines"]);

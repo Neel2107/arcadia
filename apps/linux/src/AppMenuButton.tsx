@@ -6,6 +6,7 @@ import { useTheme } from "../../browser/src/components/ui/theme";
 import { menuButtonPresses, showMenu } from "./menus";
 import { linuxMenuShortcuts } from "./shortcuts";
 import { appMenuChoice, appMenuItems } from "./appMenu";
+import { currentEditMenu, currentEditTarget, runEdit } from "./editTargets";
 import { hostModuleMethod, reportHostError } from "./host";
 import { linuxCapabilities, unavailableCommands } from "./hostCapabilities";
 import { videoTourUrl } from "../../browser/src/state/onboarding/tour";
@@ -34,7 +35,8 @@ export async function openAppMenu(windowId: string, button: HTMLElement) {
     "key" in shortcut ? { key: shortcut.key, modifiers: shortcut.modifiers } : { key: "", modifiers: [] },
   ]));
   const focusOrder = [windowId, ...state.ui.focusOrder.filter((id) => id !== windowId)];
-  const items = appMenuItems(menuState({ ...state, ui: { ...state.ui, focusOrder } }), shortcuts, hiddenCommands());
+  const editTarget = currentEditTarget();
+  const items = appMenuItems(menuState({ ...state, ui: { ...state.ui, focusOrder } }), shortcuts, hiddenCommands(), { fullScreen: !!state.windows[windowId]?.fullScreen, edit: currentEditMenu(windowId, editTarget) });
   const { left, bottom } = button.getBoundingClientRect();
   const openedByPointer = !button.matches(":focus-visible");
   const id = await showMenu(items, { x: left, y: bottom + 4 });
@@ -42,6 +44,7 @@ export async function openAppMenu(windowId: string, button: HTMLElement) {
   const choice = id ? appMenuChoice(id) : null;
   if (!choice) return;
   if (choice.kind === "about") return showAbout(windowId);
+  if (choice.kind === "edit") return runEdit(windowId, choice.action, editTarget).catch(reportHostError);
   if (choice.kind === "command") return emitCommand({ command: choice.command, arg: choice.arg, windowId });
   if (choice.action === "close") return void closeWindow(windowId).catch(reportHostError);
   void hostModuleMethod("ArdiaShell", choice.action === "minimize" ? "minimizeWindow" : "toggleMaximizeWindow")(windowId).catch(reportHostError);

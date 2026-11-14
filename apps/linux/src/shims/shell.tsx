@@ -4,6 +4,7 @@ import { provideNativeModuleProvider } from "./expo-modules-core";
 import { linuxHostDialogs, type DialogSuspension } from "../hostDialogs";
 import { ardiaHost, hostModuleMethod, reportHostError } from "../host";
 import { flushLinuxSession, isLinuxUtility, linuxWindowDeparture } from "../session";
+import { takeHandedOverWindow } from "../hostWindowProfiles";
 import { createWindowCloseBarrier, type WindowCloseRequest } from "../utilityClose";
 import { quiesceLinuxSession, resumeLinuxSession } from "../sessionClose";
 import { quiesceLinuxDocuments, resumeLinuxDocuments, flushLinuxDocuments } from "../documentFlush";
@@ -89,6 +90,6 @@ if (ardiaHost && !isLinuxUtility(ownWindowId)) setManagedWindowClose((windowId, 
   void closeCoordinator.close(reason).catch(reportClose);
   return true;
 });
-export const closeWindow = (id: string): Promise<void> => closeCoordinator.closeWindow(id);
+export const closeWindow = (id: string): Promise<void> => takeHandedOverWindow(id) ? Promise.resolve() : closeCoordinator.closeWindow(id);
 const managedShell: Record<string, unknown> = { closeWindow, menuShortcuts, recordShortcut, cancelRecording: cancelShortcutRecording };
 provideNativeModuleProvider((name, method) => name === "ArdiaShell" && Object.hasOwn(managedShell, method) ? managedShell[method] : undefined);

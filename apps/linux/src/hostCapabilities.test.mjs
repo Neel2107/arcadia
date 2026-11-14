@@ -42,10 +42,10 @@ test("a host that advertises a system backend is called through instead of being
 test("Linux capabilities come from the host contract, and WebKit is never offered", () => {
   assert.deepEqual(linuxCapabilities(fakeHost().host), {
     defaultBrowser: false, launchAtLogin: false, thinScrollBars: false, webkit: false, cliControl: false, cliInstall: false, userScripts: false, externalLinks: false, performanceRecording: false, taskManager: false, videoUpscaling: false,
-    commandScrollZoom: false, littleArdiaNewTabLinks: false, peekOtherSites: false, haptics: false, linksFromOtherApps: false, dictation: false,
+    commandScrollZoom: false, littleArdiaNewTabLinks: false, peekOtherSites: false, haptics: false, linksFromOtherApps: false, dictation: false, fullScreen: false, pageEdits: false,
   });
   const full = linuxCapabilities(fakeHost(["ArdiaSystem.isDefaultBrowser", "ArdiaSystem.setAsDefaultBrowser", "ArdiaSystem.launchAtLoginStatus", "ArdiaSystem.setLaunchAtLogin", "ArdiaSystem.setThinScrollBars", "engine.beginTracing", "engine.endTracing", "engine.isTracing", "engine.openTaskManager", "ArdiaApp.openExternalURL"]).host);
-  assert.deepEqual(full, { defaultBrowser: true, launchAtLogin: true, thinScrollBars: true, webkit: false, cliControl: false, cliInstall: false, userScripts: false, externalLinks: true, performanceRecording: true, taskManager: true, videoUpscaling: false, commandScrollZoom: false, littleArdiaNewTabLinks: false, peekOtherSites: false, haptics: false, linksFromOtherApps: false, dictation: false });
+  assert.deepEqual(full, { defaultBrowser: true, launchAtLogin: true, thinScrollBars: true, webkit: false, cliControl: false, cliInstall: false, userScripts: false, externalLinks: true, performanceRecording: true, taskManager: true, videoUpscaling: false, commandScrollZoom: false, littleArdiaNewTabLinks: false, peekOtherSites: false, haptics: false, linksFromOtherApps: false, dictation: false, fullScreen: false, pageEdits: false });
   const routed = linuxCapabilities(fakeHost(["webView.setCommandScrollZoom", "webView.setLittleArdiaOpensNewTabLinks", "webView.setPeekOtherSiteTabs", "ArdiaSystem.hapticTick", LINKS_FROM_OTHER_APPS, DICTATION_METHOD]).host);
   assert.deepEqual([routed.commandScrollZoom, routed.littleArdiaNewTabLinks, routed.peekOtherSites, routed.haptics, routed.linksFromOtherApps, routed.dictation], [true, true, true, true, true, true]);
   assert.equal(linuxCapabilities(undefined).taskManager, false);
@@ -370,4 +370,18 @@ test("a page option the host has no backend for is settled here, and reaches a h
   await withZoom("setCommandScrollZoom", "", JSON.stringify({ enabled: false }));
   await withZoom("setVideoUpscaling", "", JSON.stringify({ enabled: true }));
   assert.deepEqual(calls, [["webView.setCommandScrollZoom", JSON.stringify({ enabled: false })]]);
+});
+
+test("an engine without full screen or page editing offers neither, and F11 stays Chromium's", async () => {
+  const { linuxBindings, linuxMenuShortcuts } = await import("./shortcuts.ts");
+  const { unavailableCommands } = await import("./hostCapabilities.ts");
+  const { host } = fakeHost();
+  const capabilities = linuxCapabilities(host);
+  assert.equal(capabilities.fullScreen, false);
+  assert.equal(capabilities.pageEdits, false);
+  assert.equal(unavailableCommands(capabilities).has("std:toggleFullScreen:"), true);
+  assert.equal(linuxMenuShortcuts().some((item) => item.id === "std:toggleFullScreen:"), false);
+  assert.equal(linuxBindings().some((binding) => binding.command === "toggleFullScreen" || binding.keyCode === 122), false);
+  const advertised = linuxCapabilities(fakeHost(["ArdiaShell.toggleFullScreen", "tab.edit"]).host);
+  assert.deepEqual([advertised.fullScreen, advertised.pageEdits], [true, true]);
 });

@@ -13,7 +13,7 @@ import { refreshTabViewports, watchTabViewport, type TabViewport } from "../../h
 import { inputRegions } from "../../shellAbove";
 import type { InputRegionsRegistry } from "../../inputRegions";
 import type { CornerRadii } from "../../hostExtensionView";
-import { notingPageFocus } from "../../pageFocus";
+import { notePageFocusRequest, notingPageFocus } from "../../pageFocus";
 import { withPopupDismissal } from "../../popupDismissal";
 
 export const HostWebView = forwardRef<WebViewHandle, WebViewProps>(function HostWebView(props, ref) {
@@ -67,6 +67,7 @@ const HostTabWebView = forwardRef<WebViewHandle, WebViewProps>(function HostTabW
         const current = tab.current;
         if (!current) throw new Error("Ardia tab is not mounted");
         if (property === "loadUrl") args[0] = toEngineUrl(args[0] as string);
+        if (property === "focus") notePageFocusRequest();
         if (property === "getSecurityInfo") return current.pageResult(property, args);
         const script = hostPageScript(property, args);
         if (script) return script.map ? current.command(script.command, script.args).then(script.map, () => (script.failed ? script.failed() : script.map!(null))) : current.command(script.command, script.args);

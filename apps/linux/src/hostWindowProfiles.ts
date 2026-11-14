@@ -4,9 +4,12 @@ import type { BrowserWindow, Tab } from "../../browser/src/state/browser/types";
 import type { ArdiaHost } from "./host";
 import { invokeHost, reportHostError } from "./host.ts";
 import { engineProfile, isIncognitoProfile } from "../../browser/src/state/browser/model";
+import { offerSmallWindow, smallWindowFrame, smallWindowSeed, withdrawSmallWindow, type ScreenArea, type SeedStorage } from "./hostSmallWindows.ts";
 
 export type PrivateWindowSeed = { window: BrowserWindow; tabs: Record<string, Tab> };
-type OpenOptions = Record<string, unknown> & { incognito?: boolean; profile?: string };
+type OpenOptions = Record<string, unknown> & { incognito?: boolean; profile?: string; kind?: string; frame?: unknown; size?: unknown };
+export type SmallWindowPort = { storage?: SeedStorage; screen?: () => ScreenArea | undefined };
+const ownScreen = () => typeof screen === "undefined" ? undefined : screen as unknown as ScreenArea;
 
 const PRIVATE_SEED_LIMIT = 1024 * 1024;
 type Opening = { promise: Promise<boolean>; resolve: (opened: boolean) => void };
@@ -30,6 +33,9 @@ export function windowOpened(id: string): Promise<boolean> {
 }
 
 export const pendingOpenings = () => openings.size;
+
+const handedOver = new Set<string>();
+export const takeHandedOverWindow = (id: string) => handedOver.delete(id);
 
 type RefusableStore = {
   getState(): Pick<BrowserState, "windows" | "closedWindows" | "closedTabs" | "closeWindow">;
@@ -67,6 +73,7 @@ function watchAttachments(host: ArdiaHost, drop: (id: string) => void) {
     if (typeof id !== "string") return;
     if (type === "refused") {
       waiting.delete(id);
+      withdrawSmallWindow(id);
       settleOpening(id, false);
       drop(id);
     } else if (type === "attached" && waiting.delete(id)) {
@@ -76,10 +83,24 @@ function watchAttachments(host: ArdiaHost, drop: (id: string) => void) {
   return waiting;
 }
 
-export function createHostWindowOpener(host: ArdiaHost, state: () => Pick<BrowserState, "windows" | "tabs">, emit: (event: WindowEvent) => void, drop: (id: string) => void = () => {}) {
+export function createHostWindowOpener(host: ArdiaHost, state: () => Pick<BrowserState, "windows" | "tabs" | "profiles">, emit: (event: WindowEvent) => void, drop: (id: string) => void = () => {}, small: SmallWindowPort = {}) {
   const waiting = attaching.get(host) ?? watchAttachments(host, drop);
-  return async (id: string, options: OpenOptions = {}) => {
-    const seed = options.incognito ? privateWindowSeed(state(), id) : undefined;
+  const seeded = new Set<string>();
+  return async (id: string, given: OpenOptions = {}) => {
+    const seed = given.incognito ? privateWindowSeed(state(), id) : undefined;
+    const smallSeed = given.kind === "small" && !given.incognito && id !== host.bootstrap.windowId && !seeded.has(id) ? smallWindowSeed(state(), id) : undefined;
+    if (smallSeed) seeded.add(id);
+    const offered = !!smallSeed && offerSmallWindow(smallSeed, small.storage);
+    const area = smallSeed && !given.frame ? (small.screen ?? ownScreen)() : undefined;
+    const frame = area ? smallWindowFrame(given.size, area) : undefined;
+    const options = frame ? { ...given, frame } : given;
+    if (offered) {
+      void windowOpened(id).then((opened) => {
+        if (!opened || !state().windows[id]) return;
+        handedOver.add(id);
+        drop(id);
+      });
+    }
     try {
       if (options.incognito && !seed) throw Object.assign(new Error("The private window has no state to open"), { code: "ERR_PROFILE_INVALID" });
       const reply = await invokeHost<{ pending?: boolean } | null>("ArdiaShell.openWindow", { args: [id, seed ? { ...options, privateWindow: seed } : options] }, host);
@@ -87,6 +108,7 @@ export function createHostWindowOpener(host: ArdiaHost, state: () => Pick<Browse
       else settleOpening(id, true);
     } catch (error) {
       reportHostError(error);
+      if (offered) withdrawSmallWindow(id, small.storage);
       settleOpening(id, false);
       if (state().windows[id]) emit({ type: "close", id });
     }

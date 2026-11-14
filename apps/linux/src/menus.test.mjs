@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { heldModifiers } from "./clickModifiers.ts";
-import { alternateShown, menuButtonPresses, menuShown, showMenu } from "./menus.tsx";
+import { alternateShown, hasSymbolColumn, menuButtonPresses, menuShown, showMenu } from "./menus.tsx";
 import { notingPageFocus } from "./pageFocus.ts";
 
 const pageTakesFocus = () => notingPageFocus({}).onPageFocus();
@@ -62,4 +62,10 @@ test("the app menu button toggles its menu from the keyboard as it does from the
   presses.click();
   assert.equal(opened, 3);
   pageTakesFocus();
+});
+
+test("a menu keeps a symbol column as soon as one of its rows has a symbol, so rows without one line up", () => {
+  assert.equal(hasSymbolColumn([{ id: "newTab", title: "New Tab in Group", symbol: "plus.app" }, { id: "nest", title: "New Nested Group" }]), true);
+  assert.equal(hasSymbolColumn([{ id: "a", title: "A" }, { separator: true }, { id: "b", title: "B" }]), false);
+  assert.equal(hasSymbolColumn([]), false);
 });

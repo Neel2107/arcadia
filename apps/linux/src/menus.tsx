@@ -21,6 +21,8 @@ export function alternateShown(primary: MenuItem | undefined, alternate: MenuIte
 
 let open: OpenMenu | null = null;
 export const menuShown = () => open !== null;
+
+export const hasSymbolColumn = (items: readonly MenuItem[]) => items.some((item) => !("separator" in item) && !!item.symbol);
 const watchers = new Set<() => void>();
 export const watchMenus = (watcher: () => void) => {
   watchers.add(watcher);
@@ -126,6 +128,7 @@ function MenuList({ items, anchor }: { items: MenuItem[]; anchor: MenuAnchor }) 
       for (const type of events) document.removeEventListener(type, track);
     };
   }, []);
+  const symbols = hasSymbolColumn(items);
   return createPortal(
     <div ref={menuRef} className={`ardia-menu${dark ? " dark" : ""}`} style={{ ...position, width: "max-content", minWidth: 240, maxWidth: "min(420px, calc(100vw - 26px))", maxHeight: "calc(100vh - 26px)", overflowY: "auto" }} onPointerDown={(e) => e.stopPropagation()}>
       {items.map((item, i) => {
@@ -141,7 +144,7 @@ function MenuList({ items, anchor }: { items: MenuItem[]; anchor: MenuAnchor }) 
             onClick={() => enabled && !item.children && close(item.id)}
           >
             <span className="ardia-menu-check">{item.checked ? "✓" : ""}</span>
-            {item.symbol ? <Symbol name={item.symbol} size={12} color="currentColor" style={{ width: 16, height: 16, marginRight: 6 }} /> : null}
+            {item.symbol ? <Symbol name={item.symbol} size={12} color="currentColor" style={{ width: 16, height: 16, marginRight: 6 }} /> : symbols && !item.swatch ? <span className="ardia-menu-symbol-gap" style={{ width: 16, marginRight: 6, flex: "none" }} /> : null}
             {item.swatch ? <span className="ardia-menu-swatch" style={{ background: item.swatch }} /> : null}
             <span className="ardia-menu-title">{item.title}</span>
             <span className="ardia-menu-key">{item.children ? "›" : item.key ? formatShortcut({ key: item.key, modifiers: item.modifiers ?? [] }) : ""}</span>

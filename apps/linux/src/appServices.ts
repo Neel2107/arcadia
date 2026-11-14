@@ -170,9 +170,13 @@ function quitApp(windowId: string) {
   });
 }
 
-export function runAppCommand(windowId: string, command: CommandEvent["command"], capabilities: LinuxCapabilities): boolean {
+export function runAppCommand(windowId: string, command: CommandEvent["command"], capabilities: LinuxCapabilities, host: ArdiaHost | undefined = ardiaHost): boolean {
   if ((command as string) === QUIT_COMMAND) {
     quitApp(windowId);
+    return true;
+  }
+  if ((command as string) === FULL_SCREEN_COMMAND) {
+    if (capabilities.fullScreen) void invokeHost("ArdiaShell.toggleFullScreen", { args: [windowId] }, host).catch(report);
     return true;
   }
   switch (command) {
@@ -203,6 +207,8 @@ export function runAppCommand(windowId: string, command: CommandEvent["command"]
   }
   return false;
 }
+
+export const FULL_SCREEN_COMMAND = "toggleFullScreen";
 
 export const UTILITY_APP_COMMANDS: ReadonlySet<string> = new Set(["copyDiagnostics", "taskManager", QUIT_COMMAND]);
 

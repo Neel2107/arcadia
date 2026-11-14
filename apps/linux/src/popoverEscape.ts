@@ -4,12 +4,14 @@ import { usePages } from "../../browser/src/state/tabs/pageState";
 const TEXT_ENTRY = "input, textarea, [contenteditable=''], [contenteditable='true']";
 
 type EscapeKey = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey" | "defaultPrevented" | "isComposing">;
+const NOTHING_FOCUSED = "body, html";
 
 type PopoverEscape = {
   target: Pick<EventTarget, "addEventListener" | "removeEventListener">;
   windowId: string;
   menuShown: () => boolean;
   activeElement: () => Pick<Element, "matches"> | null;
+  unclaimed?: () => void;
 };
 
 export function dismissesPopover(event: EscapeKey, typing: boolean, menuOpen: boolean) {
@@ -25,11 +27,14 @@ export function closeWindowPopovers(windowId: string) {
   return true;
 }
 
-export function startPopoverEscape({ target, windowId, menuShown, activeElement }: PopoverEscape) {
+export function startPopoverEscape({ target, windowId, menuShown, activeElement, unclaimed }: PopoverEscape) {
   const listener = (event: Event) => {
     const key = event as KeyboardEvent;
-    if (!dismissesPopover(key, !!activeElement()?.matches(TEXT_ENTRY), menuShown())) return;
-    if (closeWindowPopovers(windowId)) key.preventDefault();
+    const focused = activeElement();
+    if (!dismissesPopover(key, !!focused?.matches(TEXT_ENTRY), menuShown())) return;
+    if (closeWindowPopovers(windowId)) return key.preventDefault();
+    if (!unclaimed || key.repeat || (focused && !focused.matches(NOTHING_FOCUSED))) return;
+    unclaimed();
   };
   target.addEventListener("keydown", listener);
   return () => target.removeEventListener("keydown", listener);

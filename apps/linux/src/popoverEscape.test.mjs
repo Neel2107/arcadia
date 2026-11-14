@@ -66,3 +66,27 @@ test("only an unmodified, unhandled Escape dismisses", () => {
   assert.equal(closeWindowPopovers("other"), true);
   assert.equal(usePages.getState().popover.there, null);
 });
+
+test("an Escape nothing in the shell has is reported as unclaimed, once, and never while something is focused", () => {
+  usePages.setState({ popover: {} });
+  let focused = null;
+  let unclaimed = 0;
+  const target = new EventTarget();
+  const stop = startPopoverEscape({ target, windowId: "main", menuShown: () => false, activeElement: () => focused, unclaimed: () => unclaimed++ });
+  target.dispatchEvent(escape());
+  assert.equal(unclaimed, 1);
+  focused = { matches: (selector) => selector === "body, html" };
+  target.dispatchEvent(escape());
+  assert.equal(unclaimed, 2, "the page body counts as nothing focused");
+  target.dispatchEvent(escape({ repeat: true }));
+  focused = { matches: () => false };
+  target.dispatchEvent(escape());
+  focused = { matches: (selector) => selector !== "body, html" };
+  target.dispatchEvent(escape());
+  assert.equal(unclaimed, 2);
+  seed();
+  focused = null;
+  target.dispatchEvent(escape());
+  assert.equal(unclaimed, 2, "an Escape that closed a popover is not also unclaimed");
+  stop();
+});

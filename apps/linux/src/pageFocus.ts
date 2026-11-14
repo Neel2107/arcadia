@@ -7,6 +7,17 @@ export function watchPageFocus(listener: () => void) {
   return () => void listeners.delete(listener);
 }
 
+const requests = new Set<() => void>();
+
+export function watchPageFocusRequests(listener: () => void) {
+  requests.add(listener);
+  return () => void requests.delete(listener);
+}
+
+export function notePageFocusRequest() {
+  for (const listener of [...requests]) listener();
+}
+
 export const notingPageFocus = <P extends { onPageFocus?: () => void }>(props: P): P => ({
   ...props,
   onPageFocus: () => {

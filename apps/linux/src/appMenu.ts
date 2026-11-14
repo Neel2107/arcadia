@@ -1,16 +1,20 @@
 import type { BrowserCommand, MenuBookmark, MenuItem, MenuState, ShortcutModifier } from "@ardia-real/shell";
 import { commandSpec, LINUX_STANDARD_ITEMS } from "./commandCatalog";
+import { EDIT_ITEMS, editActionOf, type EditAction, type EditMenu } from "./editCommands";
 
 type MenuModifier = "command" | "shift" | "option" | "control";
 export type AppMenuShortcuts = ReadonlyMap<string, { key: string; modifiers: readonly ShortcutModifier[] }>;
 export type AppMenuChoice =
   | { kind: "window"; action: "minimize" | "maximize" | "close" }
   | { kind: "about" }
+  | { kind: "edit"; action: EditAction }
   | { kind: "command"; command: BrowserCommand; arg: string | null };
 
 const WINDOW_ACTION_PREFIX = "window:";
 const ABOUT = "about";
 const QUIT = "std:quit:";
+const FULL_SCREEN = "std:toggleFullScreen:";
+export type AppMenuContext = { fullScreen?: boolean; edit?: EditMenu | null };
 const separator: MenuItem = { separator: true };
 
 const commandTitle = (command: string, arg?: string) => {
@@ -24,7 +28,7 @@ const hasGroupLinks = (nodes: readonly MenuBookmark[]): boolean => nodes.some((n
   return url.startsWith("http:") || url.startsWith("https:") || url.startsWith("file:");
 });
 
-export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new Map(), unavailable: ReadonlySet<string> = new Set()): MenuItem[] {
+export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new Map(), unavailable: ReadonlySet<string> = new Set(), context: AppMenuContext = {}): MenuItem[] {
   const disabled = new Set(state.disabled);
   const checked = new Set(state.checked);
   const cmd = (command: BrowserCommand, arg?: string, title?: string): MenuItem => {
@@ -40,11 +44,15 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
     };
   };
   const windowAction = (action: string, title: string): MenuItem => ({ id: `${WINDOW_ACTION_PREFIX}${action}`, title });
-  const standard = (id: string): MenuItem => {
+  const standard = (id: string, title = LINUX_STANDARD_ITEMS[id]!.title): MenuItem => {
     const shortcut = shortcuts.get(id);
     const modifiers = shortcut?.modifiers.filter((modifier): modifier is MenuModifier => modifier !== "function") ?? [];
-    return { id, title: LINUX_STANDARD_ITEMS[id]!.title, ...(shortcut?.key ? { key: shortcut.key, modifiers } : {}) };
+    return { id, title, ...(shortcut?.key ? { key: shortcut.key, modifiers } : {}) };
   };
+  const edits = context.edit ? Object.fromEntries(EDIT_ITEMS.map((item): [EditAction, MenuItem] => [
+    item.action,
+    { id: item.id, title: item.title, enabled: !context.edit!.disabled.has(item.id), key: item.key, modifiers: [...item.modifiers] },
+  ])) as Record<EditAction, MenuItem> : null;
   const tidy = (items: MenuItem[]) => items.filter((item, i) => !("separator" in item) || (i > 0 && i < items.length - 1 && !("separator" in items[i - 1]!)));
   const sub = (title: string, children: MenuItem[]): MenuItem => ({ id: `menu:${title}`, title, children: tidy(children.filter((child) => !("id" in child && unavailable.has(child.id)))) });
   const header = (title: string): MenuItem => ({ id: `header:${title}`, title, enabled: false });
@@ -106,8 +114,10 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
       cmd("printWithSystemDialog"),
     ]),
     sub("Edit", [
+      ...(edits ? [edits.undo, edits.redo, separator, edits.cut, edits.copy] : []),
       cmd("copyUrl"),
       cmd("copyUrlAsMarkdown"),
+      ...(edits ? [edits.paste, edits.pasteAndMatchStyle, edits.selectAll] : []),
       separator,
       sub("Find", [
         cmd("findInPage"),
@@ -152,6 +162,8 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
       cmd("zoomReset"),
       cmd("zoomIn"),
       cmd("zoomOut"),
+      separator,
+      standard(FULL_SCREEN, context.fullScreen ? "Exit Full Screen" : "Enter Full Screen"),
       separator,
       sub("Developer", [
         cmd("viewSource"),
@@ -242,6 +254,8 @@ export function appMenuChoice(id: string): AppMenuChoice | null {
     return action === "minimize" || action === "maximize" || action === "close" ? { kind: "window", action } : null;
   }
   if (id === ABOUT) return { kind: "about" };
+  const edit = editActionOf(id);
+  if (edit) return { kind: "edit", action: edit };
   const standard = LINUX_STANDARD_ITEMS[id];
   if (standard) return { kind: "command", command: standard.command as BrowserCommand, arg: null };
   const colon = id.indexOf(":");

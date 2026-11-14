@@ -166,6 +166,13 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
 - **Window close.** A close request waits until pending writes are sealed on the worker. The 30 s native deadline
   cancels the close; it never forces it. A save failure leaves the window open for a retry. Killing the process
   bypasses all of this.
+- **Little Ardia windows** aren't saved to the session, so the renderer of a new one can't learn its kind from it.
+  The opener leaves the window and its tab in `localStorage` (`ardia.smallWindow.<id>`, `hostSmallWindows.ts`), which
+  every regular shell shares; the new renderer takes it once at startup, within 60 s, and starts as that small
+  window, on its command bar when its tab is blank. Once the native window has opened, the opener forgets its copy
+  without closing the window, so the window lives in one store only and a tab it moves to the main window
+  (Open in Ardia) arrives through the session like any other. The opener also sends the Mac's frame: the saved
+  Little Ardia size, at least 420 by 300, centred and lifted 5%.
 - **Private data.** Private and transient state never reaches a persisted snapshot. `ValidLinuxSession` rejects a
   session that carries private data.
 - **Closing the last window.** When the native close ends the session, the window stays in the saved session and comes
@@ -520,7 +527,17 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
   shared command path; Close Window, Minimize and Maximize call the native window operations. App commands Linux runs
   itself (`LINUX_APP_COMMANDS` in `appServices.ts`) are kept from the shared handler so they run once. Mac-only entries
   (Services, Hide, Spelling, Substitutions, Speech, Transformations, the WebKit page engine, JavaScript from Apple
-  Events, Keep on Top, Full Screen and the native text-editing selectors) are left out.
+  Events, Keep on Top, Delete and the spelling selectors) are left out.
+  - **View › Enter Full Screen** (`std:toggleFullScreen:`, F11, remappable in Keyboard Shortcuts) sits where the Mac
+    has it, reads Exit Full Screen while the window is full screen and calls `ArdiaShell.toggleFullScreen`. The
+    entry, its shortcut and its Keyboard Shortcuts row exist only when the host advertises that call; until then F11
+    is left to Chromium.
+  - **Edit › Undo, Redo, Cut, Copy, Paste, Paste and Match Style, Select All**, in the Mac's order around Copy URL
+    (`editCommands.ts`, `editTargets.ts`). They act on what had focus before the menu took it: a shell text field is
+    edited with `document.execCommand` (a paste the engine refuses falls back to the clipboard's text), with Cut and
+    Copy off without a selection; otherwise the window's page gets `tab.command` `edit`, which needs the host's
+    `tab.edit`. With neither a field nor an editable page the entries are left out. Their shortcuts are Chromium's
+    own and aren't registered or remappable.
 - **Report a Problem.** Help › Report a Problem… (and the New Tab check-in, the command bar and automation) opens a
   new GitHub issue in a tab, its body a short template and Copy Diagnostics' report (`reportProblem.ts`, swapped in
   for the shared report actions under `appCommands.ts`). The shared report sheet posts to ardia.dev and uploads files
@@ -1140,7 +1157,7 @@ Mac leaves `source` out too when it doesn't know.
   `selectAll` (the Mac's `std:` selector names), runs that command in the claimed tab's focused frame
   (`content::WebContents::Undo` and the rest) and answers null. An unknown action is refused. The host advertises it
   as `tab.edit`.
-- The app menu doesn't offer either yet (see Windows, focus and input › Menu button).
+- The app menu offers both when the host advertises them (see Windows, focus and input › Menu button).
 
 ### Links in pinned tabs and Little Ardia windows
 
@@ -1414,6 +1431,14 @@ These were open at the time of the PR.
   a link comes to the front on Wayland depends on the launch's activation token reaching `ArdiaShell.focusWindow`,
   which hasn't been checked on a real desktop. Links that arrive while a window exists but its shell never listens
   (a shell that failed to load) wait until one does.
+- **Little Ardia.** The native window has no minimum size of its own (the Mac's is 420 by 300; the shell only
+  opens it at least that large). Escape closes the window from its blank command bar and when nothing in the shell
+  has focus (the shell sends itself the Mac's `unclaimedEscape`), but not while the page has focus: the host doesn't
+  yet send the page's `command` event `{command: "escape", text: ""}` for an Escape the page left unhandled, which
+  Peek's Escape needs too. Pinch and swipe to close have no Linux gesture.
+- **Meeting notifications.** Calendar › Show alerts › Always posts only while Ardia isn't active, and the host
+  never says so: it sends no `ArdiaShell`/`onAppEvent` `{type: "resignActive"}` when the last active Ardia window
+  loses activation. Until it does, the row shows with a notifying host but only the in-window alert appears.
 - **Ardia's notifications.** A desktop without a notification service falls back to Chromium's own popups, as sites'
   notifications do. A click activates the window through the same Wayland activation path as above.
 - **Launch at login** starts Ardia as any launch does; it doesn't start hidden. A system-wide

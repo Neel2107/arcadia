@@ -24,11 +24,13 @@ const linuxKeys: Record<string, readonly string[]> = {
   "tabSwitcher:forward": ["⌘⇥"],
   "tabSwitcher:backward": ["⇧⌘⇥"],
   "std:quit:": ["⇧⌘Q"],
+  "std:toggleFullScreen:": ["F11"],
 };
 type CatalogSpec = { title?: string; variants?: Readonly<Record<string, { title?: string }>> };
 export const commandSpec = (command: string): CatalogSpec | undefined => (COMMANDS as Readonly<Record<string, CatalogSpec>>)[command];
 export const LINUX_STANDARD_ITEMS: Readonly<Record<string, { command: string; title: string; path: string }>> = {
   "std:quit:": { command: "quit", title: "Quit Ardia", path: "Ardia" },
+  "std:toggleFullScreen:": { command: "toggleFullScreen", title: "Enter Full Screen", path: "View" },
 };
 const unshifted = (shortcut: Shortcut): Shortcut => {
   const key = SHIFTED_KEYS[shortcut.key];
