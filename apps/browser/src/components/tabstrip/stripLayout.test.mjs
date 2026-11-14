@@ -44,6 +44,19 @@ test("+ and the chevron stay inline after the tabs while they fit, and pin to th
   assert.equal(newTabPinned(MIN_CHIP, closedWhileHeld.tabsEnd + 400, 1000), true);
 });
 
+test("+ and the chevron pin once Top Apps, pinned tiles or collapsed groups alone overflow, with no tab left to shrink", () => {
+  const cells = Array.from({ length: 12 }, (_, i) => `p${i}`);
+  const roomy = layout([dock(cells)], "p0", measured(), 2000);
+  assert.equal(roomy.tabsShrink, false);
+  assert.equal(newTabPinned(roomy.chip, roomy.tabsEnd, 2000, roomy.tabsShrink), false);
+  const tight = layout([dock(cells)], "p0", measured(), 200);
+  assert.ok(tight.chip > MIN_CHIP);
+  assert.ok(tight.tabsEnd + GAP + NEW_TAB_ROOM > 200);
+  assert.equal(newTabPinned(tight.chip, tight.tabsEnd, 200, tight.tabsShrink), true);
+  const withTabs = layout([dock(cells), tab("x")], "x", measured(), 2000);
+  assert.equal(withTabs.tabsShrink, true);
+});
+
 test("the pinned dock takes its cells and its gap off the room and off every top slot's left", () => {
   const entries = [dock(["folder:f", "p1", "a"], { "folder:f": ["a", "b"] }), ...["x", "y", "z", "u", "v", "w"].map((id) => tab(id))];
   const strip = layout(entries, "x");

@@ -48,10 +48,10 @@ export const StripPage = memo(function StripPage({ profileId, slot, pageWidth, c
     held.current ??= { chip: last.current.chip, end: last.current.end };
     closedTo.current = activeId;
   }
-  const { chip, top, targets, memberWidth, spanOf: spanInStrip, tabsEnd } = layoutStrip(parsed, activeId, pageWidth, { groupChip: chipOf, folderChip }, dock, held.current?.chip);
+  const { chip, top, targets, memberWidth, spanOf: spanInStrip, tabsEnd, tabsShrink } = layoutStrip(parsed, activeId, pageWidth, { groupChip: chipOf, folderChip }, dock, held.current?.chip);
   last.current = { count, chip, end: stripEnd(top) };
   const spare = held.current ? Math.max(0, held.current.end - stripEnd(top)) : 0;
-  const pinned = newTabPinned(chip, tabsEnd + spare, pageWidth);
+  const pinned = newTabPinned(chip, tabsEnd + spare, pageWidth, tabsShrink);
   const newTab = <NewTabButton windowId={windowId} geometry={top} pinned={pinned} />;
   const leave = () => {
     pointerIn.current = false;

@@ -138,6 +138,7 @@ export type StripLayout = {
   memberWidth: (m: StripMember) => number;
   spanOf: (tabId: string) => [number, number] | null;
   tabsEnd: number;
+  tabsShrink: boolean;
 };
 
 const dockEntry = (entries: StripEntry[]) => entries.find((e): e is StripDock => e.kind === "dock");
@@ -155,11 +156,12 @@ export function layoutStrip(entries: StripEntry[], activeId: string, pageWidth: 
   const groupChip = (g: StripGroupEntry) => measured.groupChip(g.id) ?? 0;
   const folderChip = (m: StripMember) => measured.folderChip(m.id) ?? 0;
   const visible = rows.flatMap((e) => (e.kind !== "group" ? [e] : e.collapsed ? e.members.filter((m) => holds(m, activeId)) : e.members));
+  const tabUnits = visible.reduce((n, m) => n + units(m, activeId), 0);
   const chip = heldChip ?? stripTabWidth({
     pageWidth,
     dockWidth: dockSpan(dock),
     groups: rows.flatMap((e) => (e.kind === "group" ? [{ chip: groupChip(e), expanded: !e.collapsed, shown: e.members.some((m) => holds(m, activeId)) }] : [])),
-    tabUnits: visible.reduce((n, m) => n + units(m, activeId), 0),
+    tabUnits,
     fixed: visible.reduce((n, m) => n + (m.kind === "folder" ? folderChip(m) + (holds(m, activeId) ? MEMBERS_INSET : GAP) : 0), 0),
     gap: GAP,
     plus: NEW_TAB_ROOM,
@@ -195,7 +197,8 @@ export function layoutStrip(entries: StripEntry[], activeId: string, pageWidth: 
     return [left + groupChip(row) + MEMBERS_INSET + (row.collapsed ? 0 : offsets[at]!), widths[at]!];
   };
   const end = top.slots.length ? top.lefts.at(-1)! + top.slots.at(-1)!.width : 0;
-  return { chip, top, targets, memberWidth, spanOf, tabsEnd: dockSpan(dock) + end };
+  return { chip, top, targets, memberWidth, spanOf, tabsEnd: dockSpan(dock) + end, tabsShrink: tabUnits > 0 };
 }
 
-export const newTabPinned = (chip: number, tabsEnd: number, pageWidth: number) => chip <= MIN_CHIP && tabsEnd + GAP + NEW_TAB_ROOM > pageWidth + 0.5;
+export const newTabPinned = (chip: number, tabsEnd: number, pageWidth: number, tabsShrink = true) =>
+  (chip <= MIN_CHIP || !tabsShrink) && tabsEnd + GAP + NEW_TAB_ROOM > pageWidth + 0.5;
