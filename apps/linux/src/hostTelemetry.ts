@@ -1,13 +1,15 @@
 import { APP_INGEST_KEY } from "@ardia/core";
 import { installErrorReporting, resetAnonymousId, startTelemetry } from "../../browser/src/state/telemetry/index.ts";
 import { captureException } from "../../browser/src/state/telemetry/errors";
-import { capture, devState, endSession, flush, loadChoice, queueLog, saveQueueNow } from "../../browser/src/state/telemetry/client";
-import { reloadChoice, savedChoice } from "../../browser/src/state/telemetry/choice";
+import { capture, devState, endSession, flush, loadChoice, queueLog, saveQueueNow, setSharing } from "../../browser/src/state/telemetry/client";
+import { dismissAsk, reloadChoice, savedChoice, useTelemetry } from "../../browser/src/state/telemetry/choice";
 import { DAILY_DOC } from "../../browser/src/state/telemetry/daily";
 import { requestLog } from "../../browser/src/state/telemetry/requestLog";
-import { requireSharing } from "../../browser/src/state/telemetry/required";
-import { setTelemetryRelay } from "../../browser/src/state/telemetry/relay";
-import { enforceSharing, reopenSession } from "../../browser/src/state/telemetry/sessionControl";
+import { adoptInstallId } from "../../browser/src/state/telemetry/installId";
+import { setTelemetryRelay, type ChoiceChange } from "../../browser/src/state/telemetry/relay";
+import { reopenSession } from "../../browser/src/state/telemetry/sessionControl";
+import { startWatch, stopWatch, watchNoticeShown } from "../../browser/src/state/telemetry/watch";
+import { uuidv4 } from "../../browser/src/state/telemetry/ids";
 import { setTelemetryHost } from "../../browser/src/state/telemetry/transport";
 import { emitWindowUsage, sessionEnding } from "../../browser/src/state/telemetry/usage";
 import { documentSaved } from "../../browser/src/platform/documents";
@@ -16,6 +18,7 @@ import { refreshDocument } from "./shims/shellBase";
 import { hostSupports, invokeHost, type ArdiaHost } from "./host.ts";
 import { startTelemetryLeadership, TELEMETRY_CHANNEL, type LeaderChannel, type LeaderLocks, type TelemetryLeadership, type TelemetryOp } from "./telemetryLeader.ts";
 import { createEndLedger, setTelemetrySettle } from "./telemetrySettle.ts";
+import { parseChoiceChange, shownAfter } from "./telemetryChoice.ts";
 
 export const TELEMETRY_POST = "ArdiaTelemetry.post";
 export const TELEMETRY_STEP = "telemetry";
@@ -64,7 +67,24 @@ async function saveState() {
   await documentSaved(STATE_DOC).catch(report);
 }
 
+function applyChoice(change: ChoiceChange) {
+  if (change.kind === "sharing") setSharing(change.on, change.source, change.placement);
+  else if (change.kind === "askDismissed") dismissAsk();
+  else if (change.kind === "watchStarted") startWatch(change.reportId, change.days);
+  else if (change.kind === "watchStopped") stopWatch();
+  else if (change.kind === "watchNoticeShown") watchNoticeShown();
+  else adoptInstallId(change.id);
+}
+
 export async function handleTelemetryOp(op: TelemetryOp, arg?: string): Promise<unknown> {
+  if (op === "choice") {
+    const change = parseChoiceChange(arg);
+    if (!change) throw Object.assign(new Error("The telemetry choice isn't one this build knows"), { code: "ERR_TELEMETRY_CHOICE" });
+    applyChoice(change);
+    await documentSaved(STATE_DOC);
+    leadership?.announce();
+    return true;
+  }
   if (op === "reset") {
     const installId = await resetAnonymousId();
     await documentSaved(STATE_DOC);
@@ -87,15 +107,18 @@ export async function handleTelemetryOp(op: TelemetryOp, arg?: string): Promise<
 }
 
 let leadership: TelemetryLeadership | null = null;
+let offeredInstallId: string | null = null;
+
+const shownChoice = () => JSON.stringify(useTelemetry.getState());
 
 async function refreshState() {
   await refreshDocument(STATE_DOC).catch(report);
   reloadChoice();
+  if (savedChoice().installId) offeredInstallId = null;
 }
 
 export function startHostTelemetry(options: { host: ArdiaHost; candidate: boolean; locks?: LeaderLocks; channel?: LeaderChannel | null }) {
   const { host, candidate } = options;
-  requireSharing();
   setTelemetrySettle({ settle: settleHostTelemetry, reopen: reopenHostTelemetry });
   setTelemetryHost({ os: "Linux", osType: "linux", send: hostSupports(TELEMETRY_POST, host) ? hostTelemetrySend(host) : null });
   loadChoice();
@@ -115,6 +138,18 @@ export function startHostTelemetry(options: { host: ArdiaHost; candidate: boolea
         if (typeof installId !== "string") throw Object.assign(new Error("The anonymous ID wasn't reset"), { code: "ERR_TELEMETRY_RESET" });
         return installId;
       },
+      change: (change) => {
+        const shown = shownAfter(change);
+        if (shown) useTelemetry.setState(shown);
+        void current.request("choice", RESET_TIMEOUT_MS, JSON.stringify(change)).catch(report).then(refreshState);
+      },
+      installId: () => {
+        const known = savedChoice().installId;
+        if (known) return known;
+        const id = (offeredInstallId ??= uuidv4());
+        void current.request("choice", RESET_TIMEOUT_MS, JSON.stringify({ kind: "installId", id } satisfies ChoiceChange)).catch(report).then(refreshState);
+        return id;
+      },
     }),
     deliver: (message) => message.kind === "capture" ? capture(message.event, message.props, message.options) : queueLog(message.level, message.message, message.attributes),
     handle: handleTelemetryOp,
@@ -123,7 +158,6 @@ export function startHostTelemetry(options: { host: ArdiaHost; candidate: boolea
       const continuing = await continuesSession(host);
       reloadChoice();
       sessionEnded = continuing && !savedChoice().sessionOpen;
-      enforceSharing();
       startTelemetry({ continuing });
       await documentSaved(STATE_DOC).catch(report);
       current.announce();
@@ -132,6 +166,13 @@ export function startHostTelemetry(options: { host: ArdiaHost; candidate: boolea
     report,
   });
   leadership = current;
+  let announced = shownChoice();
+  useTelemetry.subscribe(() => {
+    const next = shownChoice();
+    if (next === announced) return;
+    announced = next;
+    if (current.leading()) void documentSaved(STATE_DOC).catch(report).then(() => current.announce());
+  });
   setInterval(() => {
     if (!current.leading()) emitWindowUsage();
   }, WINDOW_USAGE_MS);

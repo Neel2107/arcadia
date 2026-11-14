@@ -2,6 +2,7 @@ import { readDocument, writeDocument } from "../../platform/documents";
 import { create } from "zustand";
 import { readContext, type SavedContext } from "./savedContext";
 import { uuidv7 } from "./ids";
+import { telemetryRelay } from "./relay";
 import { parseSaved, versionedJson, unchanged, type Migrations, type SavedObject } from "../../lib/savedDocument";
 import { isFields, isString, numberOr, stringOr } from "../../lib/decode";
 
@@ -170,4 +171,8 @@ export function reloadChoice() {
   loadChoice();
 }
 
-export const dismissAsk = () => save({ askDoneAt: Date.now() });
+export function dismissAsk() {
+  const relay = telemetryRelay();
+  if (relay) return relay.change({ kind: "askDismissed" });
+  save({ askDoneAt: Date.now() });
+}

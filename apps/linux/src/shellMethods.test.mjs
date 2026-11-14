@@ -148,8 +148,18 @@ const olderEngine = (...missing) => {
   return host;
 };
 
+const NOTIFICATION_CALLS = ["ArdiaApp.notificationPermission", "ArdiaApp.requestNotificationPermission", "ArdiaApp.postNotification", "ArdiaApp.removeNotifications"];
+
+test("Ardia's notifications and the bang list fetch reach the engine that advertises them", async () => {
+  for (const name of [...NOTIFICATION_CALLS, "ArdiaShell.fetchBangList"]) {
+    assert.ok(advertised.includes(name), name);
+    const [module, method] = name.split(".");
+    await assert.rejects(resolveHostModule(linuxHost(), module, method)(null), new RegExp(`Unsupported Linux host method: ${name.replace(".", "\\.")}`), name);
+  }
+});
+
 test("the Mac-only methods of #305 answer on Linux with a truthful value or ERR_UNAVAILABLE, never as an unsupported host method", async () => {
-  const host = linuxHost();
+  const host = olderEngine(...NOTIFICATION_CALLS);
   for (const name of FORMERLY_TRACKED_IN_305) {
     const [module, method] = name.split(".");
     const resolved = resolveHostModule(host, module, method);
@@ -493,7 +503,7 @@ test("window close animations, the drag preview, focus cancellation and haptics 
   }
   assert.equal(resolveHostModule(host, "ArdiaShell", "switcherPointerMoved")(), false);
   for (const name of ["fetchBangList", "startDictation"]) {
-    await assert.rejects(resolveHostModule(host, "ArdiaShell", name)(null), { code: "ERR_UNAVAILABLE" }, name);
+    await assert.rejects(resolveHostModule(olderEngine("ArdiaShell.fetchBangList"), "ArdiaShell", name)(null), { code: "ERR_UNAVAILABLE" }, name);
   }
   host.invoke = async () => assert.fail("haptics never reach the host");
   assert.equal(await resolveHostModule(host, "ArdiaSystem", "hapticTick")(), undefined);

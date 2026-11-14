@@ -60,6 +60,15 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   is absent rather than showing a control that fails.
 - **Mac-only modules.** These answer from `apps/linux/src/appModuleFallbacks.ts`, either with an honest empty value or
   with `ERR_UNAVAILABLE`.
+- **Page options without a backend.** The shared UI mirrors a few settings to the engine at every launch
+  (`webView.setVideoUpscaling`, `setCommandScrollZoom`, `setDisplayMediaPicker`, `setPeekOtherSiteTabs`,
+  `setLittleArdiaOpensNewTabLinks`). While a host doesn't advertise one, the shell settles that call itself with
+  `null` (`PAGE_OPTION_CALLS` in `hostModules.ts`) instead of sending it to be refused with `ERR_UNKNOWN_CALL`; its
+  Settings row is hidden by the same capability. A host that advertises the call gets it.
+- **Theme swatches.** `ThemeSwatch` (the Mac's `ThemeSwatchView`: the anonymous-ID avatar, the theme editor's
+  swatches, preview and colour pad) is drawn by the shell (`shims/shaders.tsx`, `shims/web/gl/themeSwatch.ts`): the
+  same 17 Oklab samples and start and end points as `ArcGradientLayer`, the third colour's overlay, the hue pad, and
+  `GrainLayer`'s four tiles from the same generator.
 
 ### Tabs and viewports
 
@@ -788,7 +797,8 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
   - In private windows only incognito-allowed extensions are registered.
   - Chromium 156 has no `_execute_side_panel`; it is an ordinary named command.
 - **Tabs and windows extensions open.** A tab Chrome inserts by itself (`chrome.tabs.create`, an action's
-  `onClicked`, a URL handed to the running instance) has no opener page to report it, so the host does.
+  `onClicked`, a URL handed to the running instance that the shell didn't take, see Links from other apps) has no
+  opener page to report it, so the host does.
   - Each window notes tabs inserted outside Ardia's own operations (`unclaimed_` in `ac_linux_host.cc`). It also notes
     tabs already in the window when it attaches, unless they're blank or look restored by Chromium (more than one
     history entry, or an entry marked restored). In a window Chrome made, an `about:blank` tab counts too, so a
@@ -1004,10 +1014,16 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
 
 ### Telemetry
 
-- **Always on for the alpha.** `startHostTelemetry` (`hostTelemetry.ts`) calls `requireSharing()`, so sharing can't be
-  turned off: Settings › Privacy hides the toggle, onboarding skips the crash-report question and the new tab page
-  never asks. The rest of the Privacy section (your anonymous ID, What's Sent) stays. Ending this means removing the
-  `requireSharing()` call; nothing turns it off on its own.
+- **Opt-in, as on the Mac.** Sharing is off until the person turns it on: onboarding's last step asks, the new tab
+  page asks once if onboarding didn't, and Settings › Privacy & Security has the toggle. With sharing off nothing is
+  posted except the daily anonymous "opened today" count, which the Mac sends too (and a test instance skips).
+  Linux collects no native crash reports (`ArdiaApp.crashReports` answers an empty list), so "crash reports" there
+  means page-process exits and JavaScript errors; the group has no crash-report control of its own to hide.
+- **One owner for the choice.** A window that isn't the telemetry owner (Settings, a second browser window) doesn't
+  write `telemetry.json`. Turning sharing on or off, dismissing the new-tab question, starting or stopping a report's
+  14-day watch and making the first anonymous ID are `choice` requests the owner runs (`telemetryChoice.ts`,
+  `handleTelemetryOp`); the owner saves, announces, and every window re-reads the document. The asking window shows a
+  sharing answer at once and falls back to the saved state if no owner answers within 10 s.
 - **Sending.** The shell can't fetch, so the shared client posts through `ArdiaTelemetry.post` (`ac_linux_telemetry.cc`):
   native sends the OTLP body to the fixed `https://ardia.dev/otel/v1/logs` with the app's ingest key, over the system
   network context with no cookies, and answers the HTTP status (0 for a network error). JS keeps its queue, batching and
@@ -1073,6 +1089,76 @@ thread. The reply shapes are the Mac's (`packages/shell/ios/SystemModule.swift`,
 - **Background instances** run no tool, write no entry and open no app: the default browser calls answer false,
   `setLaunchAtLogin` resolves without changing anything and `openExternalURL` answers false. The login status is still
   read.
+
+### Links from other apps
+
+A link another app opens (`xdg-open`, a mail client, `ardia <url>` in a terminal) reaches the shell as the Mac's
+`ArdiaShell`/`onOpenURLs` event, `{urls}`, so Open links from other apps in Little Ardia, link rules and Put links from
+other apps first apply. The Mac's `source` and `pointer` are left out: Linux can't tell which app sent a link, and the
+Mac leaves `source` out too when it doesn't know.
+
+- **The hook.** `chromium-linux-open-urls.patch` asks `ardia::TakeLinuxLaunchUrls` (`ac_linux_launch_urls.cc`) in the
+  two places Chromium turns command-line arguments into tabs: `StartupBrowserCreator::Start` (the launch that starts
+  Ardia) and `ProcessCommandLineWithProfile` (a second launch, handed to the running process through the process
+  singleton). The URLs are the ones Chromium itself would open (`StartupTabProviderImpl::GetCommandLineTabs`).
+- **What the shell takes** (`ShellTakesLaunch` in `ac_linux_open_urls.cc`, no Chromium in it): 1 to 64 valid `http`,
+  `https` or `file` URLs of at most 32 KiB each. Anything else stays with Chromium, which opens it as before and the
+  window adopts the tab (`unclaimedTabs.ts`): another scheme, a launch with `--incognito`, `--new-window`, `--app`,
+  `--app-id`, `--kiosk`, `--guest`, `--headless`, `--no-startup-window`, `--silent-launch`, `--profile-directory` or
+  `--profile-email`, a background instance (`ARDIA_BACKGROUND`), and a running Ardia with no regular browser window
+  (only private or utility windows).
+- **At launch.** The URLs are taken off the command line Chromium starts from (`LinuxLaunchWithoutUrls` keeps the
+  program and every switch), so Ardia starts as it does without a link and restores its windows, then gets the links,
+  as on the Mac.
+- **Delivery.** Links wait natively (at most 256) until a regular browser window says it listens
+  (`ArdiaShell.listenForOpenURLs`, which `openUrls.ts` sends once the shared listener is registered). They go as one
+  event to the listening window that was active most recently; private and utility windows are never chosen and
+  don't get the capability. A renderer that reloads has to say it listens again.
+- **Capability.** `ArdiaShell.onOpenURLs` and `ArdiaShell.listenForOpenURLs`, in regular browser windows only.
+- **Unchanged.** The `ardia` command opens pages over its control connection, never by launching the browser, and a
+  second launch without a URL still opens a window.
+
+### Full screen and page editing commands
+
+- **`ArdiaShell.toggleFullScreen(windowId)`** enters or leaves full screen for a browser window the caller reaches
+  (`FullscreenController::ToggleBrowserFullscreenMode`, the path the fullscreen restore uses) and answers the state it
+  is going to: `true` entering, `false` leaving. A page's own full screen ends the same way. Utility windows are
+  refused. The shell already hears the result as the `fullScreen` window event.
+- **`tab.command` `edit`** with one argument, `undo`, `redo`, `cut`, `copy`, `paste`, `pasteAndMatchStyle` or
+  `selectAll` (the Mac's `std:` selector names), runs that command in the claimed tab's focused frame
+  (`content::WebContents::Undo` and the rest) and answers null. An unknown action is refused. The host advertises it
+  as `tab.edit`.
+- The app menu doesn't offer either yet (see Windows, focus and input › Menu button).
+
+### Ardia's notifications
+
+`ArdiaApp.notificationPermission`, `requestNotificationPermission`, `postNotification` and `removeNotifications`
+(`ac_linux_notifications.cc`, with the checks and the ledger in `ac_linux_notifications_core.cc`) show Ardia's own
+notifications, such as a meeting reminder, through Chromium's Linux notification stack
+(`NotificationDisplayService`, then `org.freedesktop.Notifications`), the one sites' notifications use.
+
+- **Permission.** Linux has no per-app notification permission, so the status is `granted` and a request answers
+  true. A background instance answers `denied` and false, and shows nothing.
+- **Posting.** Options are the Mac's (`id`, `title`, `body`, `subtitle`, `silent`, `dismissible`, `tabId`, `windowId`,
+  `data`); the answer is the id, or null when nothing was shown. `subtitle` becomes the body's first line. The title
+  is cut at 1 KiB and the body at 4 KiB, on character boundaries; `data` is at most 16 KiB. `icon` and `origin` are
+  ignored. At most 64 are tracked, and the oldest is closed to make room.
+- **Type.** Chromium sends its generic notification type to its own in-app popups, not to the desktop. Ardia's
+  notifications use `NotificationHandler::Type::NEARBY_SHARE`, which has no handler on Linux, and register Ardia's
+  handler for it on the app profile's display service.
+- **Responses.** A click sends `ArdiaApp`/`onNotificationResponse` (`{id, action: "click", tabId, windowId, data}`),
+  closes the notification and activates the window. A close is reported (`action: "close"`) only for a `dismissible`
+  one the user closed. The event goes to the window that posted, or to the most recently active browser window when
+  that one is gone.
+
+### The bang list
+
+`ArdiaShell.fetchBangList(etag)` (`ac_linux_bang_list.cc`) fetches `https://services.helium.imput.net/bangs.json`, the
+Mac's URL, from the browser process and answers the Mac's `{status, etag, contentType, body, bytes}`; `body` is set
+only for a 200. No cookies, no cache, an `If-None-Match` only for an ETag of at most 200 bytes without control
+characters, 5 MB and 60 s at most (the bridge allows 75 s), two fetches at a time. A redirect, a network error, a
+larger reply or a 200 that isn't UTF-8 rejects with `ERR_BANG_LIST`; the Mac answers a redirect's own status instead.
+A background instance rejects without fetching.
 
 ### Downloads and files
 
@@ -1202,7 +1288,8 @@ These were open at the time of the PR.
       page channel, a short per-tab ledger of those URLs, the match in `TabBinding::ReportOpened`, the host knowing
       its window is a small one, and then closing the opened tab and reporting `openWindow` with
       `disposition: "current"` and `linkWait: "matched"`.
-  - the `extensions.installFailed` event;
+  - the `extensions.installFailed` event (it comes from the Mac's dropped-`.crx` install, which Linux doesn't have)
+    and `tabs.reportCommits` (the Mac's native page-commit reports for automation events);
   - Paste and Go (the clipboard read answers empty);
   - performance recording (`beginTracing`/`endTracing`), which stays hidden.
   - `ardia browse`'s off-screen tabs (`engine.cliMoveOffscreen`, `cliCloseOffscreenTabs`, `cliOwnsTab`): Linux has no
@@ -1242,10 +1329,10 @@ These were open at the time of the PR.
   (`webView.setLittleArdiaOpensNewTabLinks`), Open a Peek window when clicking on links to other sites
   (`webView.setPeekOtherSiteTabs`), Haptic feedback when reordering tabs (`ArdiaSystem.hapticTick`), and the two rows
   about links from other apps, Open links from other apps in Little Ardia and Put links from other apps first
-  (`ArdiaShell.onOpenURLs`, a name a host advertises once it sends that event; today Chromium opens such links as
-  tabs itself). The command bar's Dictate button follows `ArdiaShell.startDictation` the same way. Still shown though
-  they point at a hidden row: the app menu's Open Links from Other Apps in Little Ardia, and the sentence about links
-  from other apps under Open new-tab links in.
+  (`ArdiaShell.onOpenURLs`, which the host advertises now that it sends that event; an older engine leaves such
+  links to Chromium, which opens them as tabs). The command bar's Dictate button follows `ArdiaShell.startDictation`
+  the same way. With an older engine these are still shown though they point at a hidden row: the app menu's Open
+  Links from Other Apps in Little Ardia, and the sentence about links from other apps under Open new-tab links in.
 - **Session migrations.** The saved Linux session carries the shared `version`. `linuxSessionShape` runs the shared
   `SESSION_MIGRATIONS` from that version on the shape the Mac saves (windows, tabs, groups and splits as lists), and a
   session without the stamp counts as version 9, the last one Linux's own shape checks cover. A migration that changes
@@ -1254,6 +1341,13 @@ These were open at the time of the PR.
 - **Default browser.** An Ardia that isn't installed where the desktop looks (an extracted folder, a prefix outside
   `XDG_DATA_DIRS`) still shows the default browser controls, and they answer false; the reason is only in the log.
   `xdg-settings` is the only backend: a desktop without it can't be asked or set.
+- **Links from other apps.** The source app is never known, so link rules that match on the app don't apply, and a
+  Little Ardia window opens where the compositor puts it rather than at the pointer. Whether the window that takes
+  a link comes to the front on Wayland depends on the launch's activation token reaching `ArdiaShell.focusWindow`,
+  which hasn't been checked on a real desktop. Links that arrive while a window exists but its shell never listens
+  (a shell that failed to load) wait until one does.
+- **Ardia's notifications.** A desktop without a notification service falls back to Chromium's own popups, as sites'
+  notifications do. A click activates the window through the same Wayland activation path as above.
 - **Launch at login** starts Ardia as any launch does; it doesn't start hidden. A system-wide
   `/etc/xdg/autostart/ardia.desktop`, which Ardia doesn't install, is neither read nor overridden.
 - **Ctrl-scroll zoom off** (`webView.setCommandScrollZoom`) stops the zoom, and the wheel then does nothing; on the
@@ -1275,7 +1369,7 @@ These were open at the time of the PR.
     hardware details (`ArdiaApp.hardwareInfo`);
   - the sidebar edge's `whilePressed`: the native edge watcher still peeks during any pressed drag;
   - `engine.cliTabTargets`, so `windows` from the control socket has no DevTools target ids;
-  - Ardia's own desktop notifications (sites' web notifications use Chromium's Linux notifications);
+  - notification icons, and a notification settings page to open (`openNotificationSettings`);
   - the share sheet;
   - Handoff;
   - AppleScript;

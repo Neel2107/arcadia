@@ -7,7 +7,7 @@ export type Relayed =
   | { kind: "capture"; event: string; props: Record<string, unknown>; options: Record<string, unknown> }
   | { kind: "log"; level: "warn" | "error"; message: string; attributes: Record<string, string | number | boolean> };
 
-export type TelemetryOp = "reset" | "end" | "reopen";
+export type TelemetryOp = "reset" | "end" | "reopen" | "choice";
 
 type Wire =
   | { kind: "relay"; id: string; message: Relayed }
@@ -40,7 +40,7 @@ export type TelemetryLeadershipDeps = {
 export type TelemetryLeadership = { leading(): boolean; request(op: TelemetryOp, timeoutMs: number, arg?: string): Promise<unknown>; announce(): void };
 
 const isFields = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-const OPS: readonly string[] = ["reset", "end", "reopen"];
+const OPS: readonly string[] = ["reset", "end", "reopen", "choice"];
 
 export function isRelayed(value: unknown): value is Relayed {
   if (!isFields(value)) return false;

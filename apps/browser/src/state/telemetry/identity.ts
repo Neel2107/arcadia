@@ -1,5 +1,6 @@
 import { anonymousIdentity, type AnonymousAvatar } from "@ardia/core";
-import { capture, ensureInstallId, replaceInstallId } from "./client";
+import { capture, replaceInstallId } from "./client";
+import { ensureInstallId } from "./installId";
 import { savedChoice, sessionId } from "./choice";
 import { uuidv4 } from "./ids";
 import { clearLocalCopy } from "./localStore";

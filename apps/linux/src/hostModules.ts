@@ -26,6 +26,15 @@ const synchronousMethods: Record<string, Record<string, unknown>> = {
   ArdiaAutomation: { reply: undefined, broadcast: undefined },
 };
 
+export const PAGE_OPTION_CALLS = [
+  "webView.setVideoUpscaling",
+  "webView.setCommandScrollZoom",
+  "webView.setDisplayMediaPicker",
+  "webView.setPeekOtherSiteTabs",
+  "webView.setLittleArdiaOpensNewTabLinks",
+] as const;
+const pageOptionCalls: ReadonlySet<string> = new Set(PAGE_OPTION_CALLS);
+
 const nativeFallthroughs = new WeakSet<object>();
 export const reachesNativeHostUnchecked = (resolved: unknown) => typeof resolved === "function" && nativeFallthroughs.has(resolved);
 
@@ -72,7 +81,11 @@ export function resolveHostModule(host: ArdiaHost, name: string, method: string)
   }
   if (method === "call" && /^Ardia[A-Z]/.test(name)) {
     const domain = name.slice(5, 6).toLowerCase() + name.slice(6);
-    return (verb: string, profile: string, args: string) => callHost(`${domain}.${verb}`, profile, args, host);
+    return (verb: string, profile: string, args: string) => {
+      const call = `${domain}.${verb}`;
+      if (pageOptionCalls.has(call) && !hostSupports(call, host)) return Promise.resolve("null");
+      return callHost(call, profile, args, host);
+    };
   }
   const constants = host.bootstrap.nativeModules?.[name];
   const sync = synchronousMethods[name];

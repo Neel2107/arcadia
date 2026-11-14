@@ -3,7 +3,6 @@ import { StyleSheet, View } from "react-native";
 import { addToDock, backgroundInstance, isDefaultBrowser, isInDock, setAsDefaultBrowser } from "../../state/app/appSettings";
 import { isSharing, setSharing } from "../../state/telemetry/client";
 import { SHARING_COPY } from "../../state/telemetry/copy";
-import { sharingRequired } from "../../state/telemetry/required";
 import { Button, Symbol, Text } from "../ui";
 import { lineHeight, proseLineHeight, space } from "../ui/tokens";
 import { PostageStamp, PostcardPaper } from "../ntp/PostageStamp";
@@ -79,22 +78,18 @@ export function OutroStep() {
         </View>
       ) : null}
       <View style={{ gap: space.ml }}>
-        {sharingRequired() ? null : (
-          <>
-            <OptionCard
-              control="check"
-              icon="stethoscope"
-              title={SHARING_COPY.toggle}
-              subtitle={SHARING_COPY.onboarding.row}
-              selected={share}
-              onHover={setReceipt}
-              onPress={() => setOnboardingExtras({ share: !share })}
-            />
-            <Text size="small" color={colors.rowSubtitle} style={NOTE}>
-              {SHARING_COPY.onboarding.note}
-            </Text>
-          </>
-        )}
+        <OptionCard
+          control="check"
+          icon="stethoscope"
+          title={SHARING_COPY.toggle}
+          subtitle={SHARING_COPY.onboarding.row}
+          selected={share}
+          onHover={setReceipt}
+          onPress={() => setOnboardingExtras({ share: !share })}
+        />
+        <Text size="small" color={colors.rowSubtitle} style={NOTE}>
+          {SHARING_COPY.onboarding.note}
+        </Text>
         {customizing ? null : <CustomizeMoreLink />}
       </View>
     </StepLayout>

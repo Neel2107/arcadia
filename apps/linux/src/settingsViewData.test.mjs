@@ -8,5 +8,11 @@ test("Settings › Privacy shows View My Data once the shell has storage for the
   assert.equal(index.settingUnavailable("privacy.viewData"), false);
   assert.equal(index.sectionUnavailable("privacy", "Kept on this Mac"), false);
   assert.ok(index.SETTINGS_INDEX.some((item) => item.entry.id === "privacy.viewData"));
-  assert.equal(index.settingUnavailable("privacy.shareDiagnostics"), true);
+});
+
+test("Settings › Privacy offers the sharing toggle, as on the Mac", async () => {
+  const index = await import("./settingsIndex.ts");
+  assert.equal(index.settingUnavailable("privacy.shareDiagnostics"), false);
+  assert.equal(index.sectionUnavailable("privacy", "Crash reports and usage"), false);
+  assert.ok(index.SETTINGS_INDEX.some((item) => item.entry.id === "privacy.shareDiagnostics"));
 });

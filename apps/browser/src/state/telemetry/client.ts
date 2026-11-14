@@ -6,8 +6,7 @@ import { cleanProperties } from "./sanitize";
 import type { SavedContext } from "./savedContext";
 import type { RequestLogEntry } from "./requestLog";
 import { appInfo, mayPost, post, telemetryHost } from "./transport";
-import { sharingRequired } from "./required";
-import { telemetryRelay, type CaptureOptions } from "./relay";
+import { telemetryRelay, type AskPlacement, type CaptureOptions, type SharingSource } from "./relay";
 import { uuidv4, uuidv7 } from "./ids";
 import { parseSaved, versionedJson } from "../../lib/savedDocument";
 import { withDeadline } from "../../lib/deadline";
@@ -270,12 +269,11 @@ export async function flush() {
   }
 }
 
-export type SharingSource = "settings" | "onboarding" | "ask" | "watch" | "watch_ended";
-
-export type AskPlacement = { ask_place: "new_tab_corner"; ask_shown_tabs: number };
+export type { AskPlacement, SharingSource };
 
 export function setSharing(on: boolean, source: SharingSource, placement?: AskPlacement) {
-  if (!on && sharingRequired()) return;
+  const relay = telemetryRelay();
+  if (relay) return relay.change({ kind: "sharing", on, source, ...(placement ? { placement } : {}) });
   const now = Date.now();
   const current = saved();
   if (on === current.sharing) return save({ decidedAt: now, askDoneAt: current.askDoneAt ?? now });
@@ -304,14 +302,6 @@ export function setSharing(on: boolean, source: SharingSource, placement?: AskPl
   capture("sharing_turned_on", { source, ...placement });
 }
 
-export function ensureInstallId(): string {
-  const current = saved();
-  if (current.installId) return current.installId;
-  const installId = uuidv4();
-  save({ sharing: false, installId });
-  return installId;
-}
-
 export function replaceInstallId(): string {
   const current = saved();
   const installId = uuidv4();
@@ -319,7 +309,7 @@ export function replaceInstallId(): string {
   for (const abort of inflight) abort.abort();
   inflight.clear();
   const session = startNewSession();
-  const keepsSharing = (current.sharing && current.sharingUntil === null) || sharingRequired();
+  const keepsSharing = current.sharing && current.sharingUntil === null;
   if (keepsSharing) save({ sharing: true, installId, sessionId: current.sessionId ? session : null, context: null, ...NO_WATCH });
   else save({ sharing: false, installId, sessionId: current.sessionId ? session : null, context: null, ...NO_WATCH });
   clearQueue();

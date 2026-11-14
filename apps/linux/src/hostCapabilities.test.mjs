@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { resolveHostModule } from "./hostModules.ts";
+import { PAGE_OPTION_CALLS, resolveHostModule } from "./hostModules.ts";
 import { CLI_CONTROL_METHODS, CLI_INSTALL_METHODS, DICTATION_METHOD, LINKS_FROM_OTHER_APPS, USER_SCRIPTS_METHODS, linuxCapabilities, unavailablePanes, unavailableSettingIds } from "./hostCapabilities.ts";
 import { CAST_UNAVAILABLE_TITLE, linuxMediaCall } from "./hostCast.ts";
 import { USER_SCRIPTS_LOCK, leadUserScripts } from "./hostUserScripts.ts";
@@ -355,4 +355,19 @@ test("the media domain keeps reaching the host for everything but casting", asyn
   assert.equal(await call("selectDevice", "", JSON.stringify({ id: 1, index: 0 })), "null");
   assert.equal(await call("showCastDialog", "", JSON.stringify({ tabId: "missing" })), "false");
   assert.deepEqual(calls, ["media.selectDevice"]);
+});
+
+test("a page option the host has no backend for is settled here, and reaches a host that advertises it", async () => {
+  const calls = [];
+  const host = (capabilities) => ({ bootstrap: { profileId: "default", capabilities, nativeModules: {} }, call: async (name, profile, args) => { calls.push([name, args]); return "null"; }, invoke: async () => null, onEvent: () => {} });
+  const without = resolveHostModule(host([]), "ArdiaWebView", "call");
+  for (const name of PAGE_OPTION_CALLS) assert.equal(await without(name.slice("webView.".length), "", JSON.stringify({ enabled: true })), "null", name);
+  assert.deepEqual(calls, []);
+  assert.equal(await without("setPeekModifier", "", JSON.stringify({ modifier: "alt" })), "null");
+  assert.deepEqual(calls, [["webView.setPeekModifier", JSON.stringify({ modifier: "alt" })]]);
+  calls.length = 0;
+  const withZoom = resolveHostModule(host(["webView.setCommandScrollZoom"]), "ArdiaWebView", "call");
+  await withZoom("setCommandScrollZoom", "", JSON.stringify({ enabled: false }));
+  await withZoom("setVideoUpscaling", "", JSON.stringify({ enabled: true }));
+  assert.deepEqual(calls, [["webView.setCommandScrollZoom", JSON.stringify({ enabled: false })]]);
 });

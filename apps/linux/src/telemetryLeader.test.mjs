@@ -186,6 +186,20 @@ test("ending the session, reopening it and resetting the ID run in the leader, w
   assert.deepEqual(settings.handled, []);
 });
 
+test("a sharing change asked in a Settings window runs in the leader with its argument", async () => {
+  const locks = fakeLocks();
+  const bus = fakeBus();
+  const seen = [];
+  const leader = startTelemetryLeadership({ candidate: true, locks, channel: bus(), relay: () => {}, deliver: () => {}, handle: async (op, arg) => (seen.push([op, arg]), true), lead: async () => {}, report: (error) => assert.fail(String(error)), newId: () => `id-${++ids}` });
+  await turn();
+  const settings = window({ locks, channel: bus(), candidate: false });
+  const change = JSON.stringify({ kind: "sharing", on: false, source: "settings" });
+  assert.equal(await settings.leadership.request("choice", 1000, change), true);
+  assert.deepEqual(seen, [["choice", change]]);
+  assert.deepEqual(settings.handled, []);
+  assert.equal(leader.leading(), true);
+});
+
 test("the leader's choice announcement reaches the other windows, and only a leader can announce", async () => {
   const locks = fakeLocks();
   const bus = fakeBus();
