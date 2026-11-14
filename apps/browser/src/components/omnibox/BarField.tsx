@@ -5,6 +5,8 @@ import { useTheme } from "../ui";
 import { PASTED_TYPES } from "./omniboxKeys";
 import { BAR, BAR_TYPE } from "./tokens";
 
+const BAR_FIELD_ID = "ardia.barField";
+
 type InputProps = ComponentProps<typeof TextInput>;
 
 export function BarField({
@@ -30,6 +32,7 @@ export function BarField({
   return (
     <TextInput
       ref={inputRef}
+      nativeID={BAR_FIELD_ID}
       {...events}
       onSelectionChange={(e) => {
         const next = e.nativeEvent.selection;

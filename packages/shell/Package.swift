@@ -8,6 +8,7 @@ let package = Package(
     .library(name: "ArdiaUpdaterCore", targets: ["ArdiaUpdaterCore"]),
     .library(name: "ArdiaTranslateCore", targets: ["ArdiaTranslateCore"]),
     .library(name: "ArdiaReportCore", targets: ["ArdiaReportCore"]),
+    .library(name: "ArdiaTextCore", targets: ["ArdiaTextCore"]),
   ],
   targets: [
     .target(name: "ArdiaUpdaterCore", path: "ios/UpdaterCore"),
@@ -16,5 +17,7 @@ let package = Package(
     .testTarget(name: "ArdiaTranslateCoreTests", dependencies: ["ArdiaTranslateCore"], path: "translate-tests"),
     .target(name: "ArdiaReportCore", path: "ios/ReportCore"),
     .testTarget(name: "ArdiaReportCoreTests", dependencies: ["ArdiaReportCore"], path: "report-tests"),
+    .target(name: "ArdiaTextCore", path: "ios/TextCore"),
+    .testTarget(name: "ArdiaTextCoreTests", dependencies: ["ArdiaTextCore"], path: "text-tests"),
   ]
 )

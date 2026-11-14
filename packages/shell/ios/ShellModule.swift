@@ -19,6 +19,7 @@ public class ShellModule: Module {
       _ = installViewSelectAll
       _ = installSubmenuAction
       _ = installInputSourceKeys
+      _ = BarWordBreaks.install
       _ = installScrollViewInsetFix
       _ = installOutsidePressMonitor
       _ = installWindowMoveFallback

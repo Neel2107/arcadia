@@ -14,7 +14,8 @@ export type AppEvent =
   | { type: "switcherKey"; key: "escape" | "next" | "previous" }
   | { type: "switcherMouseUp" }
   | { type: "dragEscape" }
-  | { type: "unclaimedEscape"; windowId: string };
+  | { type: "unclaimedEscape"; windowId: string }
+  | { type: "barWordEdit"; kind: "delete" | "move"; splitAtDot: boolean };
 
 export type AppearanceMode = "auto" | "light" | "dark";
 
