@@ -63,7 +63,39 @@ test("choices resolve to commands or window actions and ignore structure rows", 
   assert.deepEqual(appMenuChoice("newTab"), { kind: "command", command: "newTab", arg: null });
   assert.deepEqual(appMenuChoice("openBookmark:a:b"), { kind: "command", command: "openBookmark", arg: "a:b" });
   assert.deepEqual(appMenuChoice("window:maximize"), { kind: "window", action: "maximize" });
+  assert.deepEqual(appMenuChoice("std:quit:"), { kind: "command", command: "quit", arg: null });
+  assert.deepEqual(appMenuChoice("about"), { kind: "about" });
+  assert.deepEqual(appMenuChoice("share:via:email"), { kind: "command", command: "share", arg: "via:email" });
   for (const id of ["menu:File", "header:Recent Bookmarks", "folder:f1", "empty", "window:quit"]) assert.equal(appMenuChoice(id), null);
+});
+
+const rows = (items, title) => top(items, title).children.map((item) => "separator" in item ? "-" : item.title);
+
+test("the Ardia, File, View and Help menus carry the Mac menu bar's entries in its order", () => {
+  const items = appMenuItems(state(), new Map([["std:quit:", { key: "q", modifiers: ["command", "shift"] }], ["newIncognitoWindow", { key: "n", modifiers: ["command", "shift"] }]]));
+  assert.deepEqual(rows(items, "Ardia"), ["About Ardia", "-", "Settings…", "Import from Another Browser…", "-", "Quit Ardia"]);
+  assert.deepEqual(find(items, "std:quit:"), { id: "std:quit:", title: "Quit Ardia", key: "q", modifiers: ["command", "shift"] });
+  const file = rows(items, "File");
+  assert.deepEqual(file.slice(0, 4), ["New Tab", "New Tab in Group", "New Window", "New Incognito Window"]);
+  assert.deepEqual(file.slice(-5), ["Save Page As…", "Share", "Email Page Location", "Print…", "Print Using System Dialog…"]);
+  assert.deepEqual(find(items, "newIncognitoWindow").key, "n");
+  assert.deepEqual(top(items, "File").children.find((item) => item.title === "Share").children.map((item) => [item.id, item.title]), [["share:via:copy", "Copy Link"], ["share:via:email", "Email Link"]]);
+  const view = top(items, "View").children.map((item) => item.id);
+  assert.equal(view.indexOf("toggleSidebarSide"), view.indexOf("toggleSidebar") + 1);
+  assert.equal(find(items, "toggleSidebarSide").title, "Sidebar on Right");
+  assert.deepEqual(rows(items, "Help"), ["Report a Problem…", "Keyboard Shortcuts", "Tool Tour", "Video Tour", "Release Notes", "-", "Copy Diagnostics"]);
+});
+
+test("sharing is disabled where the page can't be shared, and the sidebar side shows its check", () => {
+  const items = appMenuItems(state({ disabled: ["share"], checked: ["toggleSidebarSide"] }));
+  assert.equal(find(items, "share:via:copy").enabled, false);
+  assert.equal(find(items, "share:via:email").enabled, false);
+  assert.equal(find(items, "toggleSidebarSide").checked, true);
+});
+
+test("leaving entries out never leaves a doubled or dangling separator", () => {
+  const items = appMenuItems(state(), new Map(), new Set(["videoTour", "releaseNotes", "copyDiagnostics"]));
+  assert.deepEqual(rows(items, "Help"), ["Report a Problem…", "Keyboard Shortcuts", "Tool Tour"]);
 });
 
 test("a command the host can't carry out is left out of the menu instead of doing nothing", () => {

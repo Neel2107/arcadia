@@ -1,6 +1,8 @@
 import { hostSupports, type ArdiaHost } from "./host.ts";
 import { unavailableError } from "./hostCapabilities.ts";
 import { linuxIconAccent } from "./iconAccent.ts";
+import { TELEMETRY_LOCAL_METHODS } from "./hostTelemetryLocal.ts";
+import { shareLink, shareLinkVia, shareText, type ShareAnchor } from "./linkShare.ts";
 
 type Fallback = (...args: unknown[]) => unknown;
 
@@ -16,9 +18,9 @@ const APP_FALLBACKS: Record<string, Fallback> = {
   setAutomaticUpdateDownloads: refuse("Automatic update downloads"),
   setUpdateChannel: refuse("The update channel"),
   setWindowActivity: refuse("Handoff"),
-  share: refuse("The share sheet"),
-  shareVia: refuse("The share sheet"),
-  shareText: refuse("The share sheet"),
+  share: (url, title, windowId, anchor) => shareLink(url as string, title as string | null, windowId as string | null, anchor as ShareAnchor | null),
+  shareVia: (service, url, title, windowId) => shareLinkVia(service as string, url as string, title as string | null, windowId as string | null),
+  shareText: (text, windowId, anchor) => shareText(text as string, windowId as string | null, anchor as ShareAnchor | null),
   isInDock: refuse("The Dock"),
   addToDock: refuse("The Dock"),
   appIcons: answer([]),
@@ -51,16 +53,6 @@ const REPORT_FALLBACKS: Record<string, Fallback> = {
   cancelUploads: now(undefined),
 };
 
-const TELEMETRY_LOCAL_FALLBACKS: Record<string, Fallback> = {
-  append: now(undefined),
-  appendNow: now(undefined),
-  configure: now(undefined),
-  prune: refuse("The local telemetry copy"),
-  clear: answer(undefined),
-  exportForReport: answer(null),
-  exportToDownloads: refuse("The local telemetry copy"),
-};
-
 const MODULE_FALLBACKS: Record<string, Record<string, Fallback>> = {
   ArdiaApp: APP_FALLBACKS,
   ArdiaKeychain: { get: refuse("The keychain"), set: refuse("The keychain"), delete: refuse("The keychain") },
@@ -73,7 +65,7 @@ const MODULE_FALLBACKS: Record<string, Record<string, Fallback>> = {
   ArdiaLocation: { locationPermission: answer("granted"), requestLocationPermission: answer("granted"), openLocationSettings: answer(undefined) },
   ArdiaDockSelection: { iconTheme: refuse("Icon themes"), iconAccent: linuxIconAccent },
   ArdiaReport: REPORT_FALLBACKS,
-  ArdiaTelemetryLocal: TELEMETRY_LOCAL_FALLBACKS,
+  ArdiaTelemetryLocal: TELEMETRY_LOCAL_METHODS,
   ArdiaSystem: { runningAppIcon: answer(null) },
   ArdiaCli: { install: refuse("The ardia command") },
   ArdiaConfig: { watch: answer(undefined), writeSchemas: answer([]) },

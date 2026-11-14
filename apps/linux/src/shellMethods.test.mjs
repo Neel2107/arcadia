@@ -206,10 +206,11 @@ test("problem reports, the local telemetry copy and hardware details answer on L
     return resolved;
   };
   const settle = (value) => Promise.resolve(value).then((answer) => ({ answer }), (error) => ({ code: error.code }));
-  for (const method of ["append", "appendNow", "configure"]) assert.equal(resolve("ArdiaTelemetryLocal", method)("2026-11-08", "{}\n"), undefined, method);
-  assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", "exportForReport")(0)), { answer: null });
+  for (const method of ["append", "appendNow"]) assert.throws(() => resolve("ArdiaTelemetryLocal", method)("2026-11-08", "{}\n"), { code: "ERR_UNAVAILABLE" }, method);
+  assert.equal(resolve("ArdiaTelemetryLocal", "configure")(1024, 7), undefined);
+  for (const method of ["exportForReport", "exportToDownloads"]) assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", method)(0)), { answer: null }, method);
   assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", "clear")()), { answer: undefined });
-  for (const method of ["prune", "exportToDownloads"]) assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", method)(0)), { code: "ERR_UNAVAILABLE" }, method);
+  assert.deepEqual(await settle(resolve("ArdiaTelemetryLocal", "prune")(0)), { code: "ERR_UNAVAILABLE" });
   assert.equal(resolve("ArdiaReport", "isRecording")(), false);
   assert.equal(resolve("ArdiaReport", "fileSize")("/tmp/x"), 0);
   assert.equal(resolve("ArdiaReport", "removeFile")("/tmp/x"), undefined);

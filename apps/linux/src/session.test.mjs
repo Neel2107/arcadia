@@ -5,6 +5,7 @@ import { linuxSessionShape, snapshotHostSession, startHostPersistence } from "./
 import { sessionStatePatch } from "./hostSessionState.ts";
 import { useBrowser } from "../../browser/src/state/browser/store.ts";
 import { mergeSession } from "./hostSessionMerge.ts";
+import { SESSION_VERSION } from "../../browser/src/state/session/persist.ts";
 
 const host = (windowId = "main") => ({ bootstrap: { windowId, profileId: "default", startup: false } });
 
@@ -15,6 +16,7 @@ function browserSession() {
   tab.url = "https://example.test/playing";
   tab.title = "Playing page";
   tab.lastActiveAt = 123;
+  saved.version = SESSION_VERSION;
   return saved;
 }
 

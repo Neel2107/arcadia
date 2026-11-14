@@ -1,13 +1,16 @@
 import type { BrowserCommand, MenuBookmark, MenuItem, MenuState, ShortcutModifier } from "@ardia-real/shell";
-import { commandSpec } from "./commandCatalog";
+import { commandSpec, LINUX_STANDARD_ITEMS } from "./commandCatalog";
 
 type MenuModifier = "command" | "shift" | "option" | "control";
 export type AppMenuShortcuts = ReadonlyMap<string, { key: string; modifiers: readonly ShortcutModifier[] }>;
 export type AppMenuChoice =
   | { kind: "window"; action: "minimize" | "maximize" | "close" }
+  | { kind: "about" }
   | { kind: "command"; command: BrowserCommand; arg: string | null };
 
 const WINDOW_ACTION_PREFIX = "window:";
+const ABOUT = "about";
+const QUIT = "std:quit:";
 const separator: MenuItem = { separator: true };
 
 const commandTitle = (command: string, arg?: string) => {
@@ -37,7 +40,13 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
     };
   };
   const windowAction = (action: string, title: string): MenuItem => ({ id: `${WINDOW_ACTION_PREFIX}${action}`, title });
-  const sub = (title: string, children: MenuItem[]): MenuItem => ({ id: `menu:${title}`, title, children: children.filter((child) => !("id" in child && unavailable.has(child.id))) });
+  const standard = (id: string): MenuItem => {
+    const shortcut = shortcuts.get(id);
+    const modifiers = shortcut?.modifiers.filter((modifier): modifier is MenuModifier => modifier !== "function") ?? [];
+    return { id, title: LINUX_STANDARD_ITEMS[id]!.title, ...(shortcut?.key ? { key: shortcut.key, modifiers } : {}) };
+  };
+  const tidy = (items: MenuItem[]) => items.filter((item, i) => !("separator" in item) || (i > 0 && i < items.length - 1 && !("separator" in items[i - 1]!)));
+  const sub = (title: string, children: MenuItem[]): MenuItem => ({ id: `menu:${title}`, title, children: tidy(children.filter((child) => !("id" in child && unavailable.has(child.id)))) });
   const header = (title: string): MenuItem => ({ id: `header:${title}`, title, enabled: false });
   const empty: MenuItem = { id: "empty", title: "Empty", enabled: false };
   const entry = (command: BrowserCommand, current?: boolean) => (e: { id: string; title: string; current?: boolean }): MenuItem => ({
@@ -64,13 +73,18 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
 
   return [
     sub("Ardia", [
+      { id: ABOUT, title: "About Ardia" },
+      separator,
       cmd("openSettings"),
       cmd("importBrowserData"),
+      separator,
+      standard(QUIT),
     ]),
     sub("File", [
       cmd("newTab"),
       cmd("newTabInGroup"),
       cmd("newWindow"),
+      cmd("newIncognitoWindow"),
       cmd("newLittleArdia"),
       ...(multipleProfiles ? [sub("New Little Ardia Window in Profile", state.profiles.map(entry("newLittleArdia")))] : []),
       cmd("toggleOpenLinksInLittleArdia"),
@@ -86,6 +100,7 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
       cmd("cleanUpTabs"),
       separator,
       cmd("savePage"),
+      sub("Share", [cmd("share", "via:copy", "Copy Link"), cmd("share", "via:email", "Email Link")]),
       cmd("emailPageLocation"),
       cmd("print"),
       cmd("printWithSystemDialog"),
@@ -116,6 +131,7 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
       separator,
       cmd("toggleTabLayout"),
       cmd("toggleSidebar"),
+      cmd("toggleSidebarSide"),
       separator,
       cmd("openSplitPane"),
       cmd("focusNextPane"),
@@ -212,6 +228,8 @@ export function appMenuItems(state: MenuState, shortcuts: AppMenuShortcuts = new
       cmd("reportProblem"),
       cmd("keyboardShortcuts"),
       cmd("toolTour"),
+      cmd("videoTour"),
+      cmd("releaseNotes"),
       separator,
       cmd("copyDiagnostics"),
     ]),
@@ -223,6 +241,9 @@ export function appMenuChoice(id: string): AppMenuChoice | null {
     const action = id.slice(WINDOW_ACTION_PREFIX.length);
     return action === "minimize" || action === "maximize" || action === "close" ? { kind: "window", action } : null;
   }
+  if (id === ABOUT) return { kind: "about" };
+  const standard = LINUX_STANDARD_ITEMS[id];
+  if (standard) return { kind: "command", command: standard.command as BrowserCommand, arg: null };
   const colon = id.indexOf(":");
   const command = colon < 0 ? id : id.slice(0, colon);
   if (!commandSpec(command)) return null;

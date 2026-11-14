@@ -146,7 +146,8 @@ test("a saved shortcut spelled with +, { or } binds as Linux's shifted =, [ or ]
   assert.equal(linuxMenuShortcuts({ zoomIn: ["+", "command"] }).find((item) => item.id === "zoomIn").key, "=");
 });
 
-test("Email Page Location isn't offered as a shortcut while the host can't open a mail link", () => {
-  assert.equal(linuxMenuShortcuts().some((item) => item.id === "emailPageLocation"), false);
-  assert.equal(linuxBindings({ emailPageLocation: ["e", "command"] }).some((binding) => binding.command === "emailPageLocation"), false);
+test("Email Page Location has no default shortcut, since Ctrl+Shift+I opens the developer tools, and can be given one", () => {
+  assert.deepEqual(linuxMenuShortcuts().filter((item) => item.id === "emailPageLocation").map((item) => item.key), [""]);
+  assert.equal(linuxBindings().some((binding) => binding.command === "emailPageLocation"), false);
+  assert.equal(linuxBindings({ emailPageLocation: ["e", "command"] }).some((binding) => binding.command === "emailPageLocation"), true);
 });

@@ -8,6 +8,24 @@ import { linuxMenuShortcuts } from "./shortcuts";
 import { appMenuChoice, appMenuItems } from "./appMenu";
 import { hostModuleMethod, reportHostError } from "./host";
 import { linuxCapabilities, unavailableCommands } from "./hostCapabilities";
+import { videoTourUrl } from "../../browser/src/state/onboarding/tour";
+import { showToast } from "../../browser/src/state/app/toasts";
+import { engineInfo, systemInfo } from "../../browser/src/platform/app";
+import "./linkShareSurface";
+
+const hiddenCommands = () => {
+  const hidden = unavailableCommands(linuxCapabilities());
+  hidden.delete("emailPageLocation");
+  if (!videoTourUrl()) hidden.add("videoTour");
+  if (!systemInfo().releaseNotesURL) hidden.add("releaseNotes");
+  return hidden;
+};
+
+async function showAbout(windowId: string) {
+  const { appName, appVersion, appBuild } = systemInfo();
+  const engine = await engineInfo().catch(() => null);
+  showToast(windowId, `${appName} ${appVersion} (${appBuild})`, engine?.chromiumVersion ? `ArdiaCore on Chromium ${engine.chromiumVersion}` : undefined);
+}
 
 export async function openAppMenu(windowId: string, button: HTMLElement) {
   const state = useBrowser.getState();
@@ -16,11 +34,12 @@ export async function openAppMenu(windowId: string, button: HTMLElement) {
     "key" in shortcut ? { key: shortcut.key, modifiers: shortcut.modifiers } : { key: "", modifiers: [] },
   ]));
   const focusOrder = [windowId, ...state.ui.focusOrder.filter((id) => id !== windowId)];
-  const items = appMenuItems(menuState({ ...state, ui: { ...state.ui, focusOrder } }), shortcuts, unavailableCommands(linuxCapabilities()));
+  const items = appMenuItems(menuState({ ...state, ui: { ...state.ui, focusOrder } }), shortcuts, hiddenCommands());
   const { left, bottom } = button.getBoundingClientRect();
   const id = await showMenu(items, { x: left, y: bottom + 4 });
   const choice = id ? appMenuChoice(id) : null;
   if (!choice) return;
+  if (choice.kind === "about") return showAbout(windowId);
   if (choice.kind === "command") return emitCommand({ command: choice.command, arg: choice.arg, windowId });
   if (choice.action === "close") return void closeWindow(windowId).catch(reportHostError);
   void hostModuleMethod("ArdiaShell", choice.action === "minimize" ? "minimizeWindow" : "toggleMaximizeWindow")(windowId).catch(reportHostError);

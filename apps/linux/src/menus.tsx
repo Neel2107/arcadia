@@ -8,6 +8,7 @@ import { heldModifiers, type MenuModifier } from "./clickModifiers";
 import { useInputRegion } from "./shellAbove";
 import { useGlassPanel } from "./shellGlass";
 import { watchPageFocus } from "./pageFocus";
+import { withShareMenus } from "./linkShare";
 
 type OpenMenu = { items: MenuItem[]; x: number; y: number; resolve: (id: string | null) => void };
 
@@ -53,7 +54,7 @@ if (typeof window !== "undefined") {
 
 export function showMenu(items: MenuItem[], at: { x: number; y: number } = pointer): Promise<string | null> {
   open?.resolve(null);
-  return new Promise((resolve) => publish({ items, x: at.x, y: at.y, resolve }));
+  return new Promise((resolve) => publish({ items: withShareMenus(items), x: at.x, y: at.y, resolve }));
 }
 
 const close = (id: string | null) => {

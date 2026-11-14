@@ -12,6 +12,12 @@ export type LinuxCapabilities = {
   performanceRecording: boolean;
   taskManager: boolean;
   videoUpscaling: boolean;
+  commandScrollZoom: boolean;
+  littleArdiaNewTabLinks: boolean;
+  peekOtherSites: boolean;
+  haptics: boolean;
+  linksFromOtherApps: boolean;
+  dictation: boolean;
 };
 
 export const CLI_CONTROL_METHODS = [
@@ -28,6 +34,9 @@ export const CLI_INSTALL_METHODS = ["ArdiaCli.installedVersion", "ArdiaCli.insta
 
 export const USER_SCRIPTS_METHODS = ["ArdiaUserScripts.watch", "ArdiaUserScripts.read", "ArdiaUserScripts.readStatus", "ArdiaUserScripts.writeStatus"] as const;
 
+export const LINKS_FROM_OTHER_APPS = "ArdiaShell.onOpenURLs";
+export const DICTATION_METHOD = "ArdiaShell.startDictation";
+
 export function linuxCapabilities(host: ArdiaHost | undefined = ardiaHost): LinuxCapabilities {
   const has = (...methods: string[]) => !!host && methods.every((method) => hostSupports(method, host));
   return {
@@ -42,6 +51,12 @@ export function linuxCapabilities(host: ArdiaHost | undefined = ardiaHost): Linu
     performanceRecording: has("engine.beginTracing", "engine.endTracing", "engine.isTracing"),
     taskManager: has("engine.openTaskManager"),
     videoUpscaling: false,
+    commandScrollZoom: has("webView.setCommandScrollZoom"),
+    littleArdiaNewTabLinks: has("webView.setLittleArdiaOpensNewTabLinks"),
+    peekOtherSites: has("webView.setPeekOtherSiteTabs"),
+    haptics: has("ArdiaSystem.hapticTick"),
+    linksFromOtherApps: has(LINKS_FROM_OTHER_APPS),
+    dictation: has(DICTATION_METHOD),
   };
 }
 
@@ -53,6 +68,11 @@ export function unavailableSettingIds(capabilities: LinuxCapabilities, settingId
   if (!capabilities.videoUpscaling) ids.add("tabs.videoUpscaling");
   if (!capabilities.cliControl) for (const id of ["advanced.cliControl", "advanced.cliInstall"]) ids.add(id);
   if (!capabilities.cliInstall) ids.add("advanced.cliInstall");
+  if (!capabilities.commandScrollZoom) ids.add("privacy.commandScrollZoom");
+  if (!capabilities.littleArdiaNewTabLinks) ids.add("general.littleArdiaOpensNewTabLinks");
+  if (!capabilities.peekOtherSites) ids.add("tabs.peekLinksToOtherSites");
+  if (!capabilities.haptics) ids.add("tabs.tabReorderHaptics");
+  if (!capabilities.linksFromOtherApps) for (const id of ["general.openLinksInLittleArdia", "tabs.appLinksFirst"]) ids.add(id);
   if (!capabilities.webkit) for (const id of settingIds) if (id.startsWith("engines.")) ids.add(id);
   return ids;
 }

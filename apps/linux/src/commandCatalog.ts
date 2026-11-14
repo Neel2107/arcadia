@@ -36,6 +36,7 @@ const unshifted = (shortcut: Shortcut): Shortcut => {
 };
 const adapt = (sources: ShortcutSource[]): ShortcutSource[] => {
   const unavailable = unavailableCommands(linuxCapabilities());
+  unavailable.delete("emailPageLocation");
   return sources.filter((source) => !unavailable.has(source.id) && (source.id in LINUX_STANDARD_ITEMS || (!source.id.startsWith("std:") && (source.id.includes(":") || commandSpec(source.id)?.title)))).map((source) => ({
     ...source,
     keys: (linuxKeys[source.id]?.map(parseShortcut) ?? source.keys).map(unshifted),

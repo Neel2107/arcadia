@@ -13,7 +13,8 @@ import { withPrivateWindow } from "./hostWindowProfiles.ts";
 import { sessionWithSplitSlots, sessionWithTabPages, sessionWithTabPins } from "../../browser/src/state/session/savedShapes";
 import { splitTabIds } from "../../browser/src/state/splits/splits";
 import { sessionWithPinChoiceStamps } from "../../browser/src/state/pins/pinChoices";
-import type { SavedObject } from "../../browser/src/lib/savedDocument";
+import { upgraded, type SavedObject } from "../../browser/src/lib/savedDocument";
+import { SESSION_MIGRATIONS, SESSION_VERSION } from "../../browser/src/state/session/persist";
 import { unclaimedAdoptId } from "./unclaimedTabs.ts";
 import { adoptedPage } from "../../browser/src/state/tabs/pageSession";
 
@@ -113,10 +114,35 @@ const withoutWindowTabsShown = (session: HydrateData): HydrateData => {
   };
 };
 
-export const linuxSessionShape = (saved: HydrateData): HydrateData => {
+const sniffedSessionShape = (saved: HydrateData): HydrateData => {
   const settled = settledSession(saved);
   return withoutWindowTabsShown(withAutoHideTabsSetting(withPinChoiceStamps(legacySession(settled) ? withoutAbsent(currentSessionShape(settled)) : settled)));
 };
+
+export const SNIFFED_SESSION_VERSION = 9;
+const DISK_LISTS = ["windows", "tabs", "groups", "splits"] as const;
+
+export const linuxSessionVersion = (saved: HydrateData): number | undefined => {
+  const version = (saved as { version?: unknown }).version;
+  return typeof version === "number" && Number.isSafeInteger(version) && version >= 0 ? version : undefined;
+};
+
+function migratedSession(session: HydrateData, from: number): HydrateData {
+  if (from >= SESSION_VERSION) return session;
+  const tables = DISK_LISTS.filter((key) => !!session[key] && !Array.isArray(session[key]));
+  const disk = { ...session, ...Object.fromEntries(tables.map((key) => [key, Object.values(session[key]!)])), version: from } as unknown as SavedObject;
+  const next = upgraded(disk, SESSION_VERSION, SESSION_MIGRATIONS);
+  if (!next) return session;
+  return withoutAbsent({ ...next, ...Object.fromEntries(tables.map((key) => [key, keyedById(next[key]) ?? {}])) } as unknown as HydrateData);
+}
+
+export const linuxSessionShape = (saved: HydrateData): HydrateData => {
+  const stamped = linuxSessionVersion(saved);
+  if (stamped !== undefined && stamped >= SESSION_VERSION) return sniffedSessionShape(saved);
+  return migratedSession(sniffedSessionShape(saved), Math.max(stamped ?? SNIFFED_SESSION_VERSION, SNIFFED_SESSION_VERSION));
+};
+
+export const unmigratedSessionShape = (saved: HydrateData): HydrateData => sniffedSessionShape(saved);
 
 const inClosingOrder = <T extends { closedAt: number }>(entries: T[]) => [...entries].sort((a, b) => a.closedAt - b.closedAt).slice(-MAX_CLOSED_WINDOWS);
 
@@ -239,6 +265,7 @@ export function snapshotHostSession(s: BrowserState): HydrateData {
     parkedPins: publicTable(s.parkedPins), pinChoices: publicTable(s.pinChoices), pinSync: publicTable(s.pinSync),
     topAppsMerged: s.topAppsMerged,
     settings: s.settings, settingsMeta: s.settingsMeta,
+    ...{ version: SESSION_VERSION },
   };
 }
 
@@ -370,9 +397,10 @@ export function startHostPersistence(host: ArdiaHost, store: SessionStore, store
   let canonical = initial;
   let standIn = windowStandIn(host, store.getState(), initial);
   const snapshotOf = (state: BrowserState) => snapshot(withoutStandIn(state, standIn), canonical);
-  const writer = createSessionWriter(host, initial, (base, session) => receive(base, session));
+  const written = linuxSessionVersion(stored) === linuxSessionVersion(initial) ? initial : unmigratedSessionShape(stored);
+  const writer = createSessionWriter(host, written, (base, session) => receive(base, session));
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let last = canonicalSessionValue(initial)!;
+  let last = canonicalSessionValue(equalSessionValue({ ...initial, version: undefined }, { ...written, version: undefined }) ? initial : written)!;
   let lastSources: unknown[] = [];
   let closing = false;
   const closeTokens = new Set<string>();

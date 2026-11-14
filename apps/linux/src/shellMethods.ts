@@ -2,7 +2,7 @@ import { emitNativeEvent } from "./shims/expo-modules-core";
 import { watchSidebarEdge } from "./shims/web/motion/sidebarEdge";
 import type { ArdiaHost } from "./host";
 import { hostModuleMethod } from "./host.ts";
-import { unavailableError } from "./hostCapabilities.ts";
+import { linuxCapabilities, unavailableError } from "./hostCapabilities.ts";
 import type { BangListReply } from "../../../packages/shell/src/documents";
 
 type ShellMethod = (...args: never[]) => unknown;
@@ -104,6 +104,7 @@ const LINUX_SHELL_METHODS: Record<string, ShellMethod> = {
   dragPreviewCancel: resolved,
   fetchBangList,
   startDictation: unavailable("Dictation"),
+  dictationAvailable: () => linuxCapabilities().dictation,
   pickFiles: unavailable("Choosing files to open"),
   replyToTerminate: resolved,
   readText: readClipboardText,

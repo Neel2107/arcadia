@@ -101,7 +101,7 @@ async function start() {
   if (capabilities.cliControl) startCliControl();
   await startLinuxShortcuts(ardiaHost);
   if (utility) {
-    const persistence = startHostPersistence(ardiaHost, useBrowser, saved ?? {}, createUtilitySessionSnapshot(useBrowser.getState(), saved ?? {}));
+    const persistence = startHostPersistence(ardiaHost, useBrowser, stored ?? {}, createUtilitySessionSnapshot(useBrowser.getState(), saved ?? {}));
     setSessionFlush(persistence.flush);
     startHostData();
     startAppCommands(windowId, capabilities, undefined, UTILITY_APP_COMMANDS);
@@ -117,7 +117,7 @@ async function start() {
     startPipPlayer(ardiaHost);
     setPopupDismissal({ popup: () => useExtensions.getState().popup, windowOf: (tabId) => useBrowser.getState().tabs[tabId]?.windowId, close: () => useExtensions.setState({ popup: null }) });
     startPopoverEscape({ target: window, windowId, menuShown, activeElement: () => document.activeElement });
-    const persistence = startHostPersistence(ardiaHost, useBrowser, saved ?? {});
+    const persistence = startHostPersistence(ardiaHost, useBrowser, stored ?? {});
     setSessionFlush(persistence.flush);
     setSessionDeparture(persistence);
     if (!saved) await recordFreshProfile();

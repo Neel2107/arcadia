@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { resolveHostModule } from "./hostModules.ts";
-import { CLI_CONTROL_METHODS, CLI_INSTALL_METHODS, USER_SCRIPTS_METHODS, linuxCapabilities, unavailablePanes, unavailableSettingIds } from "./hostCapabilities.ts";
+import { CLI_CONTROL_METHODS, CLI_INSTALL_METHODS, DICTATION_METHOD, LINKS_FROM_OTHER_APPS, USER_SCRIPTS_METHODS, linuxCapabilities, unavailablePanes, unavailableSettingIds } from "./hostCapabilities.ts";
 import { CAST_UNAVAILABLE_TITLE, linuxMediaCall } from "./hostCast.ts";
 import { USER_SCRIPTS_LOCK, leadUserScripts } from "./hostUserScripts.ts";
 import { useBrowser } from "../../browser/src/state/browser/store.ts";
@@ -42,18 +42,35 @@ test("a host that advertises a system backend is called through instead of being
 test("Linux capabilities come from the host contract, and WebKit is never offered", () => {
   assert.deepEqual(linuxCapabilities(fakeHost().host), {
     defaultBrowser: false, launchAtLogin: false, thinScrollBars: false, webkit: false, cliControl: false, cliInstall: false, userScripts: false, externalLinks: false, performanceRecording: false, taskManager: false, videoUpscaling: false,
+    commandScrollZoom: false, littleArdiaNewTabLinks: false, peekOtherSites: false, haptics: false, linksFromOtherApps: false, dictation: false,
   });
   const full = linuxCapabilities(fakeHost(["ArdiaSystem.isDefaultBrowser", "ArdiaSystem.setAsDefaultBrowser", "ArdiaSystem.launchAtLoginStatus", "ArdiaSystem.setLaunchAtLogin", "ArdiaSystem.setThinScrollBars", "engine.beginTracing", "engine.endTracing", "engine.isTracing", "engine.openTaskManager", "ArdiaApp.openExternalURL"]).host);
-  assert.deepEqual(full, { defaultBrowser: true, launchAtLogin: true, thinScrollBars: true, webkit: false, cliControl: false, cliInstall: false, userScripts: false, externalLinks: true, performanceRecording: true, taskManager: true, videoUpscaling: false });
+  assert.deepEqual(full, { defaultBrowser: true, launchAtLogin: true, thinScrollBars: true, webkit: false, cliControl: false, cliInstall: false, userScripts: false, externalLinks: true, performanceRecording: true, taskManager: true, videoUpscaling: false, commandScrollZoom: false, littleArdiaNewTabLinks: false, peekOtherSites: false, haptics: false, linksFromOtherApps: false, dictation: false });
+  const routed = linuxCapabilities(fakeHost(["webView.setCommandScrollZoom", "webView.setLittleArdiaOpensNewTabLinks", "webView.setPeekOtherSiteTabs", "ArdiaSystem.hapticTick", LINKS_FROM_OTHER_APPS, DICTATION_METHOD]).host);
+  assert.deepEqual([routed.commandScrollZoom, routed.littleArdiaNewTabLinks, routed.peekOtherSites, routed.haptics, routed.linksFromOtherApps, routed.dictation], [true, true, true, true, true, true]);
   assert.equal(linuxCapabilities(undefined).taskManager, false);
+});
+
+test("the command bar's Dictate button follows the dictation capability: off while the host has no dictation, without reaching the host", () => {
+  const { host, invoked } = fakeHost();
+  assert.equal(resolveHostModule(host, "ArdiaShell", "dictationAvailable")(), false);
+  assert.equal(linuxCapabilities(host).dictation, false);
+  assert.equal(linuxCapabilities(fakeHost([DICTATION_METHOD]).host).dictation, true);
+  assert.deepEqual(invoked, []);
 });
 
 test("unavailable choices map to exact settings ids and the Engines pane", () => {
   const ids = ["general.defaultBrowser", "general.openAtLogin", "general.warnBeforeQuitting", "appearance.pageScrollBars", "engines.defaultEngine", "engines.protectedVideo", "search.otherEngines", "advanced.cliControl", "advanced.cliInstall", "advanced.showFullUrl", "tabs.videoUpscaling", "tabs.autoPictureInPicture"];
+  const unrouted = ["general.littleArdiaOpensNewTabLinks", "general.openLinksInLittleArdia", "privacy.commandScrollZoom", "tabs.appLinksFirst", "tabs.peekLinksToOtherSites", "tabs.tabReorderHaptics"];
+  const routedRows = { commandScrollZoom: true, littleArdiaNewTabLinks: true, peekOtherSites: true, haptics: true, linksFromOtherApps: true };
   const none = linuxCapabilities(fakeHost().host);
-  assert.deepEqual([...unavailableSettingIds(none, ids)].sort(), ["advanced.cliControl", "advanced.cliInstall", "appearance.pageScrollBars", "engines.defaultEngine", "engines.protectedVideo", "general.defaultBrowser", "general.openAtLogin", "tabs.videoUpscaling"]);
+  assert.deepEqual([...unavailableSettingIds(none, ids)].sort(), [...unrouted, "advanced.cliControl", "advanced.cliInstall", "appearance.pageScrollBars", "engines.defaultEngine", "engines.protectedVideo", "general.defaultBrowser", "general.openAtLogin", "tabs.videoUpscaling"].sort());
+  for (const [capability, rows] of Object.entries({ commandScrollZoom: ["privacy.commandScrollZoom"], littleArdiaNewTabLinks: ["general.littleArdiaOpensNewTabLinks"], peekOtherSites: ["tabs.peekLinksToOtherSites"], haptics: ["tabs.tabReorderHaptics"], linksFromOtherApps: ["general.openLinksInLittleArdia", "tabs.appLinksFirst"] })) {
+    const shown = unavailableSettingIds({ ...none, [capability]: true }, ids);
+    assert.deepEqual(unrouted.filter((id) => !shown.has(id)), rows, capability);
+  }
   assert.deepEqual([...unavailablePanes(none)], ["engines"]);
-  assert.deepEqual([...unavailableSettingIds({ ...none, defaultBrowser: true, launchAtLogin: true, thinScrollBars: true, cliControl: true, cliInstall: true, videoUpscaling: true }, ids)].sort(), ["engines.defaultEngine", "engines.protectedVideo"]);
+  assert.deepEqual([...unavailableSettingIds({ ...none, defaultBrowser: true, launchAtLogin: true, thinScrollBars: true, cliControl: true, cliInstall: true, videoUpscaling: true, ...routedRows }, ids)].sort(), ["engines.defaultEngine", "engines.protectedVideo"]);
   const cliRows = (capabilities) => [...unavailableSettingIds(capabilities, ids)].filter((id) => id.startsWith("advanced.cli")).sort();
   assert.deepEqual(cliRows({ ...none, cliControl: true }), ["advanced.cliInstall"]);
   assert.deepEqual(cliRows({ ...none, cliInstall: true }), ["advanced.cliControl", "advanced.cliInstall"]);

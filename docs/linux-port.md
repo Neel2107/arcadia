@@ -256,6 +256,18 @@ The acceptance suite is in [linux-acceptance.md](linux-acceptance.md) and CI in 
   shows; a private window still accepts only its own.
 - **Private ids.** A private window is `incognito:<window>@<original>`, which resolves to the original profile's
   primary off-the-record profile.
+- **Deleting a profile's data.** `profiles.deleteData` takes the engine profile as the call's profile and answers
+  `{remaining}`, as on the Mac: an empty list when nothing is left.
+  - The default profile answers `["data"]` and a private id answers an empty list; neither is touched. A private
+    window gets `ERR_PRIVATE_SERVICE`.
+  - A profile that is loaded, loading or still has a private profile answers `["loaded"]` and nothing changes.
+    Closing its Browsers, as Chromium's own profile deletion does, would close a visible window whose own Browser is
+    that profile, and Chromium itself leaves a loaded profile's files until the next startup. The shell keeps the
+    profile in its list of data to delete and asks again at the next launch, before anything loads it.
+  - Otherwise the id is marked deleted in `ProfileRegistry` (a later load answers `ERR_PROFILE_DELETED`), its entry
+    leaves Chromium's profile list, and Chromium's `NukeProfileFromDisk` removes `<user data>/Profile <id>` and its
+    cache folder on the thread pool, retrying as Chromium does. The answer is `["files"]` if the folder is still
+    there. Calls for the same profile from several windows share one removal.
 - **Private refusals.** These calls are refused for private windows: credentials, history, bookmarks, favicons,
   browsing-data clearing, extension management, sync and live folders. Content-blocker writes are refused too.
 - **What private windows can use.** Site settings and zoom apply to the off-the-record session only. Find, Print, Save
@@ -276,6 +288,7 @@ Command-line switches win over it.
 | `HYPRLAND_INSTANCE_SIGNATURE`, `XDG_RUNTIME_DIR` | Become `--ardia-hyprland-instance` and `--ardia-hyprland-runtime-dir`, the only way the Hyprland socket reaches the PiP code. |
 | `ARDIA_CLI_HOME`, `ARDIA_CLI_BIN_DIR`, `ARDIA_CLI_URL` | Passed to the `ardia` command's installer (absolute paths only for the first two). |
 | `XDG_DATA_HOME`, `HOME` | Give the default CLI home, `${XDG_DATA_HOME:-$HOME/.local/share}/ardia/cli`. |
+| `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_DATA_DIRS`, `HOME`, `PATH` | Give the desktop folders (`LinuxDesktop()`): the autostart folder `${XDG_CONFIG_HOME:-$HOME/.config}/autostart`, the `applications` folders searched for `ardia.desktop` (the user's, then each of `${XDG_DATA_DIRS:-/usr/local/share:/usr/share}`) and the folders searched for `xdg-settings`. Relative entries are dropped. |
 | `ARDIA_PACKAGE_DIR` | Only with an explicit `--user-data-dir`: the folder read for `VERSION` and `cli/` instead of the one holding `chrome`. For tests of a raw build tree. |
 
 It also reads `VERSION` beside `chrome` and appends `DevToolsAcceptDebuggingConnections` to `--disable-features`, as
@@ -525,6 +538,10 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
     New Window entry).
   - Quit is Ctrl+Shift+Q. Ctrl+Tab commits on release of the physical Control key.
   - `--ardia-keyboard-diagnostics` with `--enable-logging=stderr` logs each key, its binding and the focused view.
+- **Ctrl-scroll zoom.** Chromium zooms a tab when a page leaves a Ctrl-wheel event unhandled
+  (`BrowserWebContentsDelegate::ContentsZoomChange`). `chromium-linux-wheel-zoom.patch` puts one gate there,
+  `g_ardia_linux_wheel_zoom_off`, and `webView.setCommandScrollZoom {enabled}` sets it for every window and profile
+  (`SetLinuxPageOption`), so Settings › Privacy › Zoom works. The host advertises the call.
 - **Typeahead.** Keys typed before a new window's UI is ready are held and replayed into the focused text field. The
   hold takes at most 512 events and lasts at most 10 s.
 - **Wayland placement.** Wayland gives clients no global window position. `windowFrame` returns null there, only
@@ -1003,12 +1020,59 @@ It works as on the Mac ([cli.md](cli.md), [automation.md](automation.md)); what 
   session) is a request the owner runs, answered once per request id. When the owner closes, the next window in line
   takes the lock, re-reads the telemetry documents and resumes the same session; the `telemetry` launch step tells it
   this is a takeover, not a new launch, and a session that was already ended stays ended.
+- **The 7-day local copy.** `ArdiaTelemetryLocal` is TypeScript on Linux (`hostTelemetryLocal.ts`). The lines live in
+  the shell's IndexedDB (`ardia.telemetry-local`, one store of `{day, text}` chunks), which every window of the instance
+  shares because every shell runs in the app profile. Only the telemetry owner records, each write, prune and clear is
+  one transaction, and a private window never writes. A prune applies the Mac's rules (7 days, 8 MB, oldest first,
+  down to nine tenths) and folds each day into one record. View My Data saves `Ardia data <day>.jsonl` as an ordinary
+  download of a blob from the shell, so it lands in the Downloads folder (or wherever downloads are set to go, with
+  Chromium's ` (1)` suffix for a second file), shows in the downloads list and can be shown in the file manager.
+  Before it reads, the exporting window asks the owner to flush its buffer (`ardia.linux.telemetry-local` channel).
+  The `ardia` command's own lines aren't in the export. Watch `telemetry_local_store` (`write_failures`, `bytes`,
+  `lines_dropped`) and `local_copy_exported` (`ok`) from Linux.
 - **Session end.** When a close ends the session (quitting or the last browser window), the closing window asks the
   owner to record `app_session_ended` and save its queue before the close is acknowledged (2 s at most); an owner
   closing alone just saves its queue. If that close is then cancelled, the session reopens, but only if no later close
   ended it again. A session killed without a close (logout, SIGKILL) shows up as unclean on the next launch.
 - **Test instances.** The bootstrap's `isolatedInstance` is true under `--user-data-dir` or `ARDIA_DATA_DIR`; such
   instances send with `$environment: test` and skip the daily ping, as on macOS.
+
+### Default browser, launch at login and links to other apps
+
+`ac_linux_desktop_core.cc` holds the logic, with no Chromium in it, and `ac_linux_system.cc` the threads, the
+`xdg-settings` process and the replies. The file and process work runs on one thread-pool sequence, never on the UI
+thread. The reply shapes are the Mac's (`packages/shell/ios/SystemModule.swift`, `AppModule.swift`).
+
+- **This copy of Ardia.** The launcher is `<prefix>/bin/ardia`, found from the running `chrome`
+  (`<prefix>/lib/ardia/chrome`). A desktop entry counts only when its `Exec` program resolves to that launcher or to
+  `chrome` itself (symlinks followed; a bare name is looked up in `PATH`).
+- **The installed entry.** The first `ardia.desktop` in the `applications` folders, in XDG order, the one
+  `scripts/linux/package.py` writes and `install.sh` installs with an absolute `Exec`. It must be `Type=Application`,
+  not `Hidden`, start this copy and list `x-scheme-handler/http` and `x-scheme-handler/https` in `MimeType`. At most
+  64 KiB is read.
+- **`ArdiaSystem.isDefaultBrowser`** answers a boolean: what `xdg-settings check default-web-browser ardia.desktop`
+  says (5 s at most). It answers false, without running anything, when there is no usable installed entry (an
+  extracted folder, an install under a prefix outside `XDG_DATA_DIRS`, an entry that starts another copy) or no
+  `xdg-settings` in `PATH`, and false when the tool fails, times out or says anything but `yes`.
+- **`ArdiaSystem.setAsDefaultBrowser`** runs `xdg-settings set default-web-browser ardia.desktop` (15 s at most), then
+  the check again, and answers the check, as the Mac answers its probe. The same refusals answer false, and the reason
+  is logged.
+- **`ArdiaSystem.launchAtLoginStatus`** answers `enabled`, `notRegistered` or `notFound` (never the Mac's
+  `requiresApproval`). `notFound` means this copy has no launcher to start (a raw build tree) or there is no home
+  folder. `enabled` means `<autostart>/ardia.desktop` is an application entry that starts this copy and is neither
+  `Hidden=true` nor `X-GNOME-Autostart-enabled=false`.
+- **`ArdiaSystem.setLaunchAtLogin(enabled)`** writes that entry (`Exec` is the launcher, quoted by the Desktop Entry
+  rules) to a temporary file in the autostart folder, syncs it and renames it into place, so a link at that name is
+  replaced, never written through. Missing folders are created with mode 0700. Turning it off removes the entry. A
+  failure rejects with `ERR_LOGIN_ITEM`. It works from an extracted folder too, which needs no installed entry.
+- **`ArdiaApp.openExternalURL(url)`** answers a boolean. A valid URL of at most 32 KiB goes to
+  `platform_util::OpenExternal` (the portal, else `xdg-email` for `mailto:` and `xdg-open`), and the answer is true
+  once it is handed over; Linux can't tell whether an app opened. The Mac takes any scheme; Linux also refuses the
+  schemes that run or read local content (`file`, `javascript`, `data`, `blob`, `about`, `view-source`, `chrome` and
+  its relatives, `devtools`, `filesystem`, and Chromium's own external-protocol blocklist).
+- **Background instances** run no tool, write no entry and open no app: the default browser calls answer false,
+  `setLaunchAtLogin` resolves without changing anything and `openExternalURL` answers false. The login status is still
+  read.
 
 ### Downloads and files
 
@@ -1121,15 +1185,30 @@ Newest first. Each entry names the upstream commit `linux-support` was rebased o
 These were open at the time of the PR.
 
 - **Shared calls Linux doesn't route yet:**
-  - bookmarks HTML export;
-  - `webView.setPeekOtherSiteTabs` and `webView.setCommandScrollZoom`;
+  - bookmarks HTML export (`bookmarks.exportHtml`). Until an engine advertises it, the shell serves the call itself
+    (`hostBookmarksExport.ts`): it builds the file from `bookmarks.tree` and `favicons.get` in Chromium's own
+    bookmark-file format (`bookmarksHtml.ts`) and downloads it from the shell page, so it lands in the Downloads
+    folder as `Ardia Bookmarks.html`, follows Ask where to save each file, and shows in the downloads list. There is
+    no Save dialog of its own, a folder's `LAST_MODIFIED` is its newest child's date (the tree carries no
+    modification date), and the downloads list keeps the entry;
+  - `webView.setCommandScrollZoom`: Ctrl-scroll zoom is Chromium's own and can't be turned off;
+  - `webView.setPeekOtherSiteTabs` and `webView.setLittleArdiaOpensNewTabLinks`. Both are native code on the Mac
+    (`ArdiaWebView+Peek.mm`, `ArdiaWebView+Tab.mm`), not a shared service, so each needs a port:
+    - peeking links to other sites needs the tab ids mapped to their page channels (per window, since every window's
+      shell sends its own list), `otherSites` in each main frame's `peekConfig`, the `site` key accepted by
+      `NormalizeLinuxPageMessage` and decided by `LinuxLinkGestureGate` (main frame only, a plain left click), the
+      `follow` refusal the page script waits for when native declines, and `site: true` on the `openWindow` event;
+    - keeping new-tab links in a Little Ardia window needs the page script's `newTabLink` message allowed through the
+      page channel, a short per-tab ledger of those URLs, the match in `TabBinding::ReportOpened`, the host knowing
+      its window is a small one, and then closing the opened tab and reporting `openWindow` with
+      `disposition: "current"` and `linkWait: "matched"`.
   - the `extensions.installFailed` event;
   - Paste and Go (the clipboard read answers empty);
   - performance recording (`beginTracing`/`endTracing`), which stays hidden.
   - `ardia browse`'s off-screen tabs (`engine.cliMoveOffscreen`, `cliCloseOffscreenTabs`, `cliOwnsTab`): Linux has no
     off-screen automation window, so `ardia browse set viewport` is refused over the token connection.
-- **Profiles.** Deleting a profile's data (`profiles.deleteData`) isn't routed. In a window that shows several engine
-  profiles:
+- **Profiles.** Deleting the data of an engine profile that was loaded in this run waits for the next launch
+  (Profiles and private windows › Deleting a profile's data). In a window that shows several engine profiles:
   - a page's own fullscreen in a companion's tab makes only its viewport fullscreen, not the window;
   - Chrome's own download bubble and other toolbar-anchored bubbles of a companion have no visible anchor (Ardia's
     downloads panel lists them); the downloads list a window loads at start comes from its own profile, while later
@@ -1157,10 +1236,28 @@ These were open at the time of the PR.
   Enter in a new tab's address bar did nothing (Fedora 44, wlroots). Linux replaces the module with
   `apps/linux/src/fieldTiming.ts`, which reports no timing data (`lastInput` is `[0, 0]`, `drain` is empty), so the
   field journeys send no samples from Linux. UI only; the engine key is unchanged.
-- **Unread counts on older profiles.** Linux runs no session migrations, so a profile saved before this sync keeps
-  Show unread counts on; upstream's session version 11 turns an untouched setting off. New profiles start with it off.
-- **Default browser in onboarding.** The last onboarding step leaves out the default browser row on Linux, which has no
-  default-browser backend, and no longer says where to set it (the desktop's default applications settings).
+- **Settings rows without a backend are hidden**, each until the host advertises its capability
+  (`unavailableSettingIds` in `hostCapabilities.ts`): Zoom with Ctrl and the mouse wheel
+  (`webView.setCommandScrollZoom`), Keep new-tab links inside a Little Ardia window
+  (`webView.setLittleArdiaOpensNewTabLinks`), Open a Peek window when clicking on links to other sites
+  (`webView.setPeekOtherSiteTabs`), Haptic feedback when reordering tabs (`ArdiaSystem.hapticTick`), and the two rows
+  about links from other apps, Open links from other apps in Little Ardia and Put links from other apps first
+  (`ArdiaShell.onOpenURLs`, a name a host advertises once it sends that event; today Chromium opens such links as
+  tabs itself). The command bar's Dictate button follows `ArdiaShell.startDictation` the same way. Still shown though
+  they point at a hidden row: the app menu's Open Links from Other Apps in Little Ardia, and the sentence about links
+  from other apps under Open new-tab links in.
+- **Session migrations.** The saved Linux session carries the shared `version`. `linuxSessionShape` runs the shared
+  `SESSION_MIGRATIONS` from that version on the shape the Mac saves (windows, tabs, groups and splits as lists), and a
+  session without the stamp counts as version 9, the last one Linux's own shape checks cover. A migration that changes
+  something is saved at launch against what was on disk. A session from a newer build is left as it is, and its stamp
+  is written down to this build's on the next save; as on the Mac, downgrades aren't supported.
+- **Default browser.** An Ardia that isn't installed where the desktop looks (an extracted folder, a prefix outside
+  `XDG_DATA_DIRS`) still shows the default browser controls, and they answer false; the reason is only in the log.
+  `xdg-settings` is the only backend: a desktop without it can't be asked or set.
+- **Launch at login** starts Ardia as any launch does; it doesn't start hidden. A system-wide
+  `/etc/xdg/autostart/ardia.desktop`, which Ardia doesn't install, is neither read nor overridden.
+- **Ctrl-scroll zoom off** (`webView.setCommandScrollZoom`) stops the zoom, and the wheel then does nothing; on the
+  Mac the page scrolls instead. A site that handles Ctrl-scroll itself still gets it either way.
 - **Link status bubble.** Upstream moves it to the top of the page while the pointer is near the bottom edge, from the
   `fromBottom` the macOS page sends with each status. The Linux engine sends only the text, so the bubble stays at the
   bottom. It needs the engine to report the pointer's distance from the page's bottom edge.
@@ -1174,8 +1271,8 @@ These were open at the time of the PR.
   - video upscaling;
   - the updater;
   - crash reports;
-  - sending problem reports (the shell CSP blocks it); the 7-day local copy (`ArdiaTelemetryLocal` keeps nothing, so
-    Settings › Privacy hides View My Data) and hardware details (`ArdiaApp.hardwareInfo`);
+  - sending problem reports (the shell CSP blocks it), so `ArdiaTelemetryLocal.exportForReport` answers null, and
+    hardware details (`ArdiaApp.hardwareInfo`);
   - the sidebar edge's `whilePressed`: the native edge watcher still peeks during any pressed drag;
   - `engine.cliTabTargets`, so `windows` from the control socket has no DevTools target ids;
   - Ardia's own desktop notifications (sites' web notifications use Chromium's Linux notifications);
@@ -1183,7 +1280,7 @@ These were open at the time of the PR.
   - Handoff;
   - AppleScript;
   - alternate app icons;
-  - default-browser registration, launch at login and the scroll bar style setting;
+  - the scroll bar style setting;
   - automation's native signals (`ArdiaSystemSignals`): `user.idle`/`user.active`, sleep and wake never fire, incoming
     links aren't held at launch for a link rule, and a `download.deciding` folder outside the default doesn't move the
     file, which stays where it landed (`appModuleFallbacks.ts`).

@@ -11,6 +11,7 @@ import { linuxShellMethod, watchSidebarEdgeBesideNativeLeftEdge } from "./shellM
 import { appModuleFallback } from "./appModuleFallbacks.ts";
 import { cliModuleMethod } from "./hostCli.ts";
 import { configModuleMethod } from "./hostConfig.ts";
+import { BOOKMARKS_EXPORT_CALL, bookmarksExportCall } from "./hostBookmarksExport.ts";
 
 const synchronousDefaults: Record<string, Record<string, unknown>> = {
   ArdiaApp: { apiVersion: 0 },
@@ -64,6 +65,10 @@ export function resolveHostModule(host: ArdiaHost, name: string, method: string)
   }
   if (name === "ArdiaMedia" && method === "call") {
     return (verb: string, profile: string, args: string) => linuxMediaCall(verb, args) ?? callHost(`media.${verb}`, profile, args, host);
+  }
+  if (name === "ArdiaBookmarks" && method === "call" && !hostSupports(BOOKMARKS_EXPORT_CALL, host)) {
+    const exportHtml = bookmarksExportCall(host);
+    return (verb: string, profile: string, args: string) => verb === "exportHtml" ? exportHtml(profile) : callHost(`bookmarks.${verb}`, profile, args, host);
   }
   if (method === "call" && /^Ardia[A-Z]/.test(name)) {
     const domain = name.slice(5, 6).toLowerCase() + name.slice(6);

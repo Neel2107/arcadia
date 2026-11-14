@@ -1,5 +1,6 @@
 import { hostSupports, type ArdiaHost } from "./host.ts";
 import { linuxCapabilities, unavailableError } from "./hostCapabilities.ts";
+import { openMailLink } from "./linkShare.ts";
 
 const INTRO_MUSIC = new Set(["playIntroMusic", "setIntroMusicMuted", "stopIntroMusic"]);
 
@@ -7,7 +8,7 @@ export function linuxModuleMethod(host: ArdiaHost, name: string, method: string)
   if (name === "ArdiaSystem") return linuxSystemMethod(host, method);
   if (name !== "ArdiaApp" || hostSupports(`${name}.${method}`, host)) return undefined;
   if (INTRO_MUSIC.has(method)) return () => Promise.resolve();
-  if (method === "openExternalURL") return () => Promise.resolve(false);
+  if (method === "openExternalURL") return (url) => Promise.resolve(typeof url === "string" && openMailLink(url));
   return undefined;
 }
 
