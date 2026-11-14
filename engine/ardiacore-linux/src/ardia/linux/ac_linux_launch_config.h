@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/files/file_path.h"
 #include "base/values.h"
@@ -29,6 +30,15 @@ struct LinuxCliEnvironment {
   bool isolated = false;
 };
 
+struct LinuxDesktopEnvironment {
+  LinuxDesktopEnvironment();
+  LinuxDesktopEnvironment(const LinuxDesktopEnvironment&);
+  ~LinuxDesktopEnvironment();
+  std::optional<std::string> autostart_directory;
+  std::vector<std::string> application_directories;
+  std::vector<std::string> search_path;
+};
+
 void InitializeLinuxLaunchConfig();
 
 std::optional<std::string> WellFormedLinuxVersion(std::string_view text);
@@ -36,6 +46,8 @@ std::optional<std::string> WellFormedLinuxVersion(std::string_view text);
 const LinuxPackageInfo& LinuxPackage();
 
 const LinuxCliEnvironment& LinuxCli();
+
+const LinuxDesktopEnvironment& LinuxDesktop();
 
 base::FilePath LinuxConfigFolder(const base::FilePath& user_data_directory);
 

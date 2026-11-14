@@ -125,6 +125,17 @@ int NextPrivateOrdinal(const std::vector<int>& taken) {
   return ordinal;
 }
 
+std::vector<std::string> DataDeletionRemaining(DataDeletion plan) {
+  switch (plan) {
+    case DataDeletion::kDefault: return {"data"};
+    case DataDeletion::kLoaded: return {"loaded"};
+    case DataDeletion::kInvalid:
+    case DataDeletion::kPrivate:
+    case DataDeletion::kRemove: return {};
+  }
+  return {};
+}
+
 bool ProfileOpensWindow(const ProfileName& name, bool incognito, bool utility) {
   if (utility) return name.kind == ProfileKind::kDefault && !incognito;
   return incognito == (name.kind == ProfileKind::kPrivate);

@@ -37,6 +37,11 @@ LinuxCliEnvironment& CliStorage() {
   return *cli;
 }
 
+LinuxDesktopEnvironment& DesktopStorage() {
+  static base::NoDestructor<LinuxDesktopEnvironment> desktop;
+  return *desktop;
+}
+
 std::optional<std::string> NonEmptyVariable(base::Environment& environment, const std::string& name) {
   auto value = environment.GetVar(name);
   if (!value || value->empty()) {
@@ -81,6 +86,49 @@ void ReadCliEnvironment(base::Environment& environment, bool isolated) {
   } else if (const auto home = AbsoluteVariable(environment, "HOME")) {
     cli.default_home = *home + "/.local/share/ardia/cli";
   }
+}
+
+std::string Below(std::string directory, std::string_view name) {
+  while (directory.size() > 1 && directory.back() == '/') {
+    directory.pop_back();
+  }
+  if (directory.back() != '/') {
+    directory += "/";
+  }
+  return directory.append(name);
+}
+
+std::vector<std::string> AbsoluteDirectories(std::string_view list) {
+  std::vector<std::string> directories;
+  for (std::string& entry : base::SplitString(list, ":", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY)) {
+    while (entry.size() > 1 && entry.back() == '/') {
+      entry.pop_back();
+    }
+    if (entry.front() == '/') {
+      directories.push_back(std::move(entry));
+    }
+  }
+  return directories;
+}
+
+void ReadDesktopEnvironment(base::Environment& environment) {
+  LinuxDesktopEnvironment& desktop = DesktopStorage();
+  const auto home = AbsoluteVariable(environment, "HOME");
+  if (const auto config = AbsoluteVariable(environment, "XDG_CONFIG_HOME")) {
+    desktop.autostart_directory = Below(*config, "autostart");
+  } else if (home) {
+    desktop.autostart_directory = Below(*home, ".config/autostart");
+  }
+  if (const auto data = AbsoluteVariable(environment, "XDG_DATA_HOME")) {
+    desktop.application_directories.push_back(Below(*data, "applications"));
+  } else if (home) {
+    desktop.application_directories.push_back(Below(*home, ".local/share/applications"));
+  }
+  const std::string shared = NonEmptyVariable(environment, "XDG_DATA_DIRS").value_or("/usr/local/share:/usr/share");
+  for (const std::string& directory : AbsoluteDirectories(shared)) {
+    desktop.application_directories.push_back(Below(directory, "applications"));
+  }
+  desktop.search_path = AbsoluteDirectories(environment.GetVar("PATH").value_or(""));
 }
 
 const base::CommandLine& CommandLine() {
@@ -170,6 +218,9 @@ LinuxPackageInfo::~LinuxPackageInfo() = default;
 LinuxCliEnvironment::LinuxCliEnvironment() = default;
 LinuxCliEnvironment::LinuxCliEnvironment(const LinuxCliEnvironment&) = default;
 LinuxCliEnvironment::~LinuxCliEnvironment() = default;
+LinuxDesktopEnvironment::LinuxDesktopEnvironment() = default;
+LinuxDesktopEnvironment::LinuxDesktopEnvironment(const LinuxDesktopEnvironment&) = default;
+LinuxDesktopEnvironment::~LinuxDesktopEnvironment() = default;
 
 std::optional<std::string> WellFormedLinuxVersion(std::string_view text) {
   const size_t newline = text.find('\n');
@@ -197,6 +248,10 @@ const LinuxPackageInfo& LinuxPackage() {
 
 const LinuxCliEnvironment& LinuxCli() {
   return CliStorage();
+}
+
+const LinuxDesktopEnvironment& LinuxDesktop() {
+  return DesktopStorage();
 }
 
 void InitializeLinuxLaunchConfig() {
@@ -236,6 +291,7 @@ void InitializeLinuxLaunchConfig() {
   const bool isolated = command->HasSwitch(switches::kUserDataDir);
   ReadPackage(*environment, isolated);
   ReadCliEnvironment(*environment, isolated);
+  ReadDesktopEnvironment(*environment);
   if (!command->HasSwitch("ardia-downloads-dir")) {
     const auto downloads =
         DownloadsDirectory(environment->GetVar("ARDIA_INSTANCE").value_or(""));

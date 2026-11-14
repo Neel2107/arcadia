@@ -37,6 +37,8 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
+extern bool g_ardia_linux_wheel_zoom_off;
+
 namespace ardiacore {
 
 namespace {
@@ -550,6 +552,12 @@ void NoteLinuxDragEnded(base::FunctionRef<bool(content::WebContents*)> in_window
 
 bool SetLinuxPageOption(const std::string& route, const base::DictValue& input, std::string* error) {
   bool changed = false;
+  if (route == "webView.setCommandScrollZoom") {
+    const auto enabled = input.FindBool("enabled");
+    if (!enabled) return *error = "A boolean wheel zoom setting is required", false;
+    g_ardia_linux_wheel_zoom_off = !*enabled;
+    return true;
+  }
   if (route == "webView.setSelectionPopover") {
     const auto enabled = input.FindBool("enabled");
     if (!enabled) return *error = "A boolean selection popover setting is required", false;

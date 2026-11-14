@@ -28,6 +28,8 @@ enum class ProfileError {
   kPrivateEnding,
 };
 
+enum class DataDeletion { kInvalid, kPrivate, kDefault, kLoaded, kRemove };
+
 struct ProfileName {
   ProfileKind kind = ProfileKind::kDefault;
   std::string id;
@@ -77,6 +79,7 @@ std::string_view ProfileErrorCode(ProfileError error);
 std::string_view ProfileErrorMessage(ProfileError error);
 bool ProfileOpensWindow(const ProfileName& name, bool incognito, bool utility);
 int NextPrivateOrdinal(const std::vector<int>& taken);
+std::vector<std::string> DataDeletionRemaining(DataDeletion plan);
 
 template <class Done>
 class OpeningLedger {
@@ -222,6 +225,19 @@ class ProfileRegistry {
       else ++it;
     }
     return true;
+  }
+
+  DataDeletion PlanDataDeletion(std::string_view value) const {
+    const auto name = ParseProfileName(value);
+    if (!name) return DataDeletion::kInvalid;
+    if (name->kind == ProfileKind::kPrivate) return DataDeletion::kPrivate;
+    if (name->kind == ProfileKind::kDefault) return DataDeletion::kDefault;
+    if (regular_.contains(name->id) || waiting_.contains(name->id)) return DataDeletion::kLoaded;
+    for (const auto& [id, candidate] : private_) {
+      const auto parsed = ParseProfileName(id);
+      if (parsed && parsed->original == name->id) return DataDeletion::kLoaded;
+    }
+    return DataDeletion::kRemove;
   }
 
   void Forget(const P* profile) {

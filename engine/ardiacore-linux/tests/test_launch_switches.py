@@ -251,6 +251,20 @@ int main(int argc, char** argv) {
     expect(cli.url, "FIXTURE_CLI_URL");
     expect(cli.default_home, "FIXTURE_CLI_DEFAULT_HOME");
     assert(cli.isolated == (std::getenv("FIXTURE_ISOLATED") != nullptr));
+  } else if (scenario == "desktop") {
+    const auto& desktop = ardiacore::LinuxDesktop();
+    const auto joined = [](const std::vector<std::string>& entries) {
+      std::string text;
+      for (const std::string& entry : entries) text += entry + "|";
+      return text;
+    };
+    const char* autostart = std::getenv("FIXTURE_AUTOSTART");
+    if (autostart) assert(desktop.autostart_directory == std::string(autostart));
+    else assert(!desktop.autostart_directory);
+    const char* applications = std::getenv("FIXTURE_APPLICATIONS");
+    assert(joined(desktop.application_directories) == (applications ? applications : ""));
+    const char* search = std::getenv("FIXTURE_SEARCH_PATH");
+    assert(joined(desktop.search_path) == (search ? search : ""));
   } else if (scenario == "versions") {
     assert(ardiacore::WellFormedLinuxVersion("0.2.44\n") == std::string("0.2.44"));
     assert(ardiacore::WellFormedLinuxVersion(" 0.2.44-nightly.3 \n\n") == std::string("0.2.44-nightly.3"));
@@ -386,7 +400,22 @@ class LaunchSwitchTests(unittest.TestCase):
             'FIXTURE_CLI_DEFAULT_HOME': '/home/someone/.local/share/ardia/cli', 'FIXTURE_ISOLATED': '1'})
         self.run_case('cli', environment={'HOME': '/home/someone', 'XDG_DATA_HOME': '', 'ARDIA_CLI_HOME': 'relative', 'ARDIA_CLI_BIN_DIR': '', 'FIXTURE_CLI_DEFAULT_HOME': '/home/someone/.local/share/ardia/cli'})
 
+    def test_desktop_folders_follow_the_xdg_variables_then_home(self):
+        self.run_case('desktop', environment={
+            'HOME': '/home/someone/', 'XDG_CONFIG_HOME': '/cfg//', 'XDG_DATA_HOME': '/data', 'XDG_DATA_DIRS': '/opt/share/:relative::/usr/share',
+            'PATH': '/usr/local/bin:bin::/usr/bin/:/',
+            'FIXTURE_AUTOSTART': '/cfg/autostart', 'FIXTURE_APPLICATIONS': '/data/applications|/opt/share/applications|/usr/share/applications|',
+            'FIXTURE_SEARCH_PATH': '/usr/local/bin|/usr/bin|/|'})
+        self.run_case('desktop', environment={
+            'HOME': '/home/someone', 'XDG_CONFIG_HOME': 'relative', 'XDG_DATA_HOME': '', 'XDG_DATA_DIRS': '', 'PATH': '',
+            'FIXTURE_AUTOSTART': '/home/someone/.config/autostart',
+            'FIXTURE_APPLICATIONS': '/home/someone/.local/share/applications|/usr/local/share/applications|/usr/share/applications|'})
+        self.run_case('desktop', environment={
+            'HOME': '', 'XDG_CONFIG_HOME': '', 'XDG_DATA_HOME': '', 'XDG_DATA_DIRS': '/', 'PATH': '/bin',
+            'FIXTURE_APPLICATIONS': '/applications|', 'FIXTURE_SEARCH_PATH': '/bin|'})
+
     def test_children_read_no_package_or_cli_environment(self):
+        self.run_case('desktop', 'type=renderer', environment={'HOME': '/home/someone', 'XDG_DATA_DIRS': '/usr/share', 'PATH': '/usr/bin'})
         package = self.package_root('child-package', '1.0.0\n')
         self.run_case('package', 'type=renderer', environment={'FIXTURE_EXE_DIR': str(package)})
         self.run_case('cli', 'type=renderer', environment={'HOME': '/home/someone', 'ARDIA_CLI_HOME': '/tmp/cli-home'})

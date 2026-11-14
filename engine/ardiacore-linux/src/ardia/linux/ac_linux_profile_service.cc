@@ -1,6 +1,7 @@
 #include "ardia/linux/ac_linux_profile_service.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <utility>
 
@@ -15,7 +16,9 @@
 #include "base/time/time.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/nuke_profile_directory_utils.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_observer.h"
 #include "chrome/common/pref_names.h"
@@ -90,6 +93,38 @@ class ChromeProfiles : public Registry::Backend, public ProfileObserver {
     loaded_listener_ = std::move(listener);
   }
 
+  void DeleteData(std::string_view value, LinuxProfileDataDeleted done) {
+    const linux_profiles::DataDeletion plan = registry_.PlanDataDeletion(value);
+    if (plan == linux_profiles::DataDeletion::kInvalid) return std::move(done).Run(ProfileError::kInvalid, {});
+    if (plan != linux_profiles::DataDeletion::kRemove) {
+      return std::move(done).Run(ProfileError::kNone, linux_profiles::DataDeletionRemaining(plan));
+    }
+    const std::string id = linux_profiles::ParseProfileName(value)->id;
+    ProfileManager* manager = g_browser_process ? g_browser_process->profile_manager() : nullptr;
+    Profile* app = registry_.Default();
+    if (!manager || !app) return std::move(done).Run(ProfileError::kUnavailable, {});
+    const base::FilePath user_data = app->GetPath().DirName();
+    const base::FilePath path = user_data.AppendASCII(linux_profiles::ProfileDirectoryName(id));
+    if (user_data != manager->user_data_dir() || !manager->IsAllowedProfilePath(path) || path == app->GetPath()) {
+      return std::move(done).Run(ProfileError::kUnavailable, {});
+    }
+    if (manager->GetProfileByPath(path)) {
+      return std::move(done).Run(ProfileError::kNone,
+                                 linux_profiles::DataDeletionRemaining(linux_profiles::DataDeletion::kLoaded));
+    }
+    registry_.MarkDeleted(id);
+    std::vector<LinuxProfileDataDeleted>& waiting = deleting_[id];
+    waiting.push_back(std::move(done));
+    if (waiting.size() > 1) return;
+    ProfileAttributesStorage& storage = manager->GetProfileAttributesStorage();
+    if (storage.GetProfileAttributesWithPath(path)) storage.RemoveProfile(path);
+    base::ThreadPool::PostTask(
+        FROM_HERE,
+        {base::MayBlock(), base::TaskPriority::USER_VISIBLE, base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+        base::BindOnce(&NukeProfileFromDisk, path,
+                       base::BindOnce(&ChromeProfiles::DataRemoved, base::Unretained(this), id, path)));
+  }
+
  private:
   static void CreateProfile(const base::FilePath& path, std::function<void(Profile*)> done, bool writable) {
     ProfileManager* manager = g_browser_process ? g_browser_process->profile_manager() : nullptr;
@@ -100,12 +135,29 @@ class ChromeProfiles : public Registry::Backend, public ProfileObserver {
                   std::move(done)));
   }
 
+  void DataRemoved(const std::string& id, const base::FilePath& path) {
+    base::ThreadPool::PostTaskAndReplyWithResult(
+        FROM_HERE,
+        {base::MayBlock(), base::TaskPriority::USER_VISIBLE, base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
+        base::BindOnce(&base::PathExists, path),
+        base::BindOnce(&ChromeProfiles::DataDeletionFinished, base::Unretained(this), id));
+  }
+
+  void DataDeletionFinished(const std::string& id, bool left) {
+    auto node = deleting_.extract(id);
+    if (node.empty()) return;
+    for (LinuxProfileDataDeleted& done : node.mapped()) {
+      std::move(done).Run(ProfileError::kNone, left ? std::vector<std::string>{"files"} : std::vector<std::string>());
+    }
+  }
+
   void OnProfileWillBeDestroyed(Profile* profile) override {
     registry_.Forget(profile);
     if (observations_.IsObservingSource(profile)) observations_.RemoveObservation(profile);
   }
 
   base::RepeatingCallback<void(const std::string&)> loaded_listener_;
+  std::map<std::string, std::vector<LinuxProfileDataDeleted>> deleting_;
   Registry registry_{*this};
   base::ScopedMultiSourceObservation<Profile, ProfileObserver> observations_{this};
 };
@@ -196,6 +248,10 @@ bool ReleaseLinuxProfile(std::string_view id) {
 
 std::vector<std::string> LoadedLinuxProfiles() {
   return Profiles().registry().LoadedRegular();
+}
+
+void DeleteLinuxProfileData(std::string_view id, LinuxProfileDataDeleted done) {
+  Profiles().DeleteData(id, std::move(done));
 }
 
 void SetLinuxProfileLoadedListener(base::RepeatingCallback<void(const std::string&)> listener) {

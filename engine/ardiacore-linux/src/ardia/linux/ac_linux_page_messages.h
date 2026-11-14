@@ -19,7 +19,8 @@ inline constexpr size_t kLinuxPageMessageDepthMax = 4;
 inline constexpr size_t kLinuxPageUrlMax = 8192;
 inline constexpr size_t kLinuxSelectionTextMax = 4000;
 inline constexpr const char* kLinuxPageMessageRoutes[] = {
-    "webView.setPeekModifier", "webView.setSplitLinkModifier", "webView.setSelectionPopover"};
+    "webView.setPeekModifier", "webView.setSplitLinkModifier", "webView.setSelectionPopover",
+    "webView.setCommandScrollZoom"};
 
 enum class LinuxPageMessageKind {
   kHello,

@@ -418,7 +418,55 @@ void PrivateWindowAccess() {
   std::puts("private_window_access=ok");
 }
 
+void DataDeletionPlans() {
+  using Names = std::vector<std::string>;
+  FakeBackend backend;
+  FakeProfile app{"Default"};
+  ProfileRegistry<FakeProfile> registry(backend);
+  registry.SetDefault(&app);
+  assert(registry.PlanDataDeletion("") == DataDeletion::kDefault);
+  assert(registry.PlanDataDeletion("default") == DataDeletion::kDefault);
+  assert(registry.PlanDataDeletion("incognito:w-a@p-work") == DataDeletion::kPrivate);
+  assert(registry.PlanDataDeletion("incognito:w-a@") == DataDeletion::kPrivate);
+  for (const char* bad : {"Default", "../Default", "Profile 1", "p/x", "incognito:"}) {
+    assert(registry.PlanDataDeletion(bad) == DataDeletion::kInvalid);
+  }
+  assert(registry.PlanDataDeletion("p-never") == DataDeletion::kRemove);
+
+  Result loading;
+  registry.Resolve("p-work", Into(loading));
+  assert(registry.PlanDataDeletion("p-work") == DataDeletion::kLoaded);
+  backend.Finish();
+  assert(loading.profile && registry.PlanDataDeletion("p-work") == DataDeletion::kLoaded);
+  assert(registry.PlanDataDeletion("p-other") == DataDeletion::kRemove);
+  backend.synchronous = true;
+  Result otr;
+  registry.Resolve("incognito:w-a@p-work", Into(otr));
+  assert(otr.profile && registry.PlanDataDeletion("p-work") == DataDeletion::kLoaded);
+  loading.profile->dying = true;
+  assert(!registry.Lookup("p-work") && registry.PlanDataDeletion("p-work") == DataDeletion::kLoaded);
+  backend.Destroy(registry, otr.profile);
+  backend.Destroy(registry, loading.profile);
+  assert(registry.PlanDataDeletion("p-work") == DataDeletion::kRemove);
+  assert(registry.Lookup(""));
+
+  assert(registry.MarkDeleted("p-work"));
+  assert(registry.PlanDataDeletion("p-work") == DataDeletion::kRemove);
+  Result after;
+  registry.Resolve("p-work", Into(after));
+  assert(after.calls == 1 && !after.profile && after.error == ProfileError::kDeleted);
+  assert(registry.PlanDataDeletion("p-work") == DataDeletion::kRemove);
+
+  assert(DataDeletionRemaining(DataDeletion::kDefault) == Names{"data"});
+  assert(DataDeletionRemaining(DataDeletion::kLoaded) == Names{"loaded"});
+  assert(DataDeletionRemaining(DataDeletion::kPrivate).empty());
+  assert(DataDeletionRemaining(DataDeletion::kRemove).empty());
+  assert(DataDeletionRemaining(DataDeletion::kInvalid).empty());
+  std::puts("data_deletion_plans=ok");
+}
+
 int main() {
+  DataDeletionPlans();
   PrivateOrdinals();
   PrivateWindowAccess();
   StartupProfilePinning();
@@ -449,8 +497,27 @@ class ProfileRegistryTests(unittest.TestCase):
             run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=30)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             for marker in ('private_ordinals=ok', 'private_window_access=ok', 'startup_pinned=ok', 'parsing=ok', 'no_fallback=ok', 'loaded_profiles=ok', 'private_lifetime=ok', 'release_during_resolution=ok',
-                           'delete_during_load=ok', 'reentrancy=ok', 'destruction=ok'):
+                           'delete_during_load=ok', 'reentrancy=ok', 'destruction=ok', 'data_deletion_plans=ok'):
                 self.assertIn(marker, run.stdout)
+
+    def test_profile_data_is_removed_only_for_an_unloaded_isolated_profile(self):
+        service = (SOURCE / 'ardia/linux/ac_linux_profile_service.cc').read_text()
+        delete = service[service.index('void DeleteData('):service.index('void DataRemoved(')]
+        self.assertLess(delete.index('PlanDataDeletion(value)'), delete.index('registry_.MarkDeleted(id)'))
+        self.assertLess(delete.index('manager->IsAllowedProfilePath(path)'), delete.index('registry_.MarkDeleted(id)'))
+        self.assertLess(delete.index('manager->GetProfileByPath(path)'), delete.index('registry_.MarkDeleted(id)'))
+        self.assertLess(delete.index('registry_.MarkDeleted(id)'), delete.index('NukeProfileFromDisk'))
+        self.assertLess(delete.index('if (waiting.size() > 1) return;'), delete.index('NukeProfileFromDisk'))
+        self.assertIn('linux_profiles::ProfileDirectoryName(id)', delete)
+        self.assertEqual(service.count('NukeProfileFromDisk'), 1)
+        self.assertNotIn('DeletePathRecursively', service)
+        self.assertNotIn('CloseAllBrowsersWithProfile', service)
+        self.assertNotIn('MaybeScheduleProfileForDeletion', service)
+        host = (SOURCE / 'ardia/linux/ac_linux_host.cc').read_text()
+        route = host[host.index('if (name == "profiles.deleteData") {'):host.index('if (name == "profiles.loaded") {')]
+        self.assertLess(route.index('ProfileError::kPrivateService'), route.index('ardiacore::DeleteLinuxProfileData(profile'))
+        self.assertIn('.Set("remaining", std::move(left))', route)
+        self.assertIn('capabilities.Append("profiles.deleteData");', host)
 
 
 if __name__ == '__main__':

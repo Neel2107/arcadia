@@ -23,6 +23,9 @@ std::optional<std::string> LinuxProfileName(const Profile* profile);
 std::optional<std::string> LinuxProfileNameForPath(std::string_view path);
 bool ReleaseLinuxProfile(std::string_view id);
 std::vector<std::string> LoadedLinuxProfiles();
+using LinuxProfileDataDeleted =
+    base::OnceCallback<void(linux_profiles::ProfileError, std::vector<std::string> remaining)>;
+void DeleteLinuxProfileData(std::string_view id, LinuxProfileDataDeleted done);
 void SetLinuxProfileLoadedListener(base::RepeatingCallback<void(const std::string&)> listener);
 
 }

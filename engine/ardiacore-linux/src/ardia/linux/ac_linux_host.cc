@@ -31,6 +31,7 @@
 #include "ardia/linux/ac_linux_live_service.h"
 #include "ardia/linux/ac_linux_search_engines.h"
 #include "ardia/linux/ac_linux_sync_service.h"
+#include "ardia/linux/ac_linux_desktop_core.h"
 #include "ardia/linux/ac_linux_dialog_views.h"
 #include "ardia/linux/ac_linux_document_service.h"
 #include "ardia/linux/ac_linux_downloads.h"
@@ -71,6 +72,7 @@
 #include "ardia/linux/ac_linux_favicons.h"
 #include "ardia/linux/ac_linux_page_status.h"
 #include "ardia/linux/ac_linux_suggest.h"
+#include "ardia/linux/ac_linux_system.h"
 #include "ardia/linux/ac_linux_telemetry.h"
 #include "ardia/linux/ac_linux_telemetry_policy.h"
 #include "ardia/linux/ac_linux_typeahead_input.h"
@@ -1869,6 +1871,20 @@ class HostMessageHandler : public content::WebUIMessageHandler,
         ardiacore::ReleaseLinuxProfile(profile);
         return Resolve(id, base::Value());
       }
+      if (name == "profiles.deleteData") {
+        if (host_->private_window() || (window_profile && window_profile->IsOffTheRecord())) {
+          return ProfileFail(id, ardiacore::linux_profiles::ProfileError::kPrivateService);
+        }
+        return ardiacore::DeleteLinuxProfileData(profile, base::BindOnce(
+            [](base::WeakPtr<HostMessageHandler> handler, std::string id,
+               ardiacore::linux_profiles::ProfileError error, std::vector<std::string> remaining) {
+              if (!handler) return;
+              if (error != ardiacore::linux_profiles::ProfileError::kNone) return handler->ProfileFail(id, error);
+              base::ListValue left;
+              for (std::string& what : remaining) left.Append(std::move(what));
+              handler->Resolve(id, base::Value(base::DictValue().Set("remaining", std::move(left))));
+            }, weak_factory_.GetWeakPtr(), id));
+      }
       if (name == "profiles.loaded") {
         base::ListValue loaded;
         for (const std::string& engine_profile : ardiacore::LoadedLinuxProfiles()) loaded.Append(engine_profile);
@@ -2737,6 +2753,7 @@ base::DictValue ShellHostView::Bootstrap() const {
   for (const char* route : ardiacore::kLinuxPageMessageRoutes)
     capabilities.Append(route);
   capabilities.Append("engine.systemState");
+  capabilities.Append("profiles.deleteData");
   capabilities.Append("shell.inputRegions");
   capabilities.Append("pip.attach");
   capabilities.Append("tab.adoptCopies");
@@ -2753,6 +2770,7 @@ base::DictValue ShellHostView::Bootstrap() const {
   for (const char* capability : ardiacore::kLinuxAutomationCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxCliCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxConfigCapabilities) capabilities.Append(capability);
+  for (const char* capability : ardia::linux_desktop::kSystemCapabilities) capabilities.Append(capability);
   for (const char* capability : ardiacore::kLinuxUserScriptsCapabilities) capabilities.Append(capability);
   base::DictValue native_modules;
   native_modules.Set("ArdiaApp", base::DictValue().Set("systemInfo", std::move(info)));
@@ -5782,6 +5800,9 @@ void ShellHostView::Invoke(
   }
   if (ardiacore::LinuxCliInvokes(method)) {
     return ardiacore::LinuxCliInvoke(LiveCaller(), method, values, std::move(done));
+  }
+  if (ardiacore::LinuxSystemInvokes(method)) {
+    return ardiacore::LinuxSystemInvoke(method, values, std::move(done));
   }
   if (ardiacore::LinuxConfigInvokes(method)) {
     base::FilePath user_data_directory;
