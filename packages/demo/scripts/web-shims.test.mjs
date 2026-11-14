@@ -32,5 +32,6 @@ test("web shims survive ticker failures, reject inherited palettes and enter a v
     validPalette: true,
     clockSurvivesThrow: true,
     enterOnMount: true,
+    fadeLabelStrikethrough: true,
   });
 });

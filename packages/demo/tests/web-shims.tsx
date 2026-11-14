@@ -5,6 +5,7 @@ import { subscribeFrames } from "../src/shims/web/gl/clock";
 import { paletteColors } from "../src/shims/web/gl/colors";
 import { currentPointer } from "../src/shims/web/motion/pointer";
 import { MacView } from "../src/shims/web/motion/macView";
+import { FadeLabel } from "../src/shims/web/FadeLabel";
 
 document.body.style.cssText = "margin:40px;background:#f6f5f2;color:#202020;font:18px system-ui";
 document.getElementById("root")!.innerHTML = `
@@ -15,6 +16,7 @@ document.getElementById("root")!.innerHTML = `
     <button id="run" style="width:100%;height:100%;font:inherit">Run checks</button>
   </div>
   <p id="animation">Healthy animation frames: 0. Reported ticker errors: 0.</p>
+  <div id="labels" style="width:200px"></div>
   <div id="checks"></div>
   <pre id="results" style="font:16px ui-monospace;white-space:pre-wrap"></pre>
 `;
@@ -32,6 +34,14 @@ document.getElementById("run")!.addEventListener("click", async (event) => {
     checks.inheritedPalette = false;
   }
   checks.validPalette = JSON.stringify(paletteColors(["#ff0000"])) === "[[1,0,0,1]]" && paletteColors(["red"])?.length === 5;
+
+  const labels = createRoot(document.getElementById("labels")!);
+  flushSync(() => labels.render([
+    createElement(FadeLabel, { key: "struck", nativeID: "struck", text: "Sleeping tab", strikethrough: true }),
+    createElement(FadeLabel, { key: "plain", nativeID: "plain", text: "Awake tab" }),
+  ]));
+  const decoration = (id: string) => getComputedStyle(document.querySelector(`#${id} span`)!).textDecorationLine;
+  checks.fadeLabelStrikethrough = decoration("struck") === "line-through" && decoration("plain") === "none";
 
   let enters = 0;
   const mount = document.getElementById("hover")!;
