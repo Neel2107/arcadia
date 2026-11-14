@@ -10,6 +10,8 @@ import { toggleNewTabBar } from "../omnibox/newTabBar";
 import { newGroupWithSelection } from "./actions";
 import { closeAllTabs } from "./clearTabs";
 import { lastClosedEntry } from "../windows/reopenClosed";
+import { switchTabLayout } from "../splits/actions";
+import { consentToken } from "../telemetry/client";
 import { newLiveFolderMenuItem, runNewLiveFolder } from "./liveMenus";
 import { sections } from "./menuParts";
 import { pinnedFoldMenuItem, runPinnedFold } from "./pinnedFold";
@@ -45,6 +47,7 @@ export function sidebarMenuItems(s: BrowserState, windowId: string): MenuItem[] 
 }
 
 export async function openSidebarMenu(windowId: string) {
+  const consent = consentToken();
   const choice = await showMenu(sidebarMenuItems(store(), windowId));
   if (!choice || runNewLiveFolder(windowId, choice) || runPinnedFold(windowId, choice)) return;
   const s = store();
@@ -57,7 +60,7 @@ export async function openSidebarMenu(windowId: string) {
   } else if (choice === "newProfile") void requestCreateProfile(windowId).then((id) => id && switchProfile(windowId, id));
   else if (choice === "addShared") void addSharedFolder(windowId);
   else if (choice === "bookmarkAll") bookmarkAllTabs(windowId);
-  else if (choice === "tabLayout") s.toggleTabLayout(windowId);
+  else if (choice === "tabLayout") switchTabLayout(windowId, consent);
   else if (choice === "sidebarSide") toggleSidebarSide();
   else if (choice === "autoHide") s.toggleSidebar(windowId);
   else if (choice === "closeAll") closeAllTabs(windowId);

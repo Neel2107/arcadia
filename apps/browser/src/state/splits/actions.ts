@@ -3,12 +3,14 @@ import { showToast } from "../app/toasts";
 import { closeTab } from "../browser/actions";
 import { menuShortcut } from "../commands/commandShortcuts";
 import { storeAction, useBrowser } from "../browser/store";
-import { activeTabId } from "../browser/model";
+import { activeTabId, tabLayoutOf } from "../browser/model";
 import { isStacked, MAX_SPLIT_PANES, type OpenPaneOptions, splitOf, type SplitSide, splitTabIds, splitTabIdsOf } from "./splits";
 import { splitLane, type SplitLane, splitsOnRow } from "./lanes";
 import type { AdoptId } from "../browser/types";
 import { noteSplit } from "../telemetry/usage";
 import { returnFocusToPage } from "../sidebar/actions";
+import { noteTabLayoutSwitch } from "../telemetry/tabLayoutCounts";
+import type { ConsentToken } from "../telemetry/choice";
 
 const store = () => useBrowser.getState();
 
@@ -148,3 +150,10 @@ export const updateSplit = storeAction("updateSplit");
 export const replaceSplitPane = storeAction("replaceSplitPane");
 export const removeTabFromSplit = storeAction("removeTabFromSplit");
 export const toggleTabLayout = storeAction("toggleTabLayout");
+
+export function switchTabLayout(windowId: string, consent?: ConsentToken | null) {
+  const s = store();
+  if (!s.windows[windowId]) return;
+  noteTabLayoutSwitch(tabLayoutOf(s, windowId) === "sidebar" ? "top" : "sidebar", consent);
+  s.toggleTabLayout(windowId);
+}

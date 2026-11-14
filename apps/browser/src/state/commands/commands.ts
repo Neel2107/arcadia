@@ -39,7 +39,7 @@ import { togglePageEngine } from "../engines/actions";
 import { runReaderCommand } from "../reader/reader";
 import { goBack, goForward } from "../tabs/navigation";
 import { awaitsFirstPage } from "../tabs/pendingAddress";
-import { focusSplitPane, openSplitPane } from "../splits/actions";
+import { focusSplitPane, openSplitPane, switchTabLayout } from "../splits/actions";
 import { isAppCommand, LITTLE_ARDIA_PAGE_COMMANDS, settingChange, variantArg } from "./commandCatalog";
 import { APP_COMMAND_HANDLERS } from "./appCommands";
 import { runSidebarCommand } from "../sidebar/commands";
@@ -233,7 +233,7 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent, 
     case "forceReload":
       return void (tabId && withLivePage(tabId, (page) => page.forceReload()));
     case "toggleTabLayout":
-      return s.toggleTabLayout(windowId);
+      return switchTabLayout(windowId);
     case "openSplitPane":
       return void openSplitPane(windowId);
     case "focusNextPane":

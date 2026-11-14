@@ -3,9 +3,9 @@ import type { BrowserCommand } from "../../platform/commands";
 import { isBookmarked } from "../bookmarks/bookmarks";
 import { hidesBookmarkCommand } from "../bookmarks/visibility";
 import { useBrowser, type BrowserState } from "../browser/store";
-import { activeTab, bookmarkProfileId, isPinnedRow, pinnedSectionTitle } from "../browser/model";
+import { activeTab, bookmarkProfileId, isPinnedRow, pinnedSectionTitle, tabLayoutOf } from "../browser/model";
 import { canTidy } from "../pins/tidy";
-import { commandBarTitle, commandSymbol, UNAVAILABLE_COMMANDS } from "../commands/commandCatalog";
+import { commandBarTitle, commandSymbol, LITTLE_ARDIA_DISABLED_COMMANDS, UNAVAILABLE_COMMANDS } from "../commands/commandCatalog";
 import { menuBarRevision, shortcutHint } from "../commands/commandShortcuts";
 import type { Tab } from "../browser/types";
 import { organizeActions } from "./organizeActions";
@@ -14,6 +14,7 @@ import { isWebPageUrl } from "../../lib/url";
 import { pluginActionsRevision, pluginBarActions } from "../plugins/commands";
 import { currentPlugins } from "../plugins/store";
 import { eligibleKind } from "../automation/automationWindows";
+import { isSmallWindow } from "../windows/small";
 
 type Context = { s: BrowserState; windowId: string; tab: Tab | undefined };
 
@@ -88,6 +89,12 @@ const DEFS: ActionDef[] = [
   { command: "savePage", icon: "square.and.arrow.down", keywords: ["save as"], needs: page },
   { command: "cast", icon: "tv", keywords: ["cast tab"], needs: page },
   { command: "toggleFullUrl", title: ({ s }) => (s.settings.showFullUrl ? "Hide Full URL" : "Show Full URL") },
+  {
+    command: "toggleTabLayout",
+    title: ({ s, windowId }) => (tabLayoutOf(s, windowId) === "sidebar" ? "Switch to Top Tabs" : "Switch to Sidebar Tabs"),
+    icon: "sidebar.left",
+    keywords: ["tab layout", "top tabs", "tab bar", "horizontal tabs", "sidebar tabs", "vertical tabs", "tabs in sidebar"],
+  },
   { command: "toggleSidebar", keywords: ["toggle sidebar", "hide sidebar", "show sidebar", "focus mode"] },
   { command: "toggleBookmarksBar", keywords: ["bookmarks bar"] },
   { command: "downloads", keywords: ["show downloads", "dl"] },
@@ -111,8 +118,11 @@ const DEFS: ActionDef[] = [
 
 const actionId = (d: Pick<ActionDef, "command" | "arg">) => (d.arg ? `${d.command}:${d.arg}` : d.command);
 
+const LITTLE_ARDIA_HIDDEN: ReadonlySet<string> = new Set(LITTLE_ARDIA_DISABLED_COMMANDS);
+
 export function barActions(s: BrowserState, windowId: string): CommandAction[] {
   const w = s.windows[windowId];
+  const small = isSmallWindow(w);
   const tab = activeTab(s, windowId);
   const c: Context = { s, windowId, tab };
   const out: CommandAction[] = [];
@@ -123,6 +133,7 @@ export function barActions(s: BrowserState, windowId: string): CommandAction[] {
     if (d.needs === "profiles" && w?.kind === "private") continue;
     if (d.needs === "pins" && !canTidy(s, windowId)) continue;
     if (hidesBookmarkCommand(s.settings, d.command) || UNAVAILABLE_COMMANDS.has(d.command)) continue;
+    if (small && LITTLE_ARDIA_HIDDEN.has(d.command)) continue;
     const id = actionId(d);
     const hint = shortcutHint(id, s);
     out.push({
