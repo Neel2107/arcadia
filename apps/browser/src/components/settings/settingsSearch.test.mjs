@@ -35,6 +35,8 @@ const TOP = [
   ["right sidebar", ["tabs.sidebarSide"]],
   ["vertical tabs", ["tabs.layout"]],
   ["pinned", ["profiles.shareTopApps", "tabs.balancedTopApps", "tabs.fadeUnloadedTabs"]],
+  ["strikethrough", ["tabs.strikeSleepingTabs"]],
+  ["sleeping tabs", ["tabs.strikeSleepingTabs"]],
   ["split", ["tabs.splitLinkModifier"]],
   ["split view", ["tabs.splitLinkModifier"]],
   ["peek", ["tabs.peekModifier", "tabs.peekLinksToOtherSites"]],

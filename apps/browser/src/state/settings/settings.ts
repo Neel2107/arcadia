@@ -139,6 +139,7 @@ export const SETTING_SPECS = {
   glassTintAmount: fraction(0.8, SYNCED),
   pageScrollBars: oneOf(["system", "thin"], "system", SYNCED),
   fadeUnloadedTabs: flag(false, SYNCED),
+  strikeSleepingTabs: flag(false, SYNCED),
   warnBeforeClosingTabGroup: flag(true, SYNCED),
   batterySaverWhen: oneOf(["lowBattery", "unplugged", "never"], "lowBattery"),
   unloadProfilesAfter: oneOf(["never", "5m", "15m", "1h", "2h"], "never"),

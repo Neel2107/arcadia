@@ -129,6 +129,8 @@ export const SIDEBAR_MOTION = { liveFold: duration.long, fold: duration.base, li
 export const HOVER_CARD_IN_SPRING = { response: 0.25, damping: 0.75 } as const;
 export const HOVER_CARD_OUT_SPRING = { response: 0.2, damping: 0.6 } as const;
 
+export const SLEEPING_TITLE_OPACITY = 0.6;
+
 export const TAB_ROW = {
   contentLeft: 9,
   trailing: 6,

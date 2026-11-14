@@ -8,7 +8,7 @@ export const CONFIG_SETTING_KEYS: readonly SettingKey[] = [
   "splitLinkModifier", "autoGroupMeetingTabs", "cleanUpInactiveTabsAfterMinutes", "suggestCleanUp", "mutedSites", "showUnreadCounts", "showTopAppBadges", "showTabHoverMenu", "closedTopAppTiles", "unreadHiddenSites", "neverTranslateSites", "showTranslateButton",
   "autoPictureInPicture", "blockAutoplayEverywhere", "commandScrollZoom", "videoUpscaling", "sidebarMediaControls", "sidebarWidth", "showSidebarButton",
   "showClearButton", "tidyTabs", "balancedTopApps", "showAdvancedSettings", "selectedTabGlow", "sidebarTextSize", "sidebarTextContrast", "selectedTopApp", "elementOutlines", "interfaceStyle", "glassTintWithTheme",
-  "glassTintAmount", "pageScrollBars", "fadeUnloadedTabs", "warnBeforeClosingTabGroup", "batterySaverWhen", "memorySaver",
+  "glassTintAmount", "pageScrollBars", "fadeUnloadedTabs", "strikeSleepingTabs", "warnBeforeClosingTabGroup", "batterySaverWhen", "memorySaver",
   "memorySaverMode", "loadProfilesWhenOpened", "unloadProfilesAfter", "keepActiveSites", "extensionSidePanelWidth", "showFullUrl", "showBookmarks", "bookmarksBar", "bookmarksBarSize",
   "hideBookmarksBarImport", "appearance", "addressBar", "compactToolbar", "addressBarButtons", "borderlessMode", "tabCornerRadius", "minimalismMode", "pageFrame", "pageFrameZeroInFullScreen", "pageFrameZeroWhenTabsHidden", "commandBarPlacement", "spacesFollowAppearance", "adaptTextToColor",
   "profileSwitcherIcons", "compactCliPill", "shortcuts", "openLinksInLittleArdia", "littleArdiaOpensNewTabLinks", "littleWindowGestures", "littleArdiaSize",

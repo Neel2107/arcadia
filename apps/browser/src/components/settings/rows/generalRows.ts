@@ -205,6 +205,11 @@ export const generalRows = {
           description: "A tab whose page isn't loaded, like a closed pinned tab or one restored after a relaunch, shows its icon faded, as sleeping tabs do. Clicking it loads the page.",
           keywords: ["unloaded", "asleep", "sleeping", "discarded", "dim", "grey", "gray", "inactive", "pinned", "closed"],
         },
+        strikeSleepingTabs: {
+          title: "Strike through sleeping tabs",
+          description: "A tab Memory Saver or the ardia command put to sleep shows its title struck through and dimmed, in the sidebar and across the top, until its page loads again. A tab whose icon is faded as unloaded, with Fade icons of unloaded tabs on or a closed Top App without its tile, shows it too.",
+          keywords: ["strikethrough", "strike", "line through", "crossed out", "asleep", "sleeping", "discarded", "unloaded", "memory saver", "dim", "title"],
+        },
       },
     },
     {

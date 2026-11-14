@@ -18,14 +18,14 @@ import { useShift, type EntryMotion } from "./EntryMotion";
 import { useRowHover } from "./hoverController";
 import { pressPaneClose, pressTabClose, useTabCloseControlWhile } from "../../state/sidebar/closeControl";
 import { modifiersOf } from "../../lib/keys";
-import { ACTIVE, ICON_MARKS, LOADING, mutedBy, PLAYING, SELECTED, useRowState } from "../../state/sidebar/rowState";
+import { ACTIVE, ICON_MARKS, LOADING, mutedBy, PLAYING, SELECTED, useRowState, useStruckTitle } from "../../state/sidebar/rowState";
 import { registerRow, useSidebarUi } from "../../state/sidebar/sidebarUi";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
 import { UnreadCount } from "../unread/UnreadBadge";
 import { useTabUnread } from "../../state/tabs/unread";
 import { titleWithoutUnread } from "../../lib/unread";
-import { ROW_GLYPH, SIDEBAR_TYPE, TAB_ROW, useSidebarTokens } from "./tokens";
+import { ROW_GLYPH, SIDEBAR_TYPE, SLEEPING_TITLE_OPACITY, TAB_ROW, useSidebarTokens } from "./tokens";
 import { useSidebarRowLook } from "./rowLook";
 import { rowTitleFrame, SidebarRowLabel, SidebarRowSurface } from "./SidebarRow";
 import { AwayTitleLabel } from "./AwayTitle";
@@ -87,6 +87,7 @@ export const TabRow = memo(function TabRow({
   const resettable = !!tab && (isPinnedRow(tab) || !tab.pin) && awayFromPin(tab);
   const pinActionMotion = usePressScaleMotion(resettable, buttonMotion.iconPressScale);
   const pinActionScale = pinActionMotion.scale ? { transform: [{ scale: pinActionMotion.scale }] } : undefined;
+  const struck = useStruckTitle(tabId, flags & ICON_MARKS);
   if (!tab) return null;
   const resetting = resettable && backToPin.hovered && !renaming;
   const title = resetting ? "Back to Pinned URL" : tab.customTitle ? tabTitle(tab) : titleWithoutUnread(tabTitle(tab), unread);
@@ -159,9 +160,9 @@ export const TabRow = memo(function TabRow({
                 onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
               />
             ) : away ? (
-              <AwayTitleLabel away={away} color={titleColor} fontSize={quiet ? SIDEBAR_TYPE.compact : SIDEBAR_TYPE.title} height={TAB_ROW.titleHeight} style={AWAY_FRAME} />
+              <AwayTitleLabel away={away} color={titleColor} fontSize={quiet ? SIDEBAR_TYPE.compact : SIDEBAR_TYPE.title} height={TAB_ROW.titleHeight} struck={struck} style={AWAY_FRAME} />
             ) : (
-              <SidebarRowLabel text={title} color={titleColor} compact={quiet} />
+              <SidebarRowLabel text={title} color={titleColor} compact={quiet} struck={struck && !resetting} />
             )}
             <HoverSlot
               hovered={hovered && !renaming}
@@ -303,6 +304,7 @@ function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
   const theme = useTheme();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
+  const struck = useStruckTitle(tabId);
   const { hovered, hoverProps } = useRowHover(windowId, { kind: "tab", id: tabId });
   const closeControl = useTabCloseControlWhile(tabId, hovered);
   if (!tab) return null;
@@ -321,7 +323,7 @@ function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
             }}
           >
             <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} compact />
-            <FadeLabel text={tabTitle(tab)} fontSize={sidebarFont.small.fontSize} color={active ? theme.rowSelectedText : theme.textTab} style={{ flex: 1, height: Math.max(ROW_GLYPH.box, sidebarLineHeight.small + 1), marginLeft: space.xs }} />
+            <FadeLabel text={tabTitle(tab)} fontSize={sidebarFont.small.fontSize} color={active ? theme.rowSelectedText : theme.textTab} strikethrough={struck} style={{ flex: 1, height: Math.max(ROW_GLYPH.box, sidebarLineHeight.small + 1), marginLeft: space.xs, opacity: struck ? SLEEPING_TITLE_OPACITY : 1 }} />
             <HoverSlot
               hovered={hovered}
               reserve="hover"
