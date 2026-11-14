@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { Animated, StyleSheet, View, type ViewStyle } from "react-native";
-import { topStripPeekHeld, watchTopStripPeekHolds } from "../../state/app/transientUi";
+import { topStripPeekHeld, watchHolds } from "../../state/app/transientUi";
 import { useWindowFullScreen, useWindowId, useWindowProfileId } from "../../state/browser/hooks";
 import { beginExternalDrag, endExternalDrag, moveExternalDrag } from "../../state/drag/tabDrag";
 import { lightsCenter, TOP_STRIP_LIGHTS_CENTER } from "../../state/windows/dockMotion";
-import { useWindowUiOf } from "../../state/windows/hooks";
 import { usePagerPages } from "../../state/windows/profilePager";
 import { DownloadsButton } from "../downloads/DownloadsButton";
 import { ProfileIndicator, useProfileIndicatorWidth } from "../profiles/ProfileIndicator";
@@ -114,14 +113,10 @@ function StripDropHighlight({ left, right }: { left: number; right: number }) {
 export function TopStripPeek({ windowWidth, enabled }: { windowWidth: number; enabled: boolean }) {
   const theme = useTheme();
   const windowId = useWindowId();
-  const downloadsOpen = useWindowUiOf(windowId, (u) => !!u?.downloadsOpen);
   const { slide, live, show, hide, recheck, cancelPending } = usePeek(enabled, false, () => topStripPeekHeld(windowId), undefined, noteTabStripPeek);
   const latestRecheck = useRef(recheck);
   latestRecheck.current = recheck;
-  useEffect(() => {
-    if (!downloadsOpen) recheck();
-  }, [downloadsOpen]);
-  useEffect(() => (live ? watchTopStripPeekHolds(() => latestRecheck.current()) : undefined), [live]);
+  useEffect(() => (live ? watchHolds("topStrip", () => latestRecheck.current()) : undefined), [live]);
   useEffect(() => {
     if (!enabled) return;
     void setTrafficLightsCenter(windowId, lightsCenter(layout.sidebarWidth));
