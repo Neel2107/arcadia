@@ -67,7 +67,7 @@ export function TopTabStrip({ width, floating = false, hidden = false, swipe = t
       <StripDropArea style={{ height: TOP_STRIP_HEIGHT }}>
         <ContextMenuArea style={StyleSheet.absoluteFill} onContextMenu={() => openTabStripMenu(windowId)}>
           <WindowDragRegion style={StyleSheet.absoluteFill} />
-          <View style={{ position: "absolute", left: left - flare, right: Math.max(right - flare, controls + 8), top: 0, bottom: 0, overflow: "hidden" }}>
+          <View style={{ position: "absolute", left: left - flare, right: Math.max(right - flare, controls + 8), maxWidth: pageWidth + flare * 2, top: 0, bottom: 0, overflow: "hidden" }}>
             {pages.map((page) => (
               <StripPage key={page.id} profileId={page.id} slot={page.slot} pageWidth={pageWidth} current={page.id === current} resting={!!page.resting} />
             ))}
