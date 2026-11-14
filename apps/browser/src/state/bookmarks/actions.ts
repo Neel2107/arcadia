@@ -7,6 +7,7 @@ import { activeTabId, bookmarkProfileId, resolveWindowId, tabTitle, viewTabIds }
 import { originalProfile } from "../windows/small";
 import { isWebPageUrl } from "../../lib/url";
 import { isBookmarklet, runBookmarklet } from "./bookmarklets";
+import { noteBookmarkButton } from "../telemetry/usage";
 
 type OpenMode = "current" | "background" | "foreground" | "window" | "incognito" | "split";
 
@@ -79,7 +80,7 @@ function openInOrder(windowId: string, links: { url: string }[], after: string |
 }
 
 export type BookmarkDialogState =
-  | { kind: "page"; windowId: string; bookmarkId: string }
+  | { kind: "page"; windowId: string; bookmarkId: string; added: boolean }
   | { kind: "allTabs"; windowId: string; profileId: string; tabs: { url: string; title: string }[] };
 
 export const useBookmarkDialog = create<{ open: BookmarkDialogState | null }>()(() => ({ open: null }));
@@ -92,7 +93,7 @@ export function bookmarkTab(windowId: string, tabId: string) {
   const s = useBrowser.getState();
   const id = windowId;
   const tab = s.tabs[tabId];
-  if (!s.windows[id] || !tab?.url) return;
+  if (!s.windows[id] || !tab?.url) return null;
   const profileId = bookmarkProfileId(s, s.windows[id]);
   const roots = bookmarkRoots(s, profileId);
   const existing = Object.values(s.bookmarks.nodes).find(
@@ -100,7 +101,13 @@ export function bookmarkTab(windowId: string, tabId: string) {
   );
   const bookmarkId =
     existing?.id ?? s.addBookmark({ profileId, url: tab.url, title: tabTitle(tab), favicon: tab.favicon });
-  useBookmarkDialog.setState({ open: { kind: "page", windowId: id, bookmarkId } });
+  useBookmarkDialog.setState({ open: { kind: "page", windowId: id, bookmarkId, added: !existing } });
+  return existing ? "edited" : "added";
+}
+
+export function pressBookmarkButton(windowId: string, tabId: string) {
+  const opened = bookmarkTab(windowId, tabId);
+  if (opened) noteBookmarkButton(opened);
 }
 
 export function bookmarkAllTabs(windowId: string | null | undefined) {
@@ -122,13 +129,7 @@ export const updateBookmark = storeAction("updateBookmark");
 export const moveBookmark = storeAction("moveBookmark");
 export const moveBookmarks = storeAction("moveBookmarks");
 export const removeBookmark = storeAction("removeBookmark");
-export const toggleBookmark = storeAction("toggleBookmark");
 export const addBookmarkTree = storeAction("addBookmarkTree");
 export const removeBookmarks = storeAction("removeBookmarks");
 export const restoreBookmarks = storeAction("restoreBookmarks");
 
-export function toggleBookmarkOfTab(windowId: string, tabId: string) {
-  const s = useBrowser.getState();
-  const page = s.tabs[tabId];
-  if (page) s.toggleBookmark(bookmarkProfileId(s, s.windows[windowId]), page);
-}
