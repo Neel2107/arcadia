@@ -10,7 +10,7 @@ import type { ClosedTab, Tab, TabGroup } from "../browser/types";
 import { withoutFragment } from "../../lib/url";
 import { tileFolderOf } from "./tileFolders";
 import { syncGroupOrder, withParent } from "../groups/groups";
-import { closedEntries, closeQuietly, keptCleanedTabs, regroupRestored, restoreSnapshots, restoreTarget } from "./closedTabs";
+import { cleanedTabsFor, closedEntries, closeQuietly, keptCleanedTabs, regroupRestored, restoreSnapshots, restoreTarget } from "./closedTabs";
 import { activated, apply, removeTabs } from "../tabs/tabs";
 
 export type ClearedTabs = {
@@ -110,10 +110,9 @@ export function noteDeselectedTabs(s: BrowserState, ids: readonly string[], at =
 function selectedFamilies(s: BrowserState): Set<string> {
   const out = new Set<string>();
   for (const w of Object.values(s.windows)) {
-    for (const id of Object.values(w.activeTabIds)) {
-      const t = id ? s.tabs[id] : undefined;
-      if (t) out.add(familyKeyOf(t));
-    }
+    const id = activeTabId(s, w.id);
+    const t = id ? s.tabs[id] : undefined;
+    if (t) out.add(familyKeyOf(t));
   }
   return out;
 }
@@ -161,8 +160,20 @@ export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveFor
   return view.filter((id) => out.has(id));
 }
 
-export function profileIdsIn(s: BrowserState, windowId: string): string[] {
-  return [...new Set((s.windows[windowId]?.tabIds ?? []).flatMap((id) => s.tabs[id]?.profileId ?? []))];
+export function hiddenProfileIdsIn(s: BrowserState, windowId: string): string[] {
+  const shown = s.windows[windowId]?.profileId;
+  return [...new Set((s.windows[windowId]?.tabIds ?? []).flatMap((id) => s.tabs[id]?.profileId ?? []))].filter((id) => id !== shown);
+}
+
+export function cleanedRoom(s: BrowserState, windowId: string): number {
+  return Math.max(0, MAX_CLEANED - cleanedTabsFor(s, windowId).length);
+}
+
+function hiddenCleanUpCandidates(s: BrowserState, windowId: string, inactiveForMs: number, room: number): string[] {
+  if (room <= 0) return [];
+  const { lastUsed } = inactivity(s, windowId);
+  const ids = hiddenProfileIdsIn(s, windowId).flatMap((profileId) => cleanUpCandidates(s, windowId, inactiveForMs, undefined, profileId));
+  return ids.sort((a, b) => lastUsed(s.tabs[a]!) - lastUsed(s.tabs[b]!)).slice(0, room);
 }
 
 export function nextCleanUpAt(s: BrowserState, windowId: string, inactiveForMs: number, profileId?: string): number {
@@ -268,8 +279,9 @@ export const createCleanUpSlice: StateCreator<BrowserState, [], [], CleanUpSlice
     const s = get();
     const minutes = s.settings.cleanUpInactiveTabsAfterMinutes;
     const after = options.inactiveForMs ?? (minutes ? minutes * 60_000 : CLEAN_UP_AFTER_MS);
-    const profiles = options.allProfiles ? profileIdsIn(s, windowId) : [undefined];
-    const ids = profiles.flatMap((profileId) => cleanUpCandidates(s, windowId, after, undefined, profileId));
+    const shown = cleanUpCandidates(s, windowId, after);
+    const hidden = options.allProfiles ? hiddenCleanUpCandidates(s, windowId, after, cleanedRoom(s, windowId) - shown.length) : [];
+    const ids = [...shown, ...hidden];
     if (!ids.length) return 0;
     const entries = closedEntries(s, ids);
     const next = closeQuietly(s, ids);

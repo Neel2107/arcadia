@@ -249,14 +249,67 @@ test("with tabs shared across windows, a tab just left in one window keeps its f
 });
 
 test("a tab left while tabs were shared keeps its full idle time after sharing is turned off, also when the copy kept is not the one that was left", () => {
-  const [, a] = windowWith("a", "b");
+  const [w, a, b] = windowWith("a", "b");
   S().updateSettings({ shareTabsAcrossWindows: true });
   const other = S().createWindow();
+  S().activate(b);
   const longAgo = Date.now() - 13 * 60 * MIN;
   for (const t of Object.values(S().tabs)) if (t.url === "https://a.com/") S().updateTab(t.id, { lastActiveAt: longAgo });
-  noteDeselectedTabs(S(), [a]);
   const copy = Object.values(S().tabs).find((t) => t.url === "https://a.com/" && t.windowId === other);
-  const { [a]: _left, ...rest } = S().tabs;
-  useBrowser.setState({ tabs: { ...rest, [copy.id]: { ...copy, pinKey: undefined } } });
-  assert.deepEqual(cleanUpCandidates(S(), other, 12 * 60 * MIN).filter((id) => id === copy.id), []);
+  noteDeselectedTabs(S(), [copy.id]);
+  S().updateSettings({ shareTabsAcrossWindows: false });
+  assert.ok(S().tabs[a] && !S().tabs[copy.id], "turning sharing off kept the copy that wasn't left");
+  assert.deepEqual(cleanUpCandidates(S(), w, 12 * 60 * MIN).filter((id) => id === a), []);
+});
+
+function hiddenIdleTabs(w, prefix, count, idleSince) {
+  const home = S().windows[w].profileId;
+  const work = Object.values(S().profiles).find((p) => p.name === "Work")?.id ?? S().createProfile({ name: "Work" });
+  S().switchProfile(w, work);
+  const ids = Array.from({ length: count }, (_, i) => S().newTab(w, { url: `https://${prefix}-${i}.com/`, background: true }));
+  S().switchProfile(w, home);
+  ids.forEach((id, i) => S().updateTab(id, { lastActiveAt: idleSince - i * MIN }));
+  return ids;
+}
+
+test("automatic clean-up closes no more tabs in profiles the window isn't showing than Recently Cleaned has room for, oldest first, and keeps older entries", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+  try {
+    const [w1, , ...older] = windowWith("a", ...Array.from({ length: 40 }, (_, i) => `old-${i}`));
+    for (const id of older) S().updateTab(id, { lastActiveAt: Date.now() - 13 * 60 * MIN });
+    S().cleanUpTabs(w1, { inactiveForMs: 12 * 60 * MIN });
+    assert.equal(S().cleanedTabs.length, 40);
+    const w2 = S().createWindow({ url: "https://z.com/" });
+    const idleSince = Date.now() - 13 * 60 * MIN;
+    const one = hiddenIdleTabs(w1, "one", 120, idleSince);
+    const two = hiddenIdleTabs(w2, "two", 30, idleSince);
+    startAutoCleanUp();
+    S().updateSettings({ cleanUpInactiveTabsAfterMinutes: 720 });
+    t.mock.timers.tick(60 * MIN);
+    const closed = [...one, ...two].filter((id) => !S().tabs[id]);
+    const listed = new Set(S().cleanedTabs.map((c) => c.tabId));
+    assert.equal(closed.length, 60, "only the room Recently Cleaned had");
+    assert.ok(closed.every((id) => listed.has(id)), "every closed tab is in Recently Cleaned");
+    assert.equal(S().cleanedTabs.filter((c) => /old-/.test(c.tab.url)).length, 40, "the older entries stay");
+    assert.ok(one.slice(-60).every((id) => !S().tabs[id]), "the longest idle go first");
+    assert.ok([...one.slice(0, 60), ...two].every((id) => S().tabs[id]), "the rest wait for room");
+  } finally {
+    stopAutoCleanUp();
+  }
+});
+
+test("with tabs shared across windows, a tab only a profile a window isn't showing remembers is cleaned up, and each window keeps its own remembered tab", () => {
+  const [w, , b] = windowWith("a", "b");
+  S().updateSettings({ shareTabsAcrossWindows: true });
+  const other = S().createWindow();
+  const aIn = (windowId) => Object.values(S().tabs).find((x) => x.url === "https://a.com/" && x.windowId === windowId)?.id;
+  S().activate(b);
+  S().activate(aIn(other));
+  const home = S().windows[w].profileId;
+  S().switchProfile(other, S().createProfile({ name: "Work" }));
+  const longAgo = Date.now() - 13 * 60 * MIN;
+  for (const x of Object.values(S().tabs)) if (x.url === "https://a.com/") S().updateTab(x.id, { lastActiveAt: longAgo });
+  assert.equal(S().windows[other].activeTabIds[home], aIn(other), "the other window remembers it for the profile it isn't showing");
+  assert.deepEqual(cleanUpCandidates(S(), w, 12 * 60 * MIN), [aIn(w)], "the first window cleans it up");
+  assert.deepEqual(cleanUpCandidates(S(), other, 12 * 60 * MIN, undefined, home), [], "the window that remembers it keeps it");
 });
