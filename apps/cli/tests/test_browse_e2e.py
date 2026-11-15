@@ -446,12 +446,12 @@ class BrowseEndToEnd(unittest.TestCase):
         self.assertEqual(stored["steps"][2]["requests"][0]["url"], f"http://{site}/flowdata/{{{{q}}}}.json?q={{{{q}}}}")
         ran = json.loads(self.browse("flow", "run", "search", "--param", "q=toaster", "--fields", "title,price", "--limit", "2", "--json",
                                      session=session).stdout)["data"]
-        self.assertEqual((ran["tier"], ran["verified"]), ("page", True))
+        self.assertTrue(ran["verified"])
         self.assertEqual(ran["result"], {"list": "results", "total": 3, "matched": 3,
                                          "items": [{"title": "Two-slot toaster", "price": 25}, {"title": "Four-slot toaster", "price": 40}]})
         filtered = self.browse("flow", "run", "search", "--param", "q=toaster", "--where", "seller.name=bo", "--fields", "title",
                                session=session).stdout
-        self.assertTrue(filtered.startswith("✓ search via page: 1 of 1 matching items in results\n"), filtered)
+        self.assertTrue(filtered.startswith("✓ search: 1 of 1 matching items in results\n"), filtered)
         self.assertIn('{"title": "Oven toaster"}', filtered)
         unknown = self.browse("flow", "run", "search", "--param", "q=toaster", "--fields", "titel", "--json", session=session, check=False)
         self.assertEqual((unknown.returncode, json.loads(unknown.stdout)["code"]), (1, "unknown_field"))
@@ -459,14 +459,14 @@ class BrowseEndToEnd(unittest.TestCase):
         missing = self.browse("flow", "run", "search", session=session, check=False)
         self.assertIn("needs --param q=", missing.stderr)
         elsewhere = json.loads(self.browse("flow", "run", "search", "--param", "q=kettle", "--json", session="flows-other").stdout)["data"]
-        self.assertEqual((elsewhere["tier"], elsewhere["result"]["total"]), ("page", 2))
+        self.assertEqual(elsewhere["result"]["total"], 2)
         hinted = self.browse("open", self.url("flowsearch.html"), session="flows-other").stdout
         self.assertIn(f"# saved flows for {site} (`ardia browse flow run <name> --param k=v`, `flow show <name>`): search(q) [saved description: \"Search the fixture shop\"]",
                       hinted)
         self.assertNotIn("# saved flows", self.browse("snapshot", "-i", session="flows-other").stdout)
         self.assertIn(f'{site}  search(q) [saved description: "Search the fixture shop"]', self.browse("flow", "list", session=session).stdout)
-        replayed = json.loads(self.browse("flow", "run", "search", "--param", "q=toaster", "--tier", "replay", "--json", session=session).stdout)["data"]
-        self.assertEqual((replayed["tier"], replayed["result"]["total"]), ("replay", 3))
+        refused = self.browse("flow", "run", "search", "--param", "q=toaster", "--tier", "replay", session=session, check=False)
+        self.assertIn("Unknown flag: --tier", refused.stderr)
         self.assertEqual(self.browse("flow", "steps", session=session).stdout, "Nothing recorded since the last save\n")
         self.assertIn("Removed flow search", self.browse("flow", "rm", "search", session=session).stdout)
         self.assertFalse(path.exists())
@@ -732,6 +732,27 @@ class BrowseEndToEnd(unittest.TestCase):
         self.assertIn("Screenshot saved", self.browse("screenshot", str(third), "--if-changed", session=session).stdout)
         self.assertTrue(third.exists())
 
+    def test_read_data_lists_and_shapes_the_pages_embedded_json(self):
+        session = "page-data"
+        self.browse("open", self.url("nextdata.html"), session=session)
+        listed = self.browse("read", "--data", session=session).stdout
+        self.assertIn("3 data blocks on this page", listed)
+        self.assertIn("#__NEXT_DATA__", listed)
+        self.assertIn("main list props.pageProps.results: 3 items with", listed)
+        shaped = json.loads(self.browse("read", "--data", "--fields", "title,price", "--where", "brand=acme", "--json", session=session).stdout)["data"]["data"]
+        self.assertEqual(shaped["items"], [{"title": "Steel kettle", "price": 39}, {"title": "Travel kettle", "price": 25}])
+        self.assertEqual((shaped["total"], shaped["matched"]), (3, 2))
+
+    def test_batch_lines_take_out_and_save_their_files(self):
+        session = "batch-out"
+        self.browse("open", self.url("nextdata.html"), session=session)
+        text_file = SCRATCH / "batch-out-read.md"
+        snap_file = SCRATCH / "batch-out-snap.txt"
+        said = self.browse("batch", f"read --out {text_file}", f"snapshot --out {snap_file}", session=session).stdout
+        self.assertEqual(said.count("✓ Saved to"), 2, said)
+        self.assertIn("Kettles", text_file.read_text())
+        self.assertIn("Kettles", snap_file.read_text())
+
     def test_open_returns_a_page_whose_load_never_ends_with_a_note(self):
         import socket
 
@@ -763,6 +784,20 @@ class BrowseEndToEnd(unittest.TestCase):
         self.browse("open", self.url("prefcenter.html"), "--show", session=session)
         said = self.browse("click", "#search", session=session).stdout
         self.assertIn('"Reject All" button was clicked (reject)', said)
+        self.assertEqual(json.loads(self.browse("get", "text", "#report", session=session).stdout), {"clicked": ["search"], "choice": "reject"})
+
+    def test_click_closes_a_signup_popup_in_the_way_without_signing_up(self):
+        session = "signup"
+        self.browse("open", self.url("signup.html"), "--show", session=session)
+        said = self.browse("click", "#buy", session=session).stdout
+        self.assertIn("A signup popup was in the way", said)
+        self.assertEqual(json.loads(self.browse("get", "text", "#report", session=session).stdout), {"clicked": ["buy"], "closed": True})
+
+    def test_click_dismisses_a_long_consentmanager_box(self):
+        session = "cmpbox"
+        self.browse("open", self.url("cmpbox.html"), "--show", session=session)
+        said = self.browse("click", "#search", session=session).stdout
+        self.assertIn('"Reject all" button was clicked (reject)', said)
         self.assertEqual(json.loads(self.browse("get", "text", "#report", session=session).stdout), {"clicked": ["search"], "choice": "reject"})
 
     def test_click_leaves_a_dialog_that_is_not_about_cookies_alone(self):
@@ -1208,7 +1243,9 @@ class BrowseTokenPath(unittest.TestCase):
         self.browse("flow", "save", "token-search", session=session)
         ran = json.loads(self.browse("flow", "run", "token-search", "--param", "q=toaster", "--fields", "title", "--json",
                                      session="token-flows-other").stdout)["data"]
-        self.assertEqual((ran["tier"], ran["result"]["total"], ran["result"]["items"][0]), ("page", 3, {"title": "Two-slot toaster"}))
+        self.assertEqual((ran["result"]["total"], ran["result"]["items"][0]), (3, {"title": "Two-slot toaster"}))
+        missing = json.loads(self.browse("flow", "run", "token-search", "--param", "q=nothere", "--json", session=session, check=False).stdout)
+        self.assertEqual(missing["code"], "http_error", missing)
         self.browse("flow", "rm", "token-search", session=session)
 
     def test_html5_drag_over_the_token_policy(self):

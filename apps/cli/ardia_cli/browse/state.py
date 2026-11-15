@@ -222,7 +222,7 @@ class State:
             page = self.sessions.get(session_id)
             if page is not None:
                 if method == "Inspector.detached":
-                    page.detach()
+                    command_metrics.flag("renderer_exit_kept_session", True)
                     return
                 if method == "Inspector.targetCrashed":
                     page.mark_crashed()
@@ -280,6 +280,21 @@ class State:
             await page.enable_page()
         self.extras["had_tab"] = True
         command_metrics.spent("attach_ms", started)
+        return page
+
+    async def reattach(self, page: Page) -> Page:
+        if page.session_id is not None and page.browser is self.browser:
+            return page
+        from ardia_cli.browse.errors import CdpError
+        from ardia_cli.browse.page import DETACHED
+
+        if self.pages.get(page.target_id) is not page or page.target_id not in self.target_infos:
+            raise BrowseError(DETACHED, code="tab_detached")
+        try:
+            await page.attach(self.browser)
+        except CdpError:
+            raise BrowseError(DETACHED, code="tab_detached") from None
+        command_metrics.flag("reattached_after_detach", True)
         return page
 
     async def follow_lost_tab(self) -> str:

@@ -77,6 +77,8 @@ export function useWindowExtensions(windowId: string): InstalledExtension[] {
   return useMemo(() => list.filter((x) => showsExtension(priv, x)), [list, priv]);
 }
 
+export const useToolbarReorderable = (windowId: string) => !useBrowser((s) => isPrivate(s, windowId));
+
 export function windowExtensions(s: BrowserState, windowId: string | undefined): InstalledExtension[] {
   if (!windowId) return EMPTY;
   const priv = isPrivate(s, windowId);

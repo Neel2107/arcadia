@@ -45,6 +45,7 @@ export type CreateWindowOptions = {
   tabIds?: string[];
   frame?: Frame | null;
   linkPointer?: [number, number];
+  linkApp?: string;
   background?: boolean;
   chromeWindow?: string;
 };
@@ -180,7 +181,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
       : (known ?? (small ? lastActiveProfile(s) : s.settings.defaultProfileId));
     const w: BrowserWindow =
       kind === "small"
-        ? { ...smallWindow(id, profileId, o.frame ?? null), ...(o.linkPointer ? { linkPointer: o.linkPointer } : {}) }
+        ? { ...smallWindow(id, profileId, o.frame ?? null), ...(o.linkPointer ? { linkPointer: o.linkPointer } : {}), ...(o.linkApp ? { linkApp: o.linkApp } : {}) }
         : { ...emptyWindow(id, profileId, kind, o.frame ?? null), ...(o.chromeWindow ? { chromeWindow: o.chromeWindow } : {}) };
     const from = o.tabIds?.length && !small ? s.windows[s.tabs[o.tabIds[0]!]?.windowId ?? ""] : undefined;
     if (from?.autoHideTabs !== undefined && !isSmallWindow(from)) {

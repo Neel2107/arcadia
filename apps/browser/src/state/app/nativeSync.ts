@@ -11,7 +11,7 @@ import { setLastTabKeepsWindow } from "../omnibox/newTabBarPolicy";
 import { isUtilityWindowId } from "../settings/settingsWindows";
 import { openingLightsCenter } from "../windows/layout";
 import { createWindowSync, type WindowPort } from "../windows/windowSync";
-import { openExternalUrls } from "../littleArdia/actions";
+import { closeLittleArdiaForAppLink, openExternalUrls } from "../littleArdia/actions";
 import { startUnclaimedEscape } from "../windows/unclaimedEscape";
 import { SMALL_LIGHTS_CENTER } from "../windows/small";
 import { runCommand } from "../commands/commands";
@@ -23,6 +23,7 @@ import { flushLive } from "../live/store";
 import { startWindowCloseGuard } from "../windows/windowClose";
 import { openLastWindowOrNew } from "../windows/lastWindow";
 import { noteDockReopen } from "../telemetry/usage";
+import { noteLittleArdiaAppHandoff } from "../telemetry/littleArdiaEscapes";
 import { startExtensionsBridge } from "../extensions/bridge";
 import { useExtensions } from "../extensions/actions";
 import { useReader } from "../reader/reader";
@@ -53,7 +54,7 @@ export function startNativeSync() {
   onCommand((e) => settlingCommandFocus(e, runCommand));
   startWindowCloseGuard();
   startExtensionsBridge();
-  onOpenURLs((urls, pointer, source) => openExternalUrls(urls, pointer, source));
+  onOpenURLs((urls, pointer, source, returnTo) => openExternalUrls(urls, pointer, source, returnTo));
   startUnclaimedEscape();
   void lastTabClosesWindow()
     .catch(() => true)
@@ -71,6 +72,8 @@ export function startNativeSync() {
       noteDockReopen(e.pastFloating);
       openLastWindowOrNew("dock");
     }
+    if (e.type === "appLinkOpened") closeLittleArdiaForAppLink(e.windowId);
+    if (e.type === "littleArdiaReturnedToApp") noteLittleArdiaAppHandoff("returnToApp");
     if (e.type === "quitWarningSuppressed") s.updateSettings({ warnBeforeQuitting: false });
     if (e.type === "willQuit") {
       setQuitting(true);

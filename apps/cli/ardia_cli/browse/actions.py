@@ -436,8 +436,10 @@ async def dismissed_consent(page, element, x, y) -> bool:
         return False
     if not done:
         return False
-    command_metrics.flag("consent_dismissed", True)
-    page.state.consent_dismissed = f'{done["layer"]} covered {element.label}, so its "{done["name"]}" button was clicked ({done["choice"]})'
+    popup = done.get("kind") == "popup"
+    command_metrics.flag("popup_dismissed" if popup else "consent_dismissed", True)
+    what = "A signup popup" if popup else "A consent banner"
+    page.state.consent_dismissed = f'{what} was in the way: {done["layer"]} covered {element.label}, so its "{done["name"]}" button was clicked ({done["choice"]})'
     await asyncio.sleep(CONSENT_SETTLE)
     return True
 
@@ -1199,7 +1201,12 @@ async def settled_box(page, element) -> tuple | None:
 
 
 async def element_box(page, element) -> tuple | None:
-    quads = (await page.send("DOM.getContentQuads", {"backendNodeId": element.backend_id})).get("quads") or []
+    try:
+        quads = (await page.send("DOM.getContentQuads", {"backendNodeId": element.backend_id})).get("quads") or []
+    except CdpError as error:
+        if "content quads" not in error.cdp_message:
+            raise
+        return None
     best = None
     for quad in quads:
         xs, ys = quad[0::2], quad[1::2]

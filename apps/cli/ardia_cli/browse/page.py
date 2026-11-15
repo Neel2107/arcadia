@@ -33,6 +33,13 @@ DETACHED = "Ardia detached this tab from the ardia command while it was in use (
 CRASHED = "This tab's page crashed. `ardia browse reload` brings it back; `ardia browse close` or `tab close` closes it"
 CRASH_PROBE = 5.0
 CRASH_SAFE = frozenset({"Inspector.enable", "Page.reload", "Page.navigate"})
+SETUP_NAMES = {
+    "Emulation.setDeviceMetricsOverride": "the viewport or device size", "Emulation.setTouchEmulationEnabled": "touch emulation",
+    "Emulation.setUserAgentOverride": "the device user agent", "Emulation.setGeolocationOverride": "the geolocation",
+    "Emulation.setEmulatedMedia": "the emulated media", "Network.emulateNetworkConditions": "offline mode",
+    "Network.setExtraHTTPHeaders": "the extra headers",
+}
+ROUTE_PATTERNS = [{"urlPattern": "*", "requestStage": "Request"}]
 STALE_CONTEXT = ("Cannot find context", "Execution context was destroyed", "Cannot find default execution context", "Inspected target navigated")
 
 
@@ -138,6 +145,11 @@ class Page:
         self.input = Input(self)
         self.navigations = 0
         self.init_scripts: dict[str, str] = {}
+        self.script_sources: dict[str, str] = {}
+        self.script_ids: dict[str, str] = {}
+        self.overrides: dict[str, dict] = {}
+        self.attaches = 0
+        self.needs_restore = False
         self.url = ""
         self.title = ""
         self.drag_intercepted: asyncio.Future | None = None
@@ -159,6 +171,8 @@ class Page:
             raise error.during(None, await tabs.where_app_has(self.state, self.target_id) if error.reason else None) from None
         self.session_id = result["sessionId"]
         self.state.sessions[self.session_id] = self
+        self.attaches += 1
+        self.needs_restore = self.needs_restore or self.attaches > 1
         known, self.crashed = self.crashed, False
         try:
             await self.send("Inspector.enable", timeout=CRASH_PROBE)
@@ -181,6 +195,8 @@ class Page:
         if self.network_on:
             self.network_on = False
             await self.enable_network()
+        if self.needs_restore:
+            await self.restore_setup()
         viewport = None
         try:
             metrics = await self.send("Page.getLayoutMetrics")
@@ -190,6 +206,65 @@ class Page:
             pass
         self.input.bind(viewport)
         self.needs_enable = False
+
+    async def restore_setup(self):
+        from ardia_cli import command_metrics
+
+        self.needs_restore = False
+        lost = []
+        restored = 0
+        for visible in list(self.init_scripts):
+            source = self.script_sources.get(visible)
+            try:
+                if source is None:
+                    raise BrowseError("no source kept")
+                result = await self.send("Page.addScriptToEvaluateOnNewDocument", {"source": source})
+                self.script_ids[visible] = result["identifier"]
+                restored += 1
+            except BrowseError:
+                lost.append(f"init script {visible}")
+                self.init_scripts.pop(visible, None)
+                self.script_sources.pop(visible, None)
+                self.script_ids.pop(visible, None)
+        for method, params in list(self.overrides.items()):
+            try:
+                await self.send(method, params)
+                restored += 1
+            except BrowseError:
+                lost.append(SETUP_NAMES.get(method, method))
+                self.overrides.pop(method, None)
+        claims = self.state.extras.get("claims") or set()
+        if (self.target_id, "route") in claims:
+            params = {"patterns": ROUTE_PATTERNS}
+            if self.state.extras.get("credentials"):
+                params["handleAuthRequests"] = True
+            try:
+                await self.send("Fetch.enable", params)
+                restored += 1
+            except BrowseError:
+                lost.append("network routes and HTTP credentials")
+                claims.discard((self.target_id, "route"))
+                self.release_route_claim()
+        if lost:
+            command_metrics.flag("setup_restore_failed", True)
+            raise BrowseError(
+                f"Ardia detached this tab from the ardia command and it was attached again, but {', '.join(lost)} couldn't be put back, "
+                "so they are off now. Set them again (addinitscript, set …, network route) and run the command again",
+                data={"lost": lost}, code="setup_lost",
+            )
+        if restored:
+            command_metrics.flag("setup_restored", True)
+
+    def release_route_claim(self):
+        config = getattr(self.state, "config", None) or {}
+        if config.get("browse_fd") is None or not config.get("key"):
+            return
+        from ardia_cli.browse import claims
+
+        try:
+            claims.release(config["browse_fd"], config["key"], self.target_id, "route")
+        except (BrowseError, OSError):
+            pass
 
     def mark_crashed(self):
         self.crashed = True

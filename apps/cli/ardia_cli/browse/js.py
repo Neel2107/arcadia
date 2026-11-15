@@ -258,7 +258,7 @@ LIBRARY = r"""
     },
     dismissConsent(x, y) {
       const about = /\b(cookies?|consent|gdpr|ccpa)\b/i;
-      const vendor = "[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],[id*=onetrust i],[class*=onetrust i],[id*=osano i],[class*=osano i],[id*=didomi i],[id*=usercentrics i],[id*=truste i],[class*=truste i],[class*=qc-cmp i],[id*=sp_message i],[class*=cmp-]";
+      const vendor = "[id*=cookie i],[class*=cookie i],[id*=consent i],[class*=consent i],[id*=onetrust i],[class*=onetrust i],[id*=osano i],[class*=osano i],[id*=didomi i],[id*=usercentrics i],[id*=truste i],[class*=truste i],[class*=qc-cmp i],[id*=sp_message i],[class*=cmp-],[id*=cmpbox i],[class*=cmpbox i],[id*=cookiebot i],[class*=cookiebot i],[id*=iubenda i],[class*=iubenda i],[id*=termly i],[class*=termly i],[id*=klaro i],[class*=klaro i],[id*=cmplz i],[class*=cmplz i],[class*=cky-consent i]";
       const reject = /^(reject|decline|refuse)( all| optional| non-essential)?( cookies)?$|^(only|strictly) (essential|necessary)( cookies)?$|^(necessary|essential) (cookies )?only$|^use (only )?necessary cookies$|^continue without accepting$/i;
       const accept = /^(accept|allow)( all)?( cookies)?$|^(i agree|agree|got it|ok|okay)$/i;
       const close = /^(close|dismiss)$|^(×|✕)$/i;
@@ -281,8 +281,8 @@ LIBRARY = r"""
       for (const root of roots) {
         if (!api.visible(root)) continue;
         const names = root.id + " " + (typeof root.className === "string" ? root.className : "") + " " + (root.getAttribute("aria-label") || "");
-        const declared = /cookie|consent|gdpr|ccpa|onetrust|didomi|usercentrics|truste|osano|qc-cmp|sp_message/i.test(names);
-        const platform = /onetrust|didomi|usercentrics|truste|osano|qc-cmp|sp_message/i.test(names);
+        const declared = /cookie|consent|gdpr|ccpa|onetrust|didomi|usercentrics|truste|osano|qc-cmp|sp_message|cmpbox|cookiebot|iubenda|termly|klaro|cmplz|cky-/i.test(names);
+        const platform = /onetrust|didomi|usercentrics|truste|osano|qc-cmp|sp_message|cmpbox|cookiebot|iubenda|termly|klaro|cmplz|cky-/i.test(names);
         const text = (root.innerText || "").slice(0, 20001);
         if (text.length > (platform ? 20000 : 3000) || !(declared || about.test(text))) continue;
         if (!declared && !/\bcookies?\b/i.test(text)) continue;
@@ -295,9 +295,29 @@ LIBRARY = r"""
         }
         if (best && best.rank === 0) break;
       }
-      if (!best) return null;
+      if (!best) {
+        const signup = /\b(newsletter|subscribe|sign ?up|join|discount|coupon|offer|deal|email)\b|\d+ ?% ?off\b/i;
+        const dismiss = /^(close|dismiss|no,? thanks?|no thank you|not now|maybe later|skip|×|✕|✖)$/i;
+        const popups = backdrop ? [...roots, ...document.querySelectorAll("[role=dialog], [aria-modal=true], dialog[open]")] : roots;
+        for (const root of popups) {
+          if (!api.visible(root)) continue;
+          const text = (root.innerText || "").slice(0, 3001);
+          if (text.length > 3000 || !(root.querySelector("input[type=email]") || signup.test(text))) continue;
+          for (const button of root.querySelectorAll("button, [role=button], a, input[type=button]")) {
+            if (!api.visible(button)) continue;
+            const shown = ((button.innerText || button.value || "").trim()).replace(/\s+/g, " ");
+            const label = (button.getAttribute("aria-label") || button.getAttribute("title") || "").trim();
+            const name = shown || label;
+            if (dismiss.test(shown) || (shown.length <= 2 && /^(close|dismiss)\b/i.test(label))) {
+              button.click();
+              return { name: name || "close", choice: "close", kind: "popup", layer: api.describe(root) };
+            }
+          }
+        }
+        return null;
+      }
       best.button.click();
-      return { name: best.name, choice: ["reject", "accept", "close"][best.rank], layer: api.describe(best.root) };
+      return { name: best.name, choice: ["reject", "accept", "close"][best.rank], kind: "consent", layer: api.describe(best.root) };
     },
     clickables(root) {
       const out = [];

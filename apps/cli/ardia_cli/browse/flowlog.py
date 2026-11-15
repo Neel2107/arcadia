@@ -3,28 +3,24 @@ import base64
 import collections
 import json
 import re
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import urlsplit
 
 from ardia_cli.browse.errors import BrowseError, ConnectionLost, Usage
 
 STEP_LIMIT = 200
+SECRET_LIMIT = 200
 BODY_BUDGET = 16 * 1024 * 1024
 BODY_LIMIT = 2 * 1024 * 1024
 BODIES_PER_STEP = 8
 CAPTURE_BUDGET = 2.0
 PROBE_BUDGET = 1.5
-POST_LIMIT = 64 * 1024
-READ_METHODS = {"GET", "HEAD"}
-GRAPHQL_KEYS = {"query", "variables", "operationName", "extensions"}
 CAPTURED_TYPES = {"XHR", "Fetch", "Document"}
 RECORDED = {"open", "click", "dblclick", "fill", "type", "press", "keyboard", "select", "check", "uncheck", "find", "back", "forward",
             "reload", "scroll", "scrollintoview", "hover", "focus", "wait", "pushstate"}
 ON_ELEMENT = {"click", "dblclick", "fill", "type", "select", "check", "uncheck", "hover", "focus", "scrollintoview"}
 TYPING = {"fill", "type"}
-KEPT_HEADERS = ("content-type", "accept", "x-requested-with")
+KEPT_HEADERS = ("accept",)
 CREDENTIAL_HEADER = re.compile(r"^(authorization|proxy-authorization|cookie)$|token|csrf|xsrf|api-?key|secret|session|signature|^x-auth", re.I)
-SUSPECT_WORDS = {"logout", "signout", "unsubscribe", "delete", "remove", "destroy"}
-GRAPHQL_WRITES = {"mutation", "subscription"}
 NO_HUMANIZE = {"--no-humanize": "bool"}
 COMMAND_FLAGS = {
     "open": {"--enable": "multi", "--init-script": "multi", "--capture-console": "bool", "--headers": "value", "--label": "value", "--show": "bool"},
@@ -55,10 +51,23 @@ class Log:
         self.saved_through = 0
         self.body_bytes = 0
         self.dropped = 0
+        self.secrets: list[str] = []
+
+    def known_secrets(self) -> list[str]:
+        found = list(self.secrets)
+        for step in self.steps:
+            typed = step.get("typed") or {}
+            if typed.get("secret") and typed.get("value") and typed["value"] not in found:
+                found.append(typed["value"])
+        return found
 
     def add(self, step: dict):
         self.seq += 1
         step["seq"] = self.seq
+        typed = step.get("typed") or {}
+        if typed.get("secret") and typed.get("value") and typed["value"] not in self.secrets:
+            self.secrets.append(typed["value"])
+            del self.secrets[:-SECRET_LIMIT]
         for index, request in enumerate(step.get("requests") or [], 1):
             request["id"] = f"s{self.seq}r{index}"
             self.body_bytes += request.get("bytes") or 0
@@ -132,81 +141,6 @@ def kept_headers(headers: dict | None) -> tuple[dict, bool]:
         elif lower in KEPT_HEADERS:
             kept[lower] = str(value)[:1024]
     return kept, stripped
-
-
-def graphql_kinds(text: str) -> list[str] | None:
-    text = re.sub(r'"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"', '""', text)
-    text = re.sub(r"#[^\n]*", "", text)
-    kinds: list[str] = []
-    head: list[str] = []
-    depth = 0
-    for token in re.findall(r"[{}]|[A-Za-z_][A-Za-z0-9_]*|[^\s{}A-Za-z_]+", text):
-        if token == "{":
-            if depth == 0:
-                kinds.append(head[0] if head else "query")
-                head = []
-            depth += 1
-        elif token == "}":
-            depth -= 1
-            if depth < 0:
-                return None
-        elif depth == 0:
-            head.append(token)
-    if depth != 0 or head or not kinds:
-        return None
-    return kinds
-
-
-def graphql_read(body: str | None) -> bool:
-    if not body:
-        return False
-    try:
-        parsed = json.loads(body)
-    except ValueError:
-        return False
-    operations = parsed if isinstance(parsed, list) else [parsed]
-    if not operations:
-        return False
-    for operation in operations:
-        if not isinstance(operation, dict) or not set(operation) <= GRAPHQL_KEYS or not isinstance(operation.get("query"), str):
-            return False
-        kinds = graphql_kinds(operation["query"])
-        if kinds is None or "query" not in kinds or not set(kinds) <= {"query", "fragment"}:
-            return False
-    return True
-
-
-def decoded_text(text: str) -> str:
-    for _ in range(3):
-        once = unquote(text)
-        if once == text:
-            break
-        text = once
-    return text.lower()
-
-
-def suspect(text: str, words: set) -> bool:
-    tokens = [token for token in re.split(r"[^a-z]+", decoded_text(text)) if token]
-    pairs = {first + second for first, second in zip(tokens, tokens[1:])}
-    return bool((set(tokens) | pairs) & words)
-
-
-def write_kind(method: str, url: str, body: str | None) -> str | None:
-    method = str(method or "").upper()
-    if method == "POST" and graphql_read(body):
-        return None
-    if method not in READ_METHODS:
-        return "explicit"
-    try:
-        parts = urlsplit(url)
-    except ValueError:
-        return "suspected"
-    if suspect(parts.path, SUSPECT_WORDS):
-        return "suspected"
-    for key, value in parse_qsl(parts.query, keep_blank_values=True):
-        if suspect(key, SUSPECT_WORDS) or suspect(value, SUSPECT_WORDS | GRAPHQL_WRITES):
-            return "suspected"
-    return None
 
 
 def attributes(text: str) -> dict:
@@ -403,7 +337,7 @@ async def begin(ctx, name: str, argv) -> dict | None:
     if name not in RECORDED or not isinstance(extras, dict):
         return None
     page = state.pages.get(state.current) if state.current else None
-    step = {"command": [name, *argv], "before": page.url if page else "", "replay": None, "requests": [], "writes": []}
+    step = {"command": [name, *argv], "before": page.url if page else "", "replay": None, "requests": [], "origins": [], "unkept": []}
     try:
         await asyncio.wait_for(describe(state, page, name, list(argv), step), PROBE_BUDGET)
     except asyncio.CancelledError:
@@ -441,10 +375,6 @@ async def end(ctx, step: dict | None, error: BrowseError | None = None):
                 pass
         if registered_secret(typed.get("value") or "") or SECRET_HINT.search(typed.get("hint") or ""):
             typed["secret"] = True
-    replaying = state.extras.get("flow_replay")
-    if replaying is not None:
-        replaying.append(step)
-        return
     log_of(state).add(step)
 
 
@@ -482,7 +412,11 @@ async def capture(page, watch):
 
 
 async def collect(page, watch, step: dict):
+    from ardia_cli.browse import flowurl
+
     bases = {base_domain(host_of(url)) for url in (step.get("before") or "", page.url or "")} - {""}
+    origins = step.setdefault("origins", [])
+    unkept = step.setdefault("unkept", [])
     taken = 0
     for request_id in list(watch.order):
         record = watch.records.get(request_id)
@@ -493,21 +427,17 @@ async def collect(page, watch, step: dict):
             continue
         method = record["method"]
         status = record["statuses"][-1] if record["statuses"] else None
+        if method != "GET":
+            if record["type"] in ("XHR", "Fetch", "Document") and status and 200 <= status < 300:
+                unkept.append(method)
+            continue
+        try:
+            origin = flowurl.parse(url).origin
+        except flowurl.Unsafe:
+            continue
+        if origin not in origins:
+            origins.append(origin)
         headers, stripped = kept_headers(record.get("headers"))
-        body = record.get("post")
-        if body is None and record.get("has_post") and method not in READ_METHODS:
-            try:
-                body = (await page.send("Network.getRequestPostData", {"requestId": request_id}, timeout=CAPTURE_BUDGET)).get("postData")
-            except BrowseError:
-                body = None
-        too_large = body is not None and len(body) > POST_LIMIT
-        if too_large:
-            body = None
-        if record.get("has_post") and body is None:
-            too_large = True
-        kind = write_kind(method, url, body)
-        if kind and record["type"] != "Preflight":
-            step["writes"].append({"method": method, "url": url, "kind": kind, "status": status, "type": record["type"]})
         readable = readable_type(record) if record["type"] in CAPTURED_TYPES else None
         if readable is None or not record.get("done") or record.get("failed") or not status or not 200 <= status < 300 or taken >= BODIES_PER_STEP:
             continue
@@ -515,14 +445,10 @@ async def collect(page, watch, step: dict):
             text = decoded(await page.send("Network.getResponseBody", {"requestId": request_id}, timeout=CAPTURE_BUDGET))
         except BrowseError:
             continue
-        if text is None or len(text) > BODY_LIMIT:
+        if text is None or len(text) > BODY_LIMIT or not looks_readable(readable, text):
             continue
-        if not looks_readable(readable, text):
-            continue
-        entry = {"method": method, "url": url, "type": record["type"], "status": status, "mime": record.get("mime") or "",
-                 "headers": headers, "body": body, "strippedAuth": stripped, "kind": readable, "bytes": len(text), "text": text}
-        if too_large:
-            entry["bodyLost"] = True
+        entry = {"method": "GET", "url": url, "type": record["type"], "status": status, "mime": record.get("mime") or "",
+                 "headers": headers, "strippedAuth": stripped, "kind": readable, "bytes": len(text), "text": text}
         if readable == "document" and materialize(entry) is None:
             continue
         step["requests"].append(entry)

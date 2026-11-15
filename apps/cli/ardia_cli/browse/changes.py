@@ -589,12 +589,18 @@ class NetworkWatch:
         self.records: dict[str, dict] = {}
         self.order: list[str] = []
         self.last_event = 0.0
+        self.counting = False
+        self.earlier: set[str] = set()
 
     def listener(self, event_page, method, params):
         if event_page is not self.page or not method.startswith("Network."):
             return
         request_id = params.get("requestId")
         if not request_id:
+            return
+        if not self.counting or request_id in self.earlier:
+            self.earlier.add(request_id)
+            command_metrics.flag("earlier_requests_ignored", True)
             return
         loop = asyncio.get_running_loop()
         self.last_event = loop.time()
@@ -607,8 +613,6 @@ class NetworkWatch:
                     "url": clean_url(str(request.get("url") or "")),
                     "raw": str(request.get("url") or ""),
                     "headers": request.get("headers") or {},
-                    "post": request.get("postData"),
-                    "has_post": bool(request.get("hasPostData")),
                     "type": params.get("type") or "Other",
                     "statuses": [],
                     "done": False,
@@ -636,10 +640,12 @@ class NetworkWatch:
         self.watching = True
         self.last_event = asyncio.get_running_loop().time()
         if self.page.network_on:
+            self.counting = True
             return
         self.enabled_here = True
         try:
             await self.page.send("Network.enable", {"maxTotalBufferSize": WATCH_BUFFER, "maxResourceBufferSize": WATCH_BUFFER})
+            self.counting = True
         except BrowseError as error:
             if isinstance(error, (CdpError, Gated)):
                 self.enabled_here = False
@@ -678,7 +684,7 @@ class NetworkWatch:
         self.enabled_here = False
         if self.page.network_on or self.page.session_id is None:
             return
-        cleanup = asyncio.ensure_future(self.disable(self.page.session_id))
+        cleanup = asyncio.ensure_future(self.disable())
         cancelled = False
         while not cleanup.done():
             try:
@@ -688,19 +694,11 @@ class NetworkWatch:
         if cancelled:
             raise asyncio.CancelledError
 
-    async def disable(self, session: str):
+    async def disable(self):
         try:
             await asyncio.wait_for(self.page.send("Network.disable"), STOP_TIMEOUT)
-            return
         except Exception:
-            pass
-        if self.page.session_id != session:
-            return
-        self.page.detach()
-        try:
-            await asyncio.wait_for(self.page.browser.send("Target.detachFromTarget", {"sessionId": session}), STOP_TIMEOUT)
-        except Exception:
-            pass
+            command_metrics.flag("network_disable_unconfirmed", True)
 
     def writes(self) -> list[dict]:
         rows = []
@@ -820,6 +818,7 @@ async def observe(ctx, page, run, react=None):
     finally:
         await watch.stop()
     try:
+        await state.reattach(page)
         await page.refresh_frames()
         nodes = await snapshot.collect(state, page)
         state.set_refs(snapshot.refs_of(state, page, nodes), None, page)
