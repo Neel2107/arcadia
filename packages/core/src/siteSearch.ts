@@ -1,7 +1,7 @@
 import { engineHost, searchUrl, type SearchEngine } from "./engines.ts";
 import { hostOf, searchUrlFor } from "./omnibox.ts";
 
-export type SiteSearch = { host: string; name: string; url: string };
+export type SiteSearch = { host: string; name: string; url: string; keyword?: string };
 
 const POPULAR_SITE_SEARCHES: readonly SiteSearch[] = [
   { host: "youtube.com", name: "YouTube", url: "https://www.youtube.com/results?search_query=%s" },
@@ -13,7 +13,7 @@ const POPULAR_SITE_SEARCHES: readonly SiteSearch[] = [
   { host: "twitter.com", name: "X", url: "https://x.com/search?q=%s" },
   { host: "stackoverflow.com", name: "Stack Overflow", url: "https://stackoverflow.com/search?q=%s" },
   { host: "npmjs.com", name: "npm", url: "https://www.npmjs.com/search?q=%s" },
-  { host: "maps.google.com", name: "Google Maps", url: "https://www.google.com/maps/search/%s" },
+  { host: "maps.google.com", name: "Google Maps", keyword: "maps", url: "https://www.google.com/maps/search/%s" },
   { host: "drive.google.com", name: "Google Drive", url: "https://drive.google.com/drive/search?q=%s" },
   { host: "mail.google.com", name: "Gmail", url: "https://mail.google.com/mail/u/0/#search/%s" },
   { host: "imdb.com", name: "IMDb", url: "https://www.imdb.com/find/?q=%s" },
@@ -80,7 +80,7 @@ export function findScope(text: string, { engines, sites = POPULAR_SITE_SEARCHES
     if (e.keyword.toLowerCase() === host || eHost === host || (t.length >= 3 && t === siteLabel(eHost))) return engineScope(e);
   }
   for (const s of sites) {
-    if (s.host === host || host.endsWith(`.${s.host}`) || (t === host && t.length >= 3 && s.host.split(".").length === 2 && siteLabel(s.host) === t)) {
+    if (s.host === host || host.endsWith(`.${s.host}`) || (t === host && (s.keyword === t || (t.length >= 3 && s.host.split(".").length === 2 && siteLabel(s.host) === t)))) {
       return { kind: "site", name: s.name, host: s.host, url: s.url };
     }
   }

@@ -102,3 +102,14 @@ test("no site search is offered for text with spaces", () => {
   assert.equal(offeredSiteSearch("google maps", "", sources), null);
   assert.equal(offeredSiteSearch("  ", ".com", sources), null);
 });
+
+test("Tab offers Google Maps for 'maps' with no completion, as when the bar searches first or history has no maps.google.com", () => {
+  const state = bar("maps");
+  assert.equal(state.offered?.name, "Google Maps");
+  const action = siteSearchKey("Tab", {}, state);
+  assert.deepEqual(action?.kind === "enter" && [action.scope.host, action.from], ["maps.google.com", "maps"]);
+  assert.equal(bar("maps", ".google.com").offered?.name, "Google Maps");
+  assert.equal(offeredSiteSearch("open", "", sources), null);
+  assert.equal(offeredSiteSearch("google", "", sources)?.name, "Google");
+  assert.equal(offeredSiteSearch("maps near me", "", sources), null);
+});
