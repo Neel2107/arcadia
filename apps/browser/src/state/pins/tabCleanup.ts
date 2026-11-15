@@ -1,6 +1,6 @@
 import type { StateCreator } from "zustand";
 import type { BrowserState } from "../browser/store";
-import { activeTabId, inPinnedContainer, isIncognitoProfile, pinSection, viewTabIds, without } from "../browser/model";
+import { activeTabId, familyKeyOf, inPinnedContainer, isIncognitoProfile, pinSection, viewTabIds, without } from "../browser/model";
 import { hasPage, isAsleep } from "../tabs/pageSession";
 import { isSleeping } from "../tabs/sleepingTabs";
 import { holderOf, isPageUnloaded } from "./pinShare";
@@ -103,11 +103,23 @@ export function noteDeselectedTabs(s: BrowserState, ids: readonly string[], at =
   for (const id of ids) if (s.tabs[id]) deselectedAt.set(id, at);
 }
 
-function inactivity(s: BrowserState, windowId: string) {
-  const active = activeTabId(s, windowId);
+function selectedFamilies(s: BrowserState): Set<string> {
+  const out = new Set<string>();
+  for (const w of Object.values(s.windows)) {
+    for (const id of Object.values(w.activeTabIds)) {
+      const t = id ? s.tabs[id] : undefined;
+      if (t) out.add(familyKeyOf(t));
+    }
+  }
+  return out;
+}
+
+function inactivity(s: BrowserState, windowId: string, profileId?: string) {
+  const active = activeTabId(s, windowId, profileId);
   const grouped = new Set(Object.values(s.groups).flatMap((g) => g.tabIds));
   const inSplit = new Set(Object.values(s.splits).flatMap((v) => splitTabIds(v)));
-  const keep = (t: Tab) => t.id === active || inPinnedContainer(s, t.id) || s.live[t.id]?.playingAudio;
+  const shown = selectedFamilies(s);
+  const keep = (t: Tab) => t.id === active || shown.has(familyKeyOf(t)) || inPinnedContainer(s, t.id) || s.live[t.id]?.playingAudio;
   const used = sharedLastUsed(s);
   const restored = sharedRestoredAt(s);
   return {
@@ -121,9 +133,9 @@ function inactivity(s: BrowserState, windowId: string) {
   };
 }
 
-export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveForMs = CLEAN_UP_AFTER_MS, now = Date.now()): string[] {
-  const view = viewTabIds(s, windowId);
-  const { active, inSplit, used, restored, keep, expires, lastUsed } = inactivity(s, windowId);
+export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveForMs = CLEAN_UP_AFTER_MS, now = Date.now(), profileId?: string): string[] {
+  const view = viewTabIds(s, windowId, profileId);
+  const { active, inSplit, used, restored, keep, expires, lastUsed } = inactivity(s, windowId, profileId);
   const recency = (t: Tab) => Math.max(lastUsedOf(used, t), restoredAtOf(restored, t));
   const out = new Set<string>();
   const byPage = new Map<string, Tab[]>();
@@ -145,10 +157,14 @@ export function cleanUpCandidates(s: BrowserState, windowId: string, inactiveFor
   return view.filter((id) => out.has(id));
 }
 
-export function nextCleanUpAt(s: BrowserState, windowId: string, inactiveForMs: number): number {
-  const { expires, lastUsed } = inactivity(s, windowId);
+export function profileIdsIn(s: BrowserState, windowId: string): string[] {
+  return [...new Set((s.windows[windowId]?.tabIds ?? []).flatMap((id) => s.tabs[id]?.profileId ?? []))];
+}
+
+export function nextCleanUpAt(s: BrowserState, windowId: string, inactiveForMs: number, profileId?: string): number {
+  const { expires, lastUsed } = inactivity(s, windowId, profileId);
   let next = Infinity;
-  for (const id of viewTabIds(s, windowId)) {
+  for (const id of viewTabIds(s, windowId, profileId)) {
     const t = s.tabs[id]!;
     if (expires(t)) next = Math.min(next, lastUsed(t) + inactiveForMs);
   }
@@ -226,7 +242,7 @@ export type CleanUpSlice = {
   cleanedTabs: ClosedTab[];
   privateCleanedTabs: Record<string, ClosedTab[]>;
 
-  cleanUpTabs(windowId: string, options?: { inactiveForMs?: number }): number;
+  cleanUpTabs(windowId: string, options?: { inactiveForMs?: number; allProfiles?: boolean }): number;
   restoreCleaned(entryIds?: string | string[], windowId?: string): void;
   clearUnpinnedTabs(windowId: string): ClearedTabs | null;
   undoClearTabs(cleared: ClearedTabs): void;
@@ -247,7 +263,9 @@ export const createCleanUpSlice: StateCreator<BrowserState, [], [], CleanUpSlice
   cleanUpTabs(windowId, options = {}) {
     const s = get();
     const minutes = s.settings.cleanUpInactiveTabsAfterMinutes;
-    const ids = cleanUpCandidates(s, windowId, options.inactiveForMs ?? (minutes ? minutes * 60_000 : CLEAN_UP_AFTER_MS));
+    const after = options.inactiveForMs ?? (minutes ? minutes * 60_000 : CLEAN_UP_AFTER_MS);
+    const profiles = options.allProfiles ? profileIdsIn(s, windowId) : [undefined];
+    const ids = profiles.flatMap((profileId) => cleanUpCandidates(s, windowId, after, undefined, profileId));
     if (!ids.length) return 0;
     const entries = closedEntries(s, ids);
     const next = closeQuietly(s, ids);

@@ -1,7 +1,8 @@
 import { useBrowser, type BrowserState } from "../browser/store";
 import { activeTabId } from "../browser/model";
 import { changedIds } from "../browser/changes";
-import { nextCleanUpAt, noteDeselectedTabs } from "./tabCleanup";
+import { nextCleanUpAt, noteDeselectedTabs, profileIdsIn } from "./tabCleanup";
+import { noteAutoCleanUp } from "../telemetry/cleanUpCounts";
 
 const RECHECK_MS = 30 * 60 * 1000;
 const RETRY_FLOOR_MS = 1000;
@@ -18,7 +19,7 @@ export function nextAutoCleanUpAt(s: BrowserState, now = Date.now()): number | n
   const after = inactiveForMs(s);
   if (after === null) return null;
   let next = now + Math.min(after, RECHECK_MS);
-  for (const id of s.windowOrder) next = Math.min(next, nextCleanUpAt(s, id, after));
+  for (const id of s.windowOrder) for (const profileId of profileIdsIn(s, id)) next = Math.min(next, nextCleanUpAt(s, id, after, profileId));
   return next;
 }
 
@@ -30,11 +31,21 @@ function schedule(floor = 0) {
   if (at !== null) timer = setTimeout(cleanUpDue, Math.max(floor, at - now));
 }
 
+function cleanUpWindow(windowId: string, after: number) {
+  const before = useBrowser.getState();
+  const shown = before.windows[windowId]?.profileId;
+  const hidden = (before.windows[windowId]?.tabIds ?? []).filter((id) => before.tabs[id]?.profileId !== shown);
+  const cleaned = before.cleanUpTabs(windowId, { inactiveForMs: after, allProfiles: true });
+  if (!cleaned) return;
+  const tabs = useBrowser.getState().tabs;
+  noteAutoCleanUp(cleaned, hidden.filter((id) => !tabs[id]).length);
+}
+
 function cleanUpDue() {
   timer = null;
   const s = useBrowser.getState();
   const after = inactiveForMs(s);
-  if (after !== null) for (const id of s.windowOrder) useBrowser.getState().cleanUpTabs(id, { inactiveForMs: after });
+  if (after !== null) for (const id of s.windowOrder) cleanUpWindow(id, after);
   schedule(RETRY_FLOOR_MS);
 }
 

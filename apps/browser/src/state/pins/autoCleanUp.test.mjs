@@ -4,6 +4,7 @@ const { useBrowser } = await import("../browser/store.ts");
 const model = await import("../browser/model.ts");
 const { cleanUpCandidates, nextCleanUpAt } = await import("./tabCleanup.ts");
 const { nextAutoCleanUpAt, startAutoCleanUp, stopAutoCleanUp } = await import("./autoCleanUp.ts");
+const { takeCleanUpCounts } = await import("../telemetry/cleanUpCounts.ts");
 
 const S = () => useBrowser.getState();
 const MIN = 60_000;
@@ -181,4 +182,53 @@ test("switching the setting off stops the timer", (t) => {
   } finally {
     stopAutoCleanUp();
   }
+});
+
+test("automatic clean-up reaches profiles the window isn't showing, and keeps each profile's selected tab", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
+  try {
+    const [w, a] = windowWith("a");
+    const home = S().windows[w].profileId;
+    const work = S().createProfile({ name: "Work" });
+    S().switchProfile(w, work);
+    const selected = model.activeTabId(S(), w);
+    const b = S().newTab(w, { url: "https://b.com/", background: true });
+    S().switchProfile(w, home);
+    takeCleanUpCounts();
+    startAutoCleanUp();
+    S().updateSettings({ cleanUpInactiveTabsAfterMinutes: 30 });
+    t.mock.timers.tick(31 * MIN);
+    assert.ok(!S().tabs[b], "the idle tab in the hidden profile is cleaned up");
+    assert.deepEqual(takeCleanUpCounts(), { clean_up_auto_tabs: 1, clean_up_auto_hidden_profile_tabs: 1 });
+    assert.ok(S().tabs[selected] && S().tabs[a], "each profile's selected tab stays");
+    assert.equal(S().cleanedTabs.at(-1).tab.url, "https://b.com/");
+  } finally {
+    stopAutoCleanUp();
+  }
+});
+
+test("the next automatic clean-up counts tabs in profiles the window isn't showing", () => {
+  const [w] = windowWith("a");
+  const home = S().windows[w].profileId;
+  const work = S().createProfile({ name: "Work" });
+  S().switchProfile(w, work);
+  const b = S().newTab(w, { url: "https://b.com/", background: true });
+  S().switchProfile(w, home);
+  const now = Date.now();
+  S().updateTab(b, { lastActiveAt: now - 25 * MIN });
+  S().updateSettings({ cleanUpInactiveTabsAfterMinutes: 30 });
+  assert.equal(nextAutoCleanUpAt(S(), now), now + 5 * MIN);
+});
+
+test("with tabs shared across windows, the sweep of a window holding the profile hidden keeps the tab another window shows", () => {
+  const [w, a] = windowWith("a", "b");
+  S().updateSettings({ shareTabsAcrossWindows: true });
+  const other = S().createWindow();
+  const work = S().createProfile({ name: "Work" });
+  S().switchProfile(other, work);
+  const longAgo = Date.now() - 13 * 60 * MIN;
+  for (const t of Object.values(S().tabs)) if (t.url === "https://a.com/") S().updateTab(t.id, { lastActiveAt: longAgo });
+  S().cleanUpTabs(other, { inactiveForMs: 12 * 60 * MIN, allProfiles: true });
+  assert.ok(S().tabs[a], "the tab on screen in the first window stays");
+  assert.equal(model.activeTabId(S(), w), a);
 });
