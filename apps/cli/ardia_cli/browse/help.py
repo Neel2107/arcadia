@@ -269,7 +269,10 @@ COMMANDS = {
             "ones. Codes: redirected, auth_expired, blocked, rate_limited, drifted, fetch_failed, flow_not_get; then drive\n"
             "the page yourself. open and snapshot list a site's flows once.",
     "read": "ardia browse read [url...] [--links <pattern>] [-s <selector>] [--stdin] [--limit n] [--timeout ms] [--http] [--list] [--out <file>]\n"
-            "ardia browse read [-s <list>] --scroll [--limit rows] [--match <text>] [--timeout ms]\n\n"
+            "ardia browse read [-s <list>] --scroll [--limit rows] [--match <text>] [--timeout ms]\n"
+            "ardia browse read --data [--block n|id] [--fields a,b.c] [--where field=value] [--limit n]\n\n"
+            "--data lists the JSON this tab's page embeds (__NEXT_DATA__, JSON-LD, application/json scripts, window.x = {...})\n"
+            "with each block's main list and fields; --fields/--where/--limit return just those items from the largest block (or --block).\n\n"
             "Reads each page in a background tab of this session's own (four at a time, through your logins, after its\n"
             "scripts ran) and prints its title, URL and text: the page's <main>, else its body, or what -s matches.\n"
             "Tables and ARIA grids print one row per line, cells split by ` | `, with a note when a grid renders only\n"

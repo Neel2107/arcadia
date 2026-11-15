@@ -1779,6 +1779,13 @@ async def cmd_read(ctx: Ctx, argv):
     from ardia_cli.browse import readpages, readurl
 
     options, args = parse(argv, readpages.flags(), readpages.ALIASES)
+    if options.get("data"):
+        from ardia_cli.browse import pagedata
+
+        if args or options.get("links") is not None:
+            raise Usage("read --data reads this tab's embedded JSON; open the page first, then run `read --data`")
+        page = await ctx.state.page()
+        return await pagedata.run(ctx, page, ctx.state.frame_for(page) or page.main_frame, options)
     if readpages.scrolls(options):
         return await readpages.run_scroll(ctx, options, args)
     if readpages.single_fetch(options, args):
@@ -1924,6 +1931,34 @@ async def cmd_session(ctx: Ctx, argv):
     return Result({"session": ctx.state.session}, ctx.state.session)
 
 
+def batch_out(item: list[str], name: str) -> tuple[list[str], str | None]:
+    from ardia_cli.browse import outfile
+
+    if name not in outfile.TAKES_OUT:
+        return item, None
+    return outfile.take_out(item, item[0])
+
+
+def save_batch_line(ctx: Ctx, name: str, result, path: str) -> str:
+    from ardia_cli import command_metrics
+    from ardia_cli.browse import outfile
+
+    if name in outfile.AS_TEXT:
+        text, summary = result.text or "", "its text"
+    else:
+        text, summary = outfile.content(name, result.data or {}, Path(path))
+    if not text.strip():
+        return f"✗ {name} returned nothing to save, so {path} wasn't written"
+    try:
+        target = outfile.save(ctx.path(path), text)
+    except (OSError, Usage) as error:
+        reason = error.message if isinstance(error, Usage) else (error.strerror or str(error))
+        return f"✗ Couldn't write {path}: {reason}\n{result.text or ''}"
+    command_metrics.flag("saved_to_file", True)
+    command_metrics.flag("batch_line_saved", True)
+    return f"✓ Saved to {target} ({len(text):,} characters): {summary}"
+
+
 @command("batch")
 async def cmd_batch(ctx: Ctx, argv):
     options, args = parse(argv, {"--bail": "bool"})
@@ -1953,6 +1988,7 @@ async def cmd_batch(ctx: Ctx, argv):
                 break
             continue
         try:
+            item, saving = batch_out(item, name)
             command, line_options = batch_line_options(item)
         except Usage as error:
             outcomes.append({"command": item, "success": False, "result": None, "error": error.message, "code": error.code})
@@ -1972,6 +2008,8 @@ async def cmd_batch(ctx: Ctx, argv):
                    "error": error.message if error else ("the command reported a failure" if failed else None), "text": result.text if result else None}
         if error is not None and error.code:
             outcome["code"] = error.code
+        if saving and outcome["success"]:
+            outcome["text"] = save_batch_line(ctx, name, result, saving)
         outcomes.append(outcome)
         if isinstance(error, (OutcomeUnknown, ConnectionLost)):
             outcomes.extend({"command": rest, "success": False, "result": None, "error": "not run: an earlier command's outcome is unknown",

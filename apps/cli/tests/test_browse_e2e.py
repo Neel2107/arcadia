@@ -732,6 +732,27 @@ class BrowseEndToEnd(unittest.TestCase):
         self.assertIn("Screenshot saved", self.browse("screenshot", str(third), "--if-changed", session=session).stdout)
         self.assertTrue(third.exists())
 
+    def test_read_data_lists_and_shapes_the_pages_embedded_json(self):
+        session = "page-data"
+        self.browse("open", self.url("nextdata.html"), session=session)
+        listed = self.browse("read", "--data", session=session).stdout
+        self.assertIn("3 data blocks on this page", listed)
+        self.assertIn("#__NEXT_DATA__", listed)
+        self.assertIn("main list props.pageProps.results: 3 items with", listed)
+        shaped = json.loads(self.browse("read", "--data", "--fields", "title,price", "--where", "brand=acme", "--json", session=session).stdout)["data"]["data"]
+        self.assertEqual(shaped["items"], [{"title": "Steel kettle", "price": 39}, {"title": "Travel kettle", "price": 25}])
+        self.assertEqual((shaped["total"], shaped["matched"]), (3, 2))
+
+    def test_batch_lines_take_out_and_save_their_files(self):
+        session = "batch-out"
+        self.browse("open", self.url("nextdata.html"), session=session)
+        text_file = SCRATCH / "batch-out-read.md"
+        snap_file = SCRATCH / "batch-out-snap.txt"
+        said = self.browse("batch", f"read --out {text_file}", f"snapshot --out {snap_file}", session=session).stdout
+        self.assertEqual(said.count("✓ Saved to"), 2, said)
+        self.assertIn("Kettles", text_file.read_text())
+        self.assertIn("Kettles", snap_file.read_text())
+
     def test_open_returns_a_page_whose_load_never_ends_with_a_note(self):
         import socket
 

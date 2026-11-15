@@ -5,5 +5,6 @@ export const setSplitLinkModifier = (modifier: "alt" | "altShift") => call("webV
 export const setPeekOtherSiteTabs = (tabIds: string[]) => call("webView.setPeekOtherSiteTabs", { tabIds });
 export const setSelectionPopover = (enabled: boolean) => call("webView.setSelectionPopover", { enabled });
 export const setBlockAutoplayEverywhere = (enabled: boolean) => call("webView.setBlockAutoplayEverywhere", { enabled });
+export const setFairPlayInChromium = (enabled: boolean) => call("webView.setFairPlayInChromium", { enabled });
 export const setSearchEngineName = (name: string) => call("search.setEngineName", { name });
 export const setLittleArdiaOpensNewTabLinks = (enabled: boolean) => call("webView.setLittleArdiaOpensNewTabLinks", { enabled });

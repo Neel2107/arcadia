@@ -155,7 +155,7 @@ def flags() -> dict:
     from ardia_cli.browse import readurl
 
     return {**readurl.FLAGS, "--http": "bool", "--stdin": "bool", "--links": "value", "--limit": "value", "--selector": "value", "--list": "bool",
-            "--scroll": "bool", "--match": "value"}
+            "--scroll": "bool", "--match": "value", "--data": "bool", "--fields": "value", "--where": "multi", "--block": "value"}
 
 
 ALIASES = {"-s": "--selector"}

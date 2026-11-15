@@ -27,9 +27,10 @@ import { shownPageId } from "../peek/peek";
 import { mainWindowFor, originalProfile } from "../windows/small";
 import { goToSettingsPane, openSettings, replaceSettingsPlace, settingsBack, useSettingsNav } from "../settings/settingsWindows";
 import { closeSidePanelsOf, toggleSidePanel } from "./sidePanels";
-import { notePrivateWindowExtensionOpen } from "../telemetry/usage";
+import { notePrivateWindowExtensionOpen, noteToolbarExtensionMove } from "../telemetry/usage";
 import { extensionPageUrl, extensionProfile, extensionsProfileId, isPrivate, pageProfile, shownIn, useExtensions, windowExtensions, readyTabOf, type Anchor } from "./store";
 import { errorText } from "../../lib/errors";
+import { movedToolbarOrder, toolbarOrder } from "./toolbarOrder";
 
 export * from "./sidePanels";
 export * from "./store";
@@ -155,6 +156,22 @@ export async function setEnabled(profile: string, id: string, enabled: boolean) 
 export async function setPinned(profile: string, id: string, pinned: boolean) {
   patchExtension(profile, id, { pinned });
   const done = await changed(pinned ? "pin" : "unpin", () => configureExtension(id, profile, { pinned }));
+  if (!done) await refreshExtensions(profile);
+}
+
+export async function moveToolbarExtension(windowId: string, id: string, to: number) {
+  const s = useBrowser.getState();
+  if (isPrivate(s, windowId)) return;
+  const profile = extensionProfile(s, windowId);
+  const shown = toolbarOrder(windowExtensions(s, windowId));
+  const moved = movedToolbarOrder(shown, id, to);
+  if (!moved) return;
+  const { slots } = moved;
+  useExtensions.setState((e) => ({
+    lists: { ...e.lists, [profile]: (e.lists[profile] ?? EMPTY).map((x) => (slots.has(x.id) ? { ...x, pinnedIndex: slots.get(x.id) } : x)) },
+  }));
+  noteToolbarExtensionMove();
+  const done = await changed("move", () => configureExtension(id, profile, { pinnedIndex: moved.pinnedIndex }));
   if (!done) await refreshExtensions(profile);
 }
 

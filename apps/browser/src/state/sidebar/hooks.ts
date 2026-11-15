@@ -12,6 +12,7 @@ import { folderIn } from "../pins/tileFolders";
 import { ownIcon } from "../pins/rowIcons";
 import { usePage } from "../tabs/pageState";
 import { usePeekOpenedFrom } from "../peek/hooks";
+import { useTabShared } from "../media/screenShare";
 import { useStoreWhile } from "../tabs/tabWatch";
 import { splitRowPanes } from "../splits/splits";
 import { downloadsIn } from "../downloads/downloadsSlice";
@@ -41,8 +42,9 @@ export const useIconPickerCurrent = (kind: "tab" | "group" | "live" | "folder", 
 
 export function useTabBadged(tabId: string): boolean {
   const capturing = usePage(tabId, (p) => !!p.mediaAccess);
+  const shared = useTabShared(tabId);
   const peeked = !!usePeekOpenedFrom(tabId);
-  return capturing || peeked;
+  return capturing || shared || peeked;
 }
 
 export const useIsPinnedRow = (kind: "tab" | "group" | "live" | "folder", id: string) => useBrowser((s) => kind === "tab" && isPinnedRow(s.tabs[id]));
