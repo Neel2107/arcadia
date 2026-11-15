@@ -182,6 +182,7 @@ export function TabsPane() {
         <SettingToggle anchor="tabs.shareTabsAcrossWindows" />
         <SettingToggle anchor="tabs.warnBeforeClosingLastTab" />
         <SettingToggle anchor="tabs.tabReorderHaptics" />
+        <SettingToggle anchor="tabs.tabSwitcherByPosition" />
         <SettingToggle anchor="tabs.extendWebsiteColor" />
         <SettingToggle anchor="tabs.sidebarMediaControls" />
         <SettingToggle anchor="tabs.autoPictureInPicture" />

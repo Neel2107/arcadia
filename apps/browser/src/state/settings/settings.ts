@@ -98,6 +98,7 @@ export const SETTING_SPECS = {
   warnBeforeMovingTabsToProfile: flag(true, SYNCED),
   shareTabsAcrossWindows: flag(false),
   tabReorderHaptics: flag(true, SYNCED),
+  tabSwitcherByPosition: flag(false, SYNCED),
   extendWebsiteColor: flag(true, SYNCED),
   cmdClickCreatesTabGroup: flag(true, SYNCED),
   optShiftClickOpensInGroup: flag(true, SYNCED),

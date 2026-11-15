@@ -1,5 +1,5 @@
 import { setSwitcherCapture, switcherPointerMoved } from "../../platform/focus";
-import { useBrowser } from "../browser/store";
+import { useBrowser, type BrowserState } from "../browser/store";
 import { activeTabId, viewTabIds } from "../browser/model";
 import { isPageUnloaded } from "../pins/pinShare";
 import { sessionTabIds } from "../pins/tabCleanup";
@@ -20,17 +20,29 @@ let hoveredRow: number | null = null;
 let keyboardMoves = 0;
 let pointerStale = false;
 
+function tabIdsByPosition(s: BrowserState, windowId: string): string[] {
+  return viewTabIds(s, windowId).filter((id) => !isAsleep(s.tabs[id]) && !isSleeping(id) && !isPageUnloaded(s, id));
+}
+
+function neighbourIndex(ids: string[], from: string | undefined, backward: boolean): number {
+  const at = from ? ids.indexOf(from) : -1;
+  if (at < 0) return backward ? ids.length - 1 : 0;
+  return (at + (backward ? -1 : 1) + ids.length) % ids.length;
+}
+
 export function switcherStep(windowId: string, backward: boolean) {
   const current = sidebarUi().switcher;
   if (current && current.windowId === windowId) return moveSwitcher(backward ? -1 : 1);
   const s = useBrowser.getState();
-  const ids = sessionTabIds(s, windowId, SESSION_START);
+  const byPosition = s.settings.tabSwitcherByPosition;
+  const ids = byPosition ? tabIdsByPosition(s, windowId) : sessionTabIds(s, windowId, SESSION_START);
   if (ids.length < 2) return;
-  noteTabSwitcherOpened(viewTabIds(s, windowId).filter((id) => isAsleep(s.tabs[id])).length, ids.slice(0, 2).filter((id) => s.tabs[id]!.unseen).length);
+  noteTabSwitcherOpened(viewTabIds(s, windowId).filter((id) => isAsleep(s.tabs[id])).length, byPosition ? 0 : ids.slice(0, 2).filter((id) => s.tabs[id]!.unseen).length);
   const from = activeTabId(s, windowId);
   if (from) void rememberPicture(from);
   if (from && tabEngine(s, from) === "webkit") noteTabSwitcherOpenedInWebKit();
-  setSidebarUi({ switcher: { windowId, ids, index: backward ? ids.length - 1 : 1, visible: false } });
+  const index = byPosition ? neighbourIndex(ids, from, backward) : backward ? ids.length - 1 : 1;
+  setSidebarUi({ switcher: { windowId, ids, index, visible: false } });
   void setSwitcherCapture(true);
   clearTimeout(showTimer);
   showTimer = setTimeout(() => {

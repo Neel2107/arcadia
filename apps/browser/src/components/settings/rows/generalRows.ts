@@ -256,6 +256,12 @@ export const generalRows = {
         },
         warnBeforeClosingLastTab: { advanced: true, title: "Warn before closing last tab in a Profile", keywords: ["confirm", "close tab"] },
         tabReorderHaptics: { advanced: true, title: "Haptic feedback when reordering tabs", keywords: ["trackpad", "vibration", "drag"] },
+        tabSwitcherByPosition: {
+          advanced: true,
+          title: "Tab switcher follows the tab order",
+          description: "⌃Tab lists tabs in the order they sit in the sidebar or tab strip and steps to the next one. Off, it lists them by recent use.",
+          keywords: ["control tab", "ctrl tab", "switcher", "cycle tabs", "next tab", "recent tabs", "most recently used", "mru", "position"],
+        },
         extendWebsiteColor: { title: "Extend website color into tab bar", keywords: ["theme color", "tint", "colour"] },
         sidebarMediaControls: {
           advanced: true,
