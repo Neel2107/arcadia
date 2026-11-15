@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../browser/store.ts");
 const model = await import("../browser/model.ts");
-const { cleanUpCandidates, nextCleanUpAt } = await import("./tabCleanup.ts");
+const { cleanUpCandidates, nextCleanUpAt, noteDeselectedTabs } = await import("./tabCleanup.ts");
 const { nextAutoCleanUpAt, startAutoCleanUp, stopAutoCleanUp } = await import("./autoCleanUp.ts");
 const { takeCleanUpCounts } = await import("../telemetry/cleanUpCounts.ts");
 
@@ -231,4 +231,19 @@ test("with tabs shared across windows, the sweep of a window holding the profile
   S().cleanUpTabs(other, { inactiveForMs: 12 * 60 * MIN, allProfiles: true });
   assert.ok(S().tabs[a], "the tab on screen in the first window stays");
   assert.equal(model.activeTabId(S(), w), a);
+});
+
+test("with tabs shared across windows, a tab just left in one window keeps its full idle time in a window holding the profile hidden", () => {
+  const [w, a, b] = windowWith("a", "b");
+  S().updateSettings({ shareTabsAcrossWindows: true });
+  const other = S().createWindow();
+  const work = S().createProfile({ name: "Work" });
+  S().switchProfile(other, work);
+  const longAgo = Date.now() - 13 * 60 * MIN;
+  for (const t of Object.values(S().tabs)) if (t.url === "https://a.com/") S().updateTab(t.id, { lastActiveAt: longAgo });
+  S().activate(b);
+  noteDeselectedTabs(S(), [a]);
+  for (const id of S().windowOrder) S().cleanUpTabs(id, { inactiveForMs: 12 * 60 * MIN, allProfiles: true });
+  assert.ok(S().tabs[a], "the tab left a moment ago stays");
+  assert.equal(model.activeTabId(S(), w), b);
 });
