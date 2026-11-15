@@ -247,3 +247,16 @@ test("with tabs shared across windows, a tab just left in one window keeps its f
   assert.ok(S().tabs[a], "the tab left a moment ago stays");
   assert.equal(model.activeTabId(S(), w), b);
 });
+
+test("a tab left while tabs were shared keeps its full idle time after sharing is turned off, also when the copy kept is not the one that was left", () => {
+  const [, a] = windowWith("a", "b");
+  S().updateSettings({ shareTabsAcrossWindows: true });
+  const other = S().createWindow();
+  const longAgo = Date.now() - 13 * 60 * MIN;
+  for (const t of Object.values(S().tabs)) if (t.url === "https://a.com/") S().updateTab(t.id, { lastActiveAt: longAgo });
+  noteDeselectedTabs(S(), [a]);
+  const copy = Object.values(S().tabs).find((t) => t.url === "https://a.com/" && t.windowId === other);
+  const { [a]: _left, ...rest } = S().tabs;
+  useBrowser.setState({ tabs: { ...rest, [copy.id]: { ...copy, pinKey: undefined } } });
+  assert.deepEqual(cleanUpCandidates(S(), other, 12 * 60 * MIN).filter((id) => id === copy.id), []);
+});

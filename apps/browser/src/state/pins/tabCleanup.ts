@@ -99,12 +99,12 @@ function newClosedEntryIds(before: BrowserState, after: BrowserState): string[] 
 const deselectedAt = new Map<string, number>();
 
 export function noteDeselectedTabs(s: BrowserState, ids: readonly string[], at = Date.now()) {
-  const open = new Set(Object.values(s.tabs).map(familyKeyOf));
+  const open = new Set(Object.values(s.tabs).flatMap((t) => [t.id, familyKeyOf(t)]));
   for (const key of deselectedAt.keys()) if (!open.has(key)) deselectedAt.delete(key);
-  for (const id of ids) {
-    const t = s.tabs[id];
-    if (t) deselectedAt.set(familyKeyOf(t), at);
-  }
+  const left = new Set(ids.flatMap((id) => (s.tabs[id] ? [familyKeyOf(s.tabs[id]!)] : [])));
+  if (!left.size) return;
+  for (const key of left) deselectedAt.set(key, at);
+  for (const t of Object.values(s.tabs)) if (left.has(familyKeyOf(t))) deselectedAt.set(t.id, at);
 }
 
 function selectedFamilies(s: BrowserState): Set<string> {
@@ -133,7 +133,7 @@ function inactivity(s: BrowserState, windowId: string, profileId?: string) {
     restored,
     keep,
     expires: (t: Tab) => !keep(t) && !grouped.has(t.id) && !inSplit.has(t.id),
-    lastUsed: (t: Tab) => Math.max(lastUsedOf(used, t), deselectedAt.get(familyKeyOf(t)) ?? 0, restoredAtOf(restored, t)),
+    lastUsed: (t: Tab) => Math.max(lastUsedOf(used, t), deselectedAt.get(t.id) ?? 0, deselectedAt.get(familyKeyOf(t)) ?? 0, restoredAtOf(restored, t)),
   };
 }
 
