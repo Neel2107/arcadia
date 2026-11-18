@@ -57,6 +57,7 @@ if [[ "/$prefix/" == */../* ]]; then
   echo "install.sh: --prefix must not contain ..: $prefix" >&2
   exit 2
 fi
+prefix=$(realpath -ms -- "$prefix")
 prefix="${prefix%/}"
 [[ -n "$prefix" ]] || prefix=/usr
 
@@ -72,6 +73,7 @@ fi
 target="$destdir$prefix"
 policy="$destdir/usr/share/polkit-1/actions/dev.ardia.linux.policy"
 icon=share/icons/hicolor/256x256/apps/ardia.png
+registry="$destdir/var/lib/ardia/installs"
 
 package_owner() {
   if command -v dpkg-query >/dev/null && dpkg-query -S "$1" >/dev/null 2>&1; then echo apt; return; fi
@@ -82,10 +84,40 @@ package_owner() {
 
 remove_if_ours() {
   local path=$1 marker=$2
-  if [[ -f "$path" ]] && grep -qF -- "$marker" "$path"; then
+  if [[ -f "$path" ]] && grep -qxF -- "$marker" "$path"; then
     rm -f "$path"
     echo "removed $path"
   fi
+}
+
+profile_names_prefix() {
+  awk -v chrome="$prefix/lib/ardia/chrome" '$1 == "profile" && $3 == chrome { found = 1 } END { exit !found }' "$1"
+}
+
+other_install_uses_policy() {
+  [[ "$prefix" != /usr && -e "$destdir/usr/lib/ardia/chrome" ]] && return 0
+  [[ -z "$destdir" ]] && package_owner "$policy" >/dev/null && return 0
+  local other
+  if [[ -f "$registry" ]]; then
+    while IFS= read -r other; do
+      [[ -n "$other" && "$other" != "$prefix" && -e "$destdir$other/lib/ardia/chrome" ]] && return 0
+    done < "$registry"
+  fi
+  return 1
+}
+
+record_install() {
+  install -d -m 0755 "$(dirname -- "$registry")"
+  if [[ ! -f "$registry" ]] || ! grep -qxF -- "$prefix" "$registry"; then
+    printf '%s\n' "$prefix" >> "$registry"
+  fi
+}
+
+forget_install() {
+  [[ -f "$registry" ]] || return 0
+  local kept
+  kept=$(grep -vxF -- "$prefix" "$registry" || true)
+  if [[ -n "$kept" ]]; then printf '%s\n' "$kept" > "$registry"; else rm -f "$registry"; fi
 }
 
 uninstall() {
@@ -98,14 +130,14 @@ uninstall() {
     echo "install.sh: $prefix/lib/ardia belongs to a package; remove it with $owner instead" >&2
     exit 1
   fi
-  if [[ -z "$destdir" && -f /etc/apparmor.d/ardia ]] && grep -qF -- "$prefix/lib/ardia/chrome " /etc/apparmor.d/ardia; then
+  if [[ -z "$destdir" && -f /etc/apparmor.d/ardia ]] && profile_names_prefix /etc/apparmor.d/ardia; then
     if command -v apparmor_parser >/dev/null && [[ "$(cat /sys/module/apparmor/parameters/enabled 2>/dev/null)" == Y ]]; then
       apparmor_parser -R /etc/apparmor.d/ardia >/dev/null 2>&1 || true
     fi
     rm -f /etc/apparmor.d/ardia
     echo "removed /etc/apparmor.d/ardia"
   fi
-  remove_if_ours "$target/bin/ardia" "$prefix/lib/ardia/ardia-launch"
+  remove_if_ours "$target/bin/ardia" "exec \"$prefix/lib/ardia/ardia-launch\" \"\$@\""
   if [[ -f "$target/share/applications/ardia.desktop" ]] && grep -qF -- "Exec=$prefix/bin/ardia " "$target/share/applications/ardia.desktop"; then
     rm -f "$target/share/applications/ardia.desktop"
     echo "removed $target/share/applications/ardia.desktop"
@@ -116,7 +148,8 @@ uninstall() {
   fi
   rm -rf "$target/lib/ardia"
   echo "removed $target/lib/ardia"
-  if [[ -f "$policy" ]] && { [[ -n "$destdir" ]] || ! package_owner "$policy" >/dev/null; } && [[ ! -e "$destdir/usr/lib/ardia/chrome" ]]; then
+  forget_install
+  if [[ -f "$policy" ]] && ! other_install_uses_policy; then
     rm -f "$policy"
     echo "removed $policy"
   fi
@@ -162,6 +195,7 @@ install -D -m 0644 "$source_root/share/polkit-1/actions/dev.ardia.linux.policy" 
 
 if [[ -z "$destdir" ]]; then
   install -m 0755 "$source_root/install.sh" "$target/lib/ardia/install.sh"
+  record_install
 fi
 
 if [[ -z "$destdir" && -e /etc/apparmor.d/abi/4.0 ]]; then
