@@ -132,6 +132,27 @@ final class ChromeWordBreaksTests: XCTestCase {
     XCTAssertEqual(ChromeWordBreaks.stop(forward: true, from: 0, in: "www.example.com"), 3)
   }
 
+  func testShiftOptionLeftFromTheEndSelectsTheLastLabel() {
+    let extended = ChromeWordBreaks.extend(15..<15, keptAnchor: nil, activeEndAtStart: false, forward: false, in: "www.example.com")
+    XCTAssertEqual(extended, ChromeWordBreaks.Extension(anchor: 15, from: 15, stop: 12))
+    XCTAssertEqual(extended.range, 12..<15)
+    let again = ChromeWordBreaks.extend(extended.range, keptAnchor: extended.anchor, activeEndAtStart: false, forward: false, in: "www.example.com")
+    XCTAssertEqual(again.range, 4..<15)
+  }
+
+  func testAFreshSelectionGrowsFromItsActiveEnd() {
+    let shrunk = ChromeWordBreaks.extend(12..<15, keptAnchor: nil, activeEndAtStart: false, forward: false, in: "www.example.com")
+    XCTAssertEqual(shrunk, ChromeWordBreaks.Extension(anchor: 12, from: 15, stop: 12))
+    XCTAssertEqual(shrunk.range, 12..<12)
+    let grown = ChromeWordBreaks.extend(12..<15, keptAnchor: nil, activeEndAtStart: true, forward: false, in: "www.example.com")
+    XCTAssertEqual(grown.range, 4..<15)
+  }
+
+  func testAKeptAnchorOffTheSelectionIsIgnored() {
+    let extended = ChromeWordBreaks.extend(4..<11, keptAnchor: 15, activeEndAtStart: false, forward: true, in: "www.example.com")
+    XCTAssertEqual(extended, ChromeWordBreaks.Extension(anchor: 4, from: 11, stop: 15))
+  }
+
   func testRightToLeftTextIsNoticed() {
     XCTAssertTrue(ChromeWordBreaks.containsRightToLeftText("שלום.com"))
     XCTAssertTrue(ChromeWordBreaks.containsRightToLeftText("مثال.com"))

@@ -1,4 +1,5 @@
 import AppKit
+import ArdiaCore
 
 enum BarWordBreaks {
   static let fieldId = "ardia.barField"
@@ -9,7 +10,7 @@ enum BarWordBreaks {
     case moveVisually(right: Bool, extending: Bool)
   }
 
-  private struct Extension {
+  private struct HeldExtension {
     let anchor: Int
     let range: NSRange
   }
@@ -40,7 +41,19 @@ enum BarWordBreaks {
       let imp = imp_implementationWithBlock(block)
       if !class_addMethod(NSTextView.self, selector, imp, method_getTypeEncoding(method)) { method_setImplementation(method, imp) }
     }
+    _ = NotificationCenter.default.addObserver(forName: NSTextView.didChangeSelectionNotification, object: nil, queue: nil) { note in
+      guard let view = note.object as? NSTextView, let held = heldExtension(of: view), !NSEqualRanges(held.range, view.selectedRange()) else { return }
+      hold(nil, in: view)
+    }
   }()
+
+  private static func heldExtension(of view: NSTextView) -> HeldExtension? {
+    objc_getAssociatedObject(view, &extensionKey) as? HeldExtension
+  }
+
+  private static func hold(_ held: HeldExtension?, in view: NSTextView) {
+    objc_setAssociatedObject(view, &extensionKey, held, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+  }
 
   private static func isBarField(_ view: NSTextView) -> Bool {
     guard view.isFieldEditor, let host = (view.delegate as? NSTextField)?.superview,
@@ -81,21 +94,24 @@ enum BarWordBreaks {
 
   private static func move(forward: Bool, extending: Bool, in view: NSTextView, text: String) {
     let selection = view.selectedRange()
-    let from: Int, anchor: Int?
+    let from: Int, stop: Int, next: NSRange, activeEndBackward: Bool
     if extending {
-      let held = objc_getAssociatedObject(view, &extensionKey) as? Extension
-      let kept = held.flatMap { NSEqualRanges($0.range, selection) ? $0.anchor : nil }
-        ?? (selection.length == 0 || forward ? selection.location : NSMaxRange(selection))
-      anchor = kept
-      from = kept == selection.location ? NSMaxRange(selection) : selection.location
+      let kept = heldExtension(of: view).flatMap { NSEqualRanges($0.range, selection) ? $0.anchor : nil }
+      let activeEndAtStart = selection.length > 0 && view.selectionAffinity == .upstream
+      let extended = ChromeWordBreaks.extend(selection.location..<NSMaxRange(selection), keptAnchor: kept, activeEndAtStart: activeEndAtStart, forward: forward, in: text)
+      from = extended.from
+      stop = extended.stop
+      next = NSRange(location: extended.range.lowerBound, length: extended.range.count)
+      activeEndBackward = extended.stop < extended.anchor
+      hold(HeldExtension(anchor: extended.anchor, range: next), in: view)
     } else {
-      anchor = nil
       from = forward ? NSMaxRange(selection) : selection.location
+      stop = ChromeWordBreaks.stop(forward: forward, from: from, in: text)
+      next = NSRange(location: stop, length: 0)
+      activeEndBackward = !forward
+      hold(nil, in: view)
     }
-    let stop = ChromeWordBreaks.stop(forward: forward, from: from, in: text)
-    let next = anchor.map { NSRange(location: min($0, stop), length: abs(stop - $0)) } ?? NSRange(location: stop, length: 0)
-    if let anchor { objc_setAssociatedObject(view, &extensionKey, Extension(anchor: anchor, range: next), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
-    view.setSelectedRange(next, affinity: forward ? .downstream : .upstream, stillSelecting: false)
+    view.setSelectedRange(next, affinity: activeEndBackward ? .upstream : .downstream, stillSelecting: false)
     view.scrollRangeToVisible(NSRange(location: stop, length: 0))
     noteEdit(.move, stop: stop, forward: forward, from: from, in: text)
   }
@@ -108,6 +124,6 @@ enum BarWordBreaks {
   private static func noteEdit(_ kind: EditKind, stop: Int, forward: Bool, from: Int, in text: String) {
     guard stop != from else { return }
     let splitAtDot = stop != ChromeWordBreaks.stop(forward: forward, from: from, in: text, splittingLetterStops: false)
-    ShellEvents.send(.app, ["type": "barWordEdit", "kind": kind.rawValue, "splitAtDot": splitAtDot])
+    ShellEvents.send(.app, ArdiaConsentStamp.begin().onto(["type": "barWordEdit", "kind": kind.rawValue, "splitAtDot": splitAtDot]))
   }
 }

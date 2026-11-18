@@ -25,6 +25,20 @@ enum ChromeWordBreaks {
       : wordStart(before: offset, in: text, splittingLetterStops: splittingLetterStops)
   }
 
+  struct Extension: Equatable {
+    let anchor: Int
+    let from: Int
+    let stop: Int
+    var range: Range<Int> { min(anchor, stop)..<max(anchor, stop) }
+  }
+
+  static func extend(_ selection: Range<Int>, keptAnchor: Int?, activeEndAtStart: Bool, forward: Bool, in text: String, splittingLetterStops: Bool = true) -> Extension {
+    let anchor = keptAnchor.flatMap { $0 == selection.lowerBound || $0 == selection.upperBound ? $0 : nil }
+      ?? (activeEndAtStart ? selection.upperBound : selection.lowerBound)
+    let from = anchor == selection.lowerBound ? selection.upperBound : selection.lowerBound
+    return Extension(anchor: anchor, from: from, stop: stop(forward: forward, from: from, in: text, splittingLetterStops: splittingLetterStops))
+  }
+
   static func containsRightToLeftText(_ text: String) -> Bool {
     text.unicodeScalars.contains { scalar in rightToLeft.contains { $0.contains(scalar.value) } }
   }
