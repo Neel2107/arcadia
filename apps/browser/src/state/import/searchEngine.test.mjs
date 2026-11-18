@@ -44,7 +44,8 @@ const { searchEngines } = await import("../settings/settings.ts");
 const { useImportFlow } = await import("./flow.ts");
 const { runImport } = await import("./runImport.ts");
 const { chromiumTemplateUrl, matchImportedEngine, sourceEngine, useImportedSettings } = await import("./searchEngine.ts");
-const { chooseSource, confirmAnswer, sourcePatch, startOnboarding, useOnboarding } = await import("../onboarding/onboarding.ts");
+const { chooseSource, confirmAnswer, maybeStartOnboarding, sourcePatch, startOnboarding, useOnboarding } = await import("../onboarding/onboarding.ts");
+const { saveOnboarding } = await import("../onboarding/onboardingDocument.ts");
 client.startClient();
 after(() => client.flush());
 
@@ -81,6 +82,13 @@ test("an engine Ardia doesn't have comes over as a custom engine, with a free sh
   assert.deepEqual(matchImportedEngine(DOCS, taken), { custom: { name: "Ardia Docs", keyword: "docs.ardia.example", url: "https://docs.ardia.example/find?q=%s&enc=UTF-8" } });
   const again = [...BUILT_IN_ENGINES, { id: "docs-1", name: "Ardia Docs", keyword: "docs", url: "https://docs.ardia.example/find?q=%s&enc=UTF-8", custom: true }];
   assert.deepEqual(matchImportedEngine(DOCS, again), { id: "docs-1" }, "importing it again reuses the one already there");
+  const tokened = [...BUILT_IN_ENGINES, { id: "tok-1", name: "Tok", keyword: "tok", url: "https://Search.Example/find?q=%s&token=abc", custom: true }];
+  assert.deepEqual(matchImportedEngine({ name: "Tok", keyword: "tok2", url: "HTTPS://www.search.example/find?q={searchTerms}&token=abc" }, tokened), { id: "tok-1" }, "scheme, host and www. don't matter");
+  assert.deepEqual(
+    matchImportedEngine({ name: "Tok", keyword: "tok2", url: "https://search.example/find?q={searchTerms}&token=ABC" }, tokened),
+    { custom: { name: "Tok", keyword: "tok2", url: "https://search.example/find?q=%s&token=ABC" } },
+    "a path or query that differs only in case is another engine",
+  );
   assert.equal(matchImportedEngine({ name: "Odd", keyword: "odd", url: "ftp://odd.example/{searchTerms}" }, BUILT_IN_ENGINES), null);
   assert.deepEqual(matchImportedEngine({ name: "Yandex", keyword: "yandex.ru", url: "https://yandex.ru/search/?text={searchTerms}", prepopulateId: 15 }, BUILT_IN_ENGINES), {
     custom: { name: "Yandex", keyword: "yandex.ru", url: "https://yandex.ru/search/?text=%s" },
@@ -173,5 +181,23 @@ test("in onboarding, the engine an import brought over wins over the browser's p
   assert.equal(S().settings.searchEngine, "google");
   await importFrom(arc(["Default"]));
   assert.equal(S().settings.searchEngine, "duckduckgo", "an import after Continue still brings it");
+  useOnboarding.setState({ windowId: null, leaving: false, redo: false });
+});
+
+test("in onboarding, the imported engine still wins after a relaunch on the source step", async () => {
+  fresh();
+  startOnboarding(S().createWindow(), "source");
+  chooseSource("arc");
+  saveOnboarding({ startedAt: Date.now() });
+  engines = { Default: DUCKDUCKGO };
+  await importFrom(arc(["Default"]));
+  useOnboarding.setState({ windowId: null, leaving: false, redo: false, step: "intro" });
+  useImportedSettings.setState({ keys: [] });
+  assert.equal(maybeStartOnboarding(), true);
+  assert.equal(useOnboarding.getState().step, "source");
+  const patch = sourcePatch();
+  assert.equal("searchEngine" in patch, false, "the preset doesn't put Google back");
+  confirmAnswer("source", patch, []);
+  assert.equal(S().settings.searchEngine, "duckduckgo");
   useOnboarding.setState({ windowId: null, leaving: false, redo: false });
 });

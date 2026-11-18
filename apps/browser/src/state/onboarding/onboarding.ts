@@ -14,7 +14,7 @@ import { isLiquidGlass } from "../../platform/app";
 import { noteOnboarding } from "../telemetry/usage";
 import { openSettings } from "../settings/settingsWindows";
 import { pluginsStepShown } from "./pluginsOffer";
-import { withoutImportedSettings } from "../import/searchEngine";
+import { restoreImportedSettings, useImportedSettings, withoutImportedSettings } from "../import/searchEngine";
 
 import { QUESTIONS, QUESTION_ORDER, type OnboardingStep, type Question, type QuestionId } from "./questionList";
 import { markCompleted, readSaved, saveOnboarding as save, type Saved } from "./onboardingDocument";
@@ -147,6 +147,11 @@ export function chooseSource(source: BrowserSourceId | null) {
   useOnboarding.setState({ source, preset, prefill: redo && source === redoSource ? "current" : "preset" });
   if (!redo) save({ source, preset });
 }
+
+useImportedSettings.subscribe(({ keys }) => {
+  const { windowId, redo } = useOnboarding.getState();
+  if (windowId && !redo) save({ imported: [...keys] });
+});
 
 export const sourcePatch = (): Partial<Settings> => {
   const { source, prefill } = useOnboarding.getState();
@@ -339,6 +344,7 @@ function resumeOnboarding(saved: Saved) {
     tourAfter: false,
     session: s.session + 1,
   }));
+  restoreImportedSettings(saved.imported);
   const next = activeSteps().find((s) => STEPS.indexOf(s) >= STEPS.indexOf(step)) ?? "outro";
   if (next !== step) return goToStep(next);
   const sub = Math.min(saved.sub ?? 0, questionsFor(step).length - 1);

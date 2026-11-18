@@ -2,7 +2,7 @@ import { BUILT_IN_ENGINES, engineById, hostOf, validateEngine, type EngineInput,
 import { create } from "zustand";
 import type { BrowserProfile, ImportedSearchEngine } from "../../platform/importModule";
 import { useBrowser } from "../browser/store";
-import { searchEngines, type Settings } from "../settings/settings";
+import { DEFAULT_SETTINGS, searchEngines, type Settings } from "../settings/settings";
 import type { ConsentToken } from "../telemetry/client";
 import { noteSearchEngineImport, type SearchEngineImportOutcome } from "../telemetry/searchEngineImports";
 
@@ -11,6 +11,9 @@ export type ImportedEngineMatch = { id: string } | { custom: EngineInput } | nul
 export type AdoptedEngine = { outcome: SearchEngineImportOutcome; name: string | null; changed: boolean };
 
 export const useImportedSettings = create<{ keys: readonly (keyof Settings)[] }>()(() => ({ keys: [] }));
+
+export const restoreImportedSettings = (keys: readonly string[] | undefined) =>
+  useImportedSettings.setState({ keys: (keys ?? []).filter((k): k is keyof Settings => k in DEFAULT_SETTINGS) });
 
 const noteImportedSettings = (keys: readonly (keyof Settings)[]) =>
   useImportedSettings.setState((s) => ({ keys: [...new Set([...s.keys, ...keys])] }));
@@ -33,7 +36,12 @@ export function chromiumTemplateUrl(template: string): string {
     .replace(/[?&]+$/, "");
 }
 
-const sameUrl = (a: string, b: string) => a.replace(/^(https?:\/\/)www\./i, "$1").toLowerCase() === b.replace(/^(https?:\/\/)www\./i, "$1").toLowerCase();
+const comparableUrl = (url: string) => {
+  const [, scheme, host, rest] = /^([a-z][a-z\d+.-]*:\/\/)([^/?#]*)(.*)$/i.exec(url.trim()) ?? [];
+  return scheme === undefined || host === undefined ? url.trim() : `${scheme.toLowerCase()}${host.toLowerCase().replace(/^www\./, "")}${rest ?? ""}`;
+};
+
+const sameUrl = (a: string, b: string) => comparableUrl(a) === comparableUrl(b);
 
 const onHost = (host: string, engine: SearchEngine) => {
   const own = hostOf(engine.url.replace(/%s/g, "q"));
