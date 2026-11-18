@@ -107,7 +107,12 @@ export function numberedTabs(s: BrowserState, windowId: string): string[] {
   return [...tiles, ...pinned.flatMap(rowTab), ...list.flatMap(rowTab)];
 }
 
-const groupMemo = new WeakMap<object, { tabs: BrowserState["tabs"]; splits: BrowserState["splits"]; groups: BrowserState["groups"]; result: string[] }>();
+type ChildTabs = { id: string; tabIds: readonly string[] };
+
+const groupMemo = new WeakMap<object, { tabs: BrowserState["tabs"]; splits: BrowserState["splits"]; children: ChildTabs[]; result: string[] }>();
+
+const sameChildren = (now: BrowserState["groups"][string][], was: ChildTabs[]) =>
+  now.length === was.length && now.every((c, i) => c.id === was[i]!.id && c.tabIds === was[i]!.tabIds);
 
 const childIndex = new WeakMap<object, Map<string, BrowserState["groups"][string][]>>();
 const NO_CHILDREN: BrowserState["groups"][string][] = [];
@@ -167,13 +172,14 @@ export function groupEntries(s: BrowserState, groupId: string): string[] {
   const g = s.groups[groupId];
   if (!g) return [];
   const cached = groupMemo.get(g);
-  if (cached && cached.splits === s.splits && cached.groups === s.groups && sameEntryTabs(s.tabs, cached.tabs)) {
+  const children = childGroups(s.groups, groupId);
+  if (cached && cached.splits === s.splits && sameChildren(children, cached.children) && sameEntryTabs(s.tabs, cached.tabs)) {
     cached.tabs = s.tabs;
     return cached.result;
   }
   const splits = splitIndex(s.splits);
   const childOf = new Map<string, string>();
-  for (const c of childGroups(s.groups, groupId)) for (const id of c.tabIds) childOf.set(id, c.id);
+  for (const c of children) for (const id of c.tabIds) childOf.set(id, c.id);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const id of g.tabIds) {
@@ -185,7 +191,7 @@ export function groupEntries(s: BrowserState, groupId: string): string[] {
     }
   }
   const result = stableList(cached?.result, out);
-  groupMemo.set(g, { tabs: s.tabs, splits: s.splits, groups: s.groups, result });
+  groupMemo.set(g, { tabs: s.tabs, splits: s.splits, children: children.map((c) => ({ id: c.id, tabIds: c.tabIds })), result });
   return result;
 }
 
