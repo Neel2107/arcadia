@@ -140,7 +140,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   }
 
   const search: Suggestion = { kind: "search", query, url: searchUrl(engine, query), engine: engine.name };
-  const typedUrl = fixupUrl(query) ?? intranetUrl(query, (host) => hasHost(pool.list, host) || hasHost(extra, host));
+  const typedUrl = fixupUrl(query) ?? intranetUrl(query, (host) => hasHost(pool.list, host) || source.tabs.some((t) => !!t.url && hostOf(t.url) === host));
   const intranetLink = typedUrl !== null && intranetLinkHost(query) !== null;
   const calc = calculate(query);
   const creates = matchQuickCreate(raw.trimStart());

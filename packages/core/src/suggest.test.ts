@@ -559,6 +559,9 @@ test("Return on go/<link> or a visited intranet host with a path opens it; an un
   assert.equal(visited.via?.[suggestionKey(visited.items[0]!)], "intranet_link");
   const tab = { id: "t1", url: "http://wiki/Home", title: "Wiki", customTitle: null, favicon: null };
   assert.equal(rows(buildSuggestions("wiki/Setup", { tabs: [tab], history: [] }, { now }).items)[0], "http://wiki/Setup");
+  const current = buildSuggestions("wiki/Setup", { tabs: [tab], history: [] }, { now, currentTabId: "t1" });
+  assert.equal(rows(current.items)[0], "http://wiki/Setup");
+  assert.ok(!current.items.some((item) => item.kind === "page" && item.tabId === "t1"));
   assert.equal(rows(buildSuggestions("wiki/Setup", { tabs: [], history: [] }, { now }).items)[0], "search:wiki/Setup");
   assert.equal(rows(buildSuggestions("and/or", { tabs: [], history: wiki }, { now }).items)[0], "search:and/or");
   assert.equal(buildSuggestions("github.com", { tabs: [], history: [] }, { now }).via, undefined);
