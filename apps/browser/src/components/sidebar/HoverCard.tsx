@@ -104,7 +104,7 @@ function TabCard({ tabId, windowId, anchor }: { tabId: string; windowId: string;
             icon={bookmarked ? "bookmark.fill" : "bookmark"}
             active={bookmarked}
             label="Bookmark"
-            onPress={() => (noteTabHoverCardPress(false), pressBookmarkButton(windowId, tabId))}
+            onPress={() => (noteTabHoverCardPress(false), dismissHover(), pressBookmarkButton(windowId, tabId))}
           />
         ) : null}
         {!isActive && !tab.pin && splitViewAvailable ? (
