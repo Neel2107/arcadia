@@ -12,7 +12,9 @@ export function backdropTint(color: string, neutral: boolean): BackdropTint {
   return { tintColor: color, tintAlpha: neutral ? 0.12 : 0.36, tintLightness: LIGHTNESS };
 }
 
-export type BlurFill = { dark: readonly number[]; light: readonly number[] };
+type Rgb = readonly [number, number, number];
+
+export type BlurFill = { dark: Rgb; light: Rgb };
 
 const INACTIVE_FILL: BlurFill = { dark: [40.7, 33.1, 31.8], light: [235, 231, 230] };
 
