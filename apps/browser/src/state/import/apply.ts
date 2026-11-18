@@ -12,6 +12,7 @@ import {
   type SpaceSuggestion,
 } from "../../platform/importModule";
 import { passwordImportTally } from "../telemetry/passwordSaves";
+import { noteUntitledBookmarks } from "../telemetry/importRuns";
 import { bookmarkRoots, type BookmarkDraft } from "../bookmarks/bookmarks";
 import { useBrowser } from "../browser/store";
 import { engineProfile, isIncognitoProfile } from "../browser/model";
@@ -33,10 +34,11 @@ export const emptyCounts = (): ImportCounts => ({ bookmarks: 0, history: 0, tabs
 
 const toDraft = (n: ImportedNode): BookmarkDraft =>
   n.type === "url"
-    ? { title: n.title || n.url || "", url: n.url ?? "", addedAt: n.dateAdded }
+    ? { title: n.title ?? n.url ?? "", url: n.url ?? "", addedAt: n.dateAdded }
     : { title: n.title, addedAt: n.dateAdded, children: (n.children ?? []).map(toDraft) };
 
-const linkCount = (nodes: ImportedNode[]): number => nodes.reduce((n, c) => n + (c.type === "url" ? 1 : linkCount(c.children ?? [])), 0);
+const linkCount = (nodes: ImportedNode[], counts: (link: ImportedNode) => boolean = () => true): number =>
+  nodes.reduce((n, c) => n + (c.type === "url" ? (counts(c) ? 1 : 0) : linkCount(c.children ?? [], counts)), 0);
 
 export function importBookmarks(profileId: string, root: ImportedNode | undefined, browserName: string): number {
   if (!root?.children?.length) return 0;
@@ -55,6 +57,7 @@ export function importBookmarks(profileId: string, root: ImportedNode | undefine
   };
   place(toolbar, roots.bar);
   place(other, roots.other);
+  noteUntitledBookmarks(linkCount([...toolbar, ...other], (link) => link.title === ""));
   return linkCount([...toolbar, ...other]);
 }
 
