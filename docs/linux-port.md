@@ -628,7 +628,7 @@ command ([linux-ci.md](linux-ci.md) › Linux releases).
     passwords and card numbers stay hidden.
   - Without `--destdir` it also keeps a copy of itself at `<prefix>/lib/ardia/install.sh` and adds the prefix to
     `/var/lib/ardia/installs`. A prefix is made canonical first (`realpath -ms`), so `//opt/./ardia/` installs as
-    `/opt/ardia`.
+    `/opt/ardia`. Installs and uninstalls without `--destdir` run one at a time (`flock` on `/var/lib/ardia/lock`).
 - **Debian package.** `package.py --deb <path> --version <version>` (`scripts/linux/linux_formats.py`) builds it from
   the staged tree with `dpkg-deb`, so it needs `dpkg-deb` and `readelf` (`apt install dpkg binutils`, Arch:
   `pacman -S dpkg binutils`):

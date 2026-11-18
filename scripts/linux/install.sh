@@ -70,6 +70,12 @@ if [[ -z "$destdir" && "$(id -u)" != 0 ]]; then
   exit 1
 fi
 
+if [[ -z "$destdir" ]]; then
+  install -d -m 0755 /var/lib/ardia
+  exec 9> /var/lib/ardia/lock
+  flock 9
+fi
+
 target="$destdir$prefix"
 policy="$destdir/usr/share/polkit-1/actions/dev.ardia.linux.policy"
 icon=share/icons/hicolor/256x256/apps/ardia.png
