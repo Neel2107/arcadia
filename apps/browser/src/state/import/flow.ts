@@ -6,6 +6,7 @@ import { requestWindowClose } from "../windows/windowClose";
 import { defaultTarget, openInWebStore, type BrowserSource, type ImportCounts, type ImportedExtension, type ImportKind } from "./apply";
 import type { ExtensionListing } from "./extensionListing";
 import { importModule } from "./importApi";
+import { noteImportSourcesListed } from "../telemetry/importRuns";
 
 export type KindStatus = "pending" | "active" | "done" | "failed";
 export type ImportStatus = Partial<Record<ImportKind, KindStatus>>;
@@ -81,6 +82,7 @@ export function startImport(delayBeforeDone: number): () => void {
   void api.listBrowsers().then(
     (list) => {
       if (own.signal.aborted) return;
+      noteImportSourcesListed(list);
       patchImport({ browsers: list });
       const preferred = takePreferredImportSource();
       const first = list.find((b) => b.id === preferred) ?? list.find((b) => !b.needsFullDiskAccess && !b.requiresExport) ?? list[0];

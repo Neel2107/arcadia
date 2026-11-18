@@ -48,6 +48,16 @@ test("on Linux the import's list also finds Chromium, Vivaldi and Opera, which t
   assert.ok(!sourceTiles(() => true, MAC).some((t) => ["chromium", "vivaldi", "opera"].includes(t.id)));
 });
 
+test("on Linux a Snap or Flatpak Firefox and a Flatpak Zen find their tile and open their own import source", async () => {
+  const { PLATFORM_FEATURES: LINUX } = await import("../../lib/platformFeatures.linux.ts");
+  const listed = new Set(["firefoxSnap", "zenFlatpak"]);
+  const found = summary(sourceTiles((c) => listed.has(c.importId ?? c.id), LINUX)).filter(([, , isFound]) => isFound);
+  assert.deepEqual(found, [["firefox", "Firefox", true, null, "firefoxSnap"], ["zen", "Zen", true, null, "zenFlatpak"]]);
+  assert.deepEqual(summary(sourceTiles((c) => c.id === "zen" && !c.importId, LINUX)).find(([id]) => id === "zen"), ["zen", "Zen", true, null, null]);
+  assert.deepEqual(summary(sourceTiles(() => false, LINUX)).filter(([id]) => id === "firefox" || id === "zen").map(([, name]) => name), ["Firefox", "Zen"]);
+  assert.ok(sourceTiles((c) => c.app === "", MAC).every((t) => !t.found));
+});
+
 test("an onboarding import from Chromium, Vivaldi or Opera is counted apart from the others", async () => {
   globalThis.__DEV__ = false;
   const stub = await import("../../test-native/index.ts");

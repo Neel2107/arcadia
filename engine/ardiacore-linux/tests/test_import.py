@@ -207,6 +207,43 @@ class ReaderTests(ImportFixture):
                          [('abcd.default-release', True, ['bookmarks', 'history'])])
         self.assertEqual(self.json('discover', *self.env_args())[1]['id'], 'chromium')
 
+    def gecko_profile(self, root, path):
+        profile = root / path
+        profile.mkdir(parents=True)
+        (root / 'profiles.ini').write_text(f'[Profile0]\nName=main\nIsRelative=1\nPath={path}\nDefault=1\n')
+        db = sqlite3.connect(profile / 'places.sqlite')
+        db.execute('CREATE TABLE moz_places(id INTEGER PRIMARY KEY, url LONGVARCHAR, title LONGVARCHAR, visit_count INTEGER DEFAULT 0, hidden INTEGER DEFAULT 0 NOT NULL, typed INTEGER DEFAULT 0 NOT NULL, last_visit_date INTEGER)')
+        db.execute('INSERT INTO moz_places VALUES (1, ?, ?, 2, 0, 0, 1700000000000000)', (f'https://{path.split(".")[0]}.example/', path))
+        db.commit()
+        db.close()
+        return profile
+
+    def test_discovery_finds_firefox_and_zen_in_their_xdg_and_flatpak_homes(self):
+        self.gecko_profile(self.config / 'mozilla' / 'firefox', 'xdgff.default-release')
+        self.gecko_profile(self.config / 'zen', 'xdgzen.Default (release)')
+        self.gecko_profile(self.home / '.var/app/app.zen_browser.zen/.zen', 'flatzen.Default (release)')
+        self.gecko_profile(self.home / '.var/app/org.mozilla.firefox/config/mozilla/firefox', 'flatff.default-release')
+        sources = self.json('discover', *self.env_args())
+        self.assertEqual([(s['id'], s['family'], [p['id'] for p in s['profiles']]) for s in sources], [
+            ('firefox', 'firefox', ['xdgff.default-release']),
+            ('firefoxFlatpak', 'firefox', ['flatff.default-release']),
+            ('zen', 'firefox', ['xdgzen.Default (release)']),
+            ('zenFlatpak', 'firefox', ['flatzen.Default (release)']),
+        ])
+        self.assertTrue(all(s['profiles'][0]['available'] == ['bookmarks', 'history'] for s in sources))
+        out = self.read('zen', 'xdgzen.Default (release)', ['history'])
+        self.assertEqual([e['url'] for e in out['result']['history']], ['https://xdgzen.example/'])
+        out = self.read('firefox', 'xdgff.default-release', ['history'])
+        self.assertEqual([e['url'] for e in out['result']['history']], ['https://xdgff.example/'])
+
+    def test_discovery_keeps_the_legacy_gecko_home_when_it_holds_profiles(self):
+        self.gecko_profile(self.home / '.zen', 'old.Default (release)')
+        self.gecko_profile(self.config / 'zen', 'new.Default (release)')
+        (self.home / '.mozilla' / 'firefox').mkdir(parents=True)
+        self.gecko_profile(self.config / 'mozilla' / 'firefox', 'xdg.default-release')
+        sources = {s['id']: [p['id'] for p in s['profiles']] for s in self.json('discover', *self.env_args())}
+        self.assertEqual(sources, {'firefox': ['xdg.default-release'], 'zen': ['old.Default (release)']})
+
     def test_chromium_profile_import_reads_snapshots_without_touching_sources(self):
         default = self.build_chrome()
         before = tree_digests(self.home)

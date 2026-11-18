@@ -21,6 +21,11 @@ inline constexpr int64_t kStaleScratchSeconds = 60 * 60;
 
 enum class Family { kChromium, kFirefox };
 
+struct DataLocation {
+  bool under_config = false;
+  const char* path = nullptr;
+};
+
 struct BrowserDefinition {
   const char* id;
   const char* name;
@@ -28,6 +33,7 @@ struct BrowserDefinition {
   bool under_config;
   const char* path;
   bool root_is_profile;
+  DataLocation fallbacks[2] = {};
 };
 
 const BrowserDefinition* FindBrowser(std::string_view id);

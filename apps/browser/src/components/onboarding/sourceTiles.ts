@@ -11,11 +11,16 @@ export const SOURCE_CANDIDATES: SourceCandidate[][] = [
     { id: "safari", name: "Safari", app: "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app" },
     { id: "safari", name: "Safari", app: "/Applications/Safari.app" },
   ],
-  [{ id: "firefox", name: "Firefox", app: "/Applications/Firefox.app" }],
+  [
+    { id: "firefox", name: "Firefox", app: "/Applications/Firefox.app" },
+    { id: "firefox", name: "Firefox", app: "", importId: "firefoxSnap", listedOnly: true },
+    { id: "firefox", name: "Firefox", app: "", importId: "firefoxFlatpak", listedOnly: true },
+  ],
   [
     { id: "zen", name: "Zen", app: "/Applications/Zen.app" },
     { id: "zen", name: "Zen", app: "/Applications/Zen Browser.app" },
     { id: "zen", name: "Zen Twilight", app: "/Applications/Zen Twilight.app" },
+    { id: "zen", name: "Zen", app: "", importId: "zenFlatpak", listedOnly: true },
   ],
   [
     { id: "brave", name: "Brave", app: "/Applications/Brave Browser.app" },
@@ -36,7 +41,8 @@ type Finding = Pick<PlatformFeatures, "findsBrowsersBy" | "hiddenBrowserSources"
 
 export function sourceTiles(isFound: (c: SourceCandidate) => boolean, platform: Finding): SourceTile[] {
   const keepsAppPaths = platform.findsBrowsersBy === "appBundle";
-  const offered = SOURCE_CANDIDATES.filter((group) => !platform.hiddenBrowserSources.includes(group[0]!.id) && !(keepsAppPaths && group[0]!.listedOnly));
+  const offered = SOURCE_CANDIDATES.filter((group) => !platform.hiddenBrowserSources.includes(group[0]!.id) && !(keepsAppPaths && group[0]!.listedOnly))
+    .map((group) => (keepsAppPaths ? group.filter((c) => !c.listedOnly) : group));
   return offered.flatMap((group): SourceTile[] => {
     const found = group.find(isFound);
     if (found) return [{ id: found.id, name: found.name, found: true, app: keepsAppPaths ? found.app : null, icon: null, importId: found.importId }];

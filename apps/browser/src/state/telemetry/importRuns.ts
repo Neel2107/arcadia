@@ -11,6 +11,8 @@ let diaGroups = 0;
 let diaSpaceProfiles = 0;
 let firefoxProfiles = 0;
 let firefoxFavicons = 0;
+let sourceLists = 0;
+let sourceListsWithFirefox = 0;
 
 export function noteImportRun(run: { done: number; failed: number; secretsLeft: number }) {
   runs += 1;
@@ -37,6 +39,11 @@ export function noteFirefoxFavicons(icons: number) {
   firefoxFavicons += icons;
 }
 
+export function noteImportSourcesListed(sources: readonly { family: string }[]) {
+  sourceLists += 1;
+  if (sources.some((source) => source.family === "firefox")) sourceListsWithFirefox += 1;
+}
+
 export function takeImportRuns() {
   const taken = {
     import_runs: runs,
@@ -52,6 +59,8 @@ export function takeImportRuns() {
     import_dia_space_profiles: diaSpaceProfiles,
     import_firefox_profiles: firefoxProfiles,
     import_firefox_favicons: firefoxFavicons,
+    import_source_lists: sourceLists,
+    import_source_lists_with_firefox: sourceListsWithFirefox,
   };
   runs = 0;
   kindsDone = 0;
@@ -66,6 +75,8 @@ export function takeImportRuns() {
   diaSpaceProfiles = 0;
   firefoxProfiles = 0;
   firefoxFavicons = 0;
+  sourceLists = 0;
+  sourceListsWithFirefox = 0;
   return { ...taken, ...takeImportExtensionCounts() };
 }
 

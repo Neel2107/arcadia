@@ -1222,7 +1222,14 @@ Linux reads calendars from Evolution Data Server, which GNOME Online Accounts, G
 ### Import
 
 - **Sources.** Chromium-family profiles under `$XDG_CONFIG_HOME`: Chrome, Chromium, Brave, Edge, Vivaldi, Opera and
-  Helium, plus Flatpak and Snap variants. Also Firefox (native, Flatpak, Snap), LibreWolf and Zen.
+  Helium, plus Flatpak and Snap variants. Also Firefox (native, Flatpak, Snap), LibreWolf and Zen (native, Flatpak).
+- **Gecko homes.** Firefox 147 and Zen 1.18.6b moved new installs to XDG: `~/.config/mozilla/firefox` and
+  `~/.config/zen` (Flatpak: `config/mozilla/firefox`, `config/zen` or `zen` under the app's `~/.var/app` folder). The
+  legacy home (`~/.mozilla/firefox`, `~/.zen`, `~/.var/app/<id>/.zen`) wins while it holds a `profiles.ini`, as the
+  browsers themselves decide. Before this (#2164) a fresh install's Firefox and Zen were never listed. Onboarding's
+  Firefox and Zen tiles also match `firefoxSnap`, `firefoxFlatpak` and `zenFlatpak`. Telemetry: hourly
+  `usage_counts.import_source_lists` and `import_source_lists_with_firefox`; on Linux the ratio should rise, and
+  `import_firefox_profiles` with it.
 - **Kinds.** Bookmarks, history, passwords, cookies, addresses, cards, open tabs and favicons.
 - **Copies.** Databases are copied `O_NOFOLLOW` into a private temporary folder. Copies older than an hour are swept.
   Source files are never written.

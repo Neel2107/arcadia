@@ -62,11 +62,14 @@ constexpr BrowserDefinition kBrowsers[] = {
     {"vivaldiSnapshot", "Vivaldi Snapshot", Family::kChromium, true, "vivaldi-snapshot", false},
     {"opera", "Opera", Family::kChromium, true, "opera", true},
     {"helium", "Helium", Family::kChromium, true, "net.imput.helium", false},
-    {"firefox", "Firefox", Family::kFirefox, false, ".mozilla/firefox", false},
-    {"firefoxFlatpak", "Firefox (Flatpak)", Family::kFirefox, false, ".var/app/org.mozilla.firefox/.mozilla/firefox", false},
+    {"firefox", "Firefox", Family::kFirefox, false, ".mozilla/firefox", false, {{true, "mozilla/firefox"}}},
+    {"firefoxFlatpak", "Firefox (Flatpak)", Family::kFirefox, false, ".var/app/org.mozilla.firefox/.mozilla/firefox", false,
+     {{false, ".var/app/org.mozilla.firefox/config/mozilla/firefox"}}},
     {"firefoxSnap", "Firefox (Snap)", Family::kFirefox, false, "snap/firefox/common/.mozilla/firefox", false},
     {"librewolf", "LibreWolf", Family::kFirefox, false, ".librewolf", false},
-    {"zen", "Zen", Family::kFirefox, false, ".zen", false},
+    {"zen", "Zen", Family::kFirefox, false, ".zen", false, {{true, "zen"}}},
+    {"zenFlatpak", "Zen (Flatpak)", Family::kFirefox, false, ".var/app/app.zen_browser.zen/.zen", false,
+     {{false, ".var/app/app.zen_browser.zen/config/zen"}, {false, ".var/app/app.zen_browser.zen/zen"}}},
 };
 
 constexpr const char* kKindOrder[] = {"bookmarks", "history", "tabs", "passwords", "cookies",
@@ -781,6 +784,11 @@ base::ListValue ReadFavicons(const std::string& directory, bool chromium, Scratc
   return out;
 }
 
+std::string LocationDirectory(const Environment& environment, bool under_config, const char* path) {
+  const std::string& base = under_config ? environment.config_home : environment.home;
+  return base.empty() || !path ? std::string() : Join(base, path);
+}
+
 }
 
 const BrowserDefinition* FindBrowser(std::string_view id) {
@@ -808,8 +816,17 @@ Environment MakeEnvironment(const char* home, const char* config_home, const cha
 }
 
 std::string DataDirectory(const Environment& environment, const BrowserDefinition& browser) {
-  const std::string& base = browser.under_config ? environment.config_home : environment.home;
-  return base.empty() ? std::string() : Join(base, browser.path);
+  const std::string legacy = LocationDirectory(environment, browser.under_config, browser.path);
+  const auto holds_profiles = [&](const std::string& directory) {
+    if (directory.empty()) return false;
+    return browser.family == Family::kFirefox ? IsFile(Join(directory, "profiles.ini")) : IsDirectory(directory);
+  };
+  if (holds_profiles(legacy)) return legacy;
+  for (const DataLocation& fallback : browser.fallbacks) {
+    const std::string directory = LocationDirectory(environment, fallback.under_config, fallback.path);
+    if (holds_profiles(directory)) return directory;
+  }
+  return legacy;
 }
 
 std::optional<std::string> ProfileDirectory(const Environment& environment, const BrowserDefinition& browser,
