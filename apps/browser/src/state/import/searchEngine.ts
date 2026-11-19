@@ -28,7 +28,7 @@ export function chromiumTemplateUrl(template: string): string {
   return template
     .trim()
     .replace(/^\{google:baseURL\}/, "https://www.google.com/")
-    .replace(/\{searchTerms\}/g, "%s")
+    .replace(/\{searchTerms\??\}/g, "%s")
     .replace(/\{(?:inputEncoding|outputEncoding)\}/g, "UTF-8")
     .replace(/\{[^{}]*\}/g, "")
     .replace(/&{2,}/g, "&")
@@ -51,7 +51,10 @@ const onHost = (host: string, engine: SearchEngine) => {
 function customInput(engine: ImportedSearchEngine, url: string, engines: readonly SearchEngine[]): EngineInput | null {
   const host = hostOf(url.replace(/%s/g, "q"));
   const name = engine.name.trim() || host;
-  for (const keyword of [...new Set([engine.keyword.trim().toLowerCase(), host].filter(Boolean))]) {
+  const preferred = [...new Set([engine.keyword.trim().toLowerCase(), host].filter(Boolean))];
+  const base = preferred.find((k) => !/\s/.test(k));
+  const suffixed = base ? Array.from({ length: engines.length + 1 }, (_, i) => `${base}-${i + 2}`) : [];
+  for (const keyword of [...preferred, ...suffixed]) {
     const input = { name, keyword, url };
     if (!validateEngine(input, engines)) return input;
   }
@@ -64,7 +67,7 @@ export function matchImportedEngine(engine: ImportedSearchEngine, engines: reado
   const host = hostOf(url.replace(/%s/g, "q"));
   const same = engines.find((e) => !e.extension && sameUrl(e.url, url));
   if (same) return { id: same.id };
-  const named = BUILT_IN_ENGINES.find((e) => e.keyword === keyword);
+  const named = BUILT_IN_ENGINES.find((e) => e.keyword === keyword && onHost(host, e));
   if (named) return { id: named.id };
   const prepopulated = engine.prepopulateId ? BUILT_IN_ENGINES.find((e) => onHost(host, e)) : undefined;
   if (prepopulated) return { id: prepopulated.id };

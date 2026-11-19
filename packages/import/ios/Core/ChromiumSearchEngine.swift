@@ -36,7 +36,7 @@ public enum ChromiumSearchEngine {
   }
 
   static func engine(name: String?, keyword: String?, url: String?, prepopulateId: Int?) -> ImportedSearchEngine? {
-    guard let url = nonEmpty(url), url.contains("{searchTerms}") else { return nil }
+    guard let url = nonEmpty(url)?.replacingOccurrences(of: "{searchTerms?}", with: "{searchTerms}"), url.contains("{searchTerms}") else { return nil }
     return ImportedSearchEngine(name: nonEmpty(name) ?? "", keyword: nonEmpty(keyword) ?? "", url: url,
                                 prepopulateId: prepopulateId.flatMap { $0 > 0 ? $0 : nil })
   }

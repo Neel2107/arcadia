@@ -65,6 +65,12 @@ final class SearchEngineTests: XCTestCase {
     XCTAssertNil(braveJson["searchEngine"])
   }
 
+  func testOptionalSearchTermsPlaceholderIsKeptAsASearchTerm() {
+    let engine = ChromiumSearchEngine.engine(name: "Find", keyword: "find", url: "https://search.example/?q={searchTerms?}", prepopulateId: nil)
+    XCTAssertEqual(engine?.url, "https://search.example/?q={searchTerms}")
+    XCTAssertNil(ChromiumSearchEngine.engine(name: "Find", keyword: "find", url: "https://search.example/?q={searchTerm}", prepopulateId: nil))
+  }
+
   func testUnreadablePreferencesBringNothing() throws {
     let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ardia-search-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -61,6 +61,7 @@ test("Chromium's URL templates become Ardia's %s URLs", () => {
   assert.equal(chromiumTemplateUrl(DUCKDUCKGO.url), "https://duckduckgo.com/?q=%s");
   assert.equal(chromiumTemplateUrl(DOCS.url), "https://docs.ardia.example/find?q=%s&enc=UTF-8");
   assert.equal(chromiumTemplateUrl("https://x.example/s?{google:RLZ}q={searchTerms}"), "https://x.example/s?q=%s");
+  assert.equal(chromiumTemplateUrl("https://search.example/?q={searchTerms?}"), "https://search.example/?q=%s", "Chromium's optional placeholder is a search term too");
 });
 
 test("a Chromium engine maps onto the built-in engine it is, whatever its extra parameters", () => {
@@ -93,6 +94,27 @@ test("an engine Ardia doesn't have comes over as a custom engine, with a free sh
   assert.deepEqual(matchImportedEngine({ name: "Yandex", keyword: "yandex.ru", url: "https://yandex.ru/search/?text={searchTerms}", prepopulateId: 15 }, BUILT_IN_ENGINES), {
     custom: { name: "Yandex", keyword: "yandex.ru", url: "https://yandex.ru/search/?text=%s" },
   });
+});
+
+test("a built-in's shortcut on another address comes over as a custom engine, not as that built-in", () => {
+  assert.deepEqual(matchImportedEngine({ name: "Find", keyword: "google.com", url: "https://search.example/find?q={searchTerms}" }, BUILT_IN_ENGINES), {
+    custom: { name: "Find", keyword: "search.example", url: "https://search.example/find?q=%s" },
+  });
+  assert.equal(matchImportedEngine({ name: "Google", keyword: "google.com", url: "https://www.google.com/search?q={searchTerms}" }, BUILT_IN_ENGINES)?.id, "google");
+});
+
+test("when both preferred shortcuts are taken the engine gets the next numbered one, and its exact address is still reused", () => {
+  const moved = { name: "Search", keyword: "s", url: "https://search.example/new?q={searchTerms}" };
+  const old = [
+    ...BUILT_IN_ENGINES,
+    { id: "old-1", name: "Search", keyword: "s", url: "https://search.example/old?q=%s", custom: true },
+    { id: "old-2", name: "Search too", keyword: "search.example", url: "https://search.example/older?q=%s", custom: true },
+  ];
+  assert.deepEqual(matchImportedEngine(moved, old), { custom: { name: "Search", keyword: "s-2", url: "https://search.example/new?q=%s" } });
+  const busier = [...old, { id: "old-3", name: "Other", keyword: "s-2", url: "https://other.example/?q=%s", custom: true }];
+  assert.deepEqual(matchImportedEngine(moved, busier), { custom: { name: "Search", keyword: "s-3", url: "https://search.example/new?q=%s" } });
+  const imported = [...old, { id: "new-1", name: "Search", keyword: "s-2", url: "https://search.example/new?q=%s", custom: true }];
+  assert.deepEqual(matchImportedEngine(moved, imported), { id: "new-1" }, "importing it again reuses the numbered one");
 });
 
 test("the main profile's engine is the one that counts, even when it's the browser's own default", () => {
