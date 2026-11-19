@@ -488,7 +488,7 @@ test("the Linux applyResult adds natively written passwords to the shared counts
     setImportPasswordSink(null);
   }
   const failed = [];
-  const counts = await applyResult("default", result, "Google Chrome", ["passwords"], (k) => failed.push(k));
+  const counts = await applyResult("default", result, "Google Chrome", ["passwords"], null, (k) => failed.push(k));
   assert.equal(counts.passwords, 0);
   assert.deepEqual(failed, ["passwords"]);
 });

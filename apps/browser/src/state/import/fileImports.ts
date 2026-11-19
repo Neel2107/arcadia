@@ -11,11 +11,12 @@ export const openFullDiskAccessSettings = () => void importModule().openFullDisk
 export async function importSafariExport(path: string) {
   const { target } = importNow();
   const signal = importSignal();
+  const consent = consentToken();
   startProgress({ bookmarks: "active", history: "active", passwords: "active", autofill: "active" }, 1);
   try {
     const data = await importModule().importSafariExport(path);
     const failed: ImportKind[] = [];
-    const counts = await applySafari(target, data, false, consentToken(), (k) => failed.push(k));
+    const counts = await applySafari(target, data, false, consent, (k) => failed.push(k));
     updateStatus(signal, () => ({ bookmarks: "done", history: "done", passwords: "done", autofill: failed.includes("autofill") ? "failed" : "done" }));
     finishImport(signal, { counts, failures: failed.map((kind) => ({ kind, profiles: [] })), notes: [], extensions: NO_EXTENSIONS });
   } catch (e) {
@@ -27,12 +28,13 @@ export async function importSafariExport(path: string) {
 export async function importSafariDirect() {
   const { target, safariCookies } = importNow();
   const signal = importSignal();
+  const consent = consentToken();
   const api = importModule();
   startProgress({ bookmarks: "active", history: "active", tabs: "active", ...(safariCookies ? { cookies: "active" as const } : {}) }, 1);
   try {
     const data = await api.importSafariDirect({ signal });
     const failed: ImportKind[] = [];
-    const counts = await applySafari(target, data, safariCookies, consentToken(), (k) => failed.push(k));
+    const counts = await applySafari(target, data, safariCookies, consent, (k) => failed.push(k));
     updateStatus(signal, () => ({ bookmarks: "done", history: "done", tabs: "done", ...(safariCookies ? { cookies: failed.includes("cookies") ? "failed" : ("done" as const) } : {}) }));
     finishImport(signal, { counts, failures: failed.map((kind) => ({ kind, profiles: [] })), notes: [], extensions: NO_EXTENSIONS });
   } catch (e) {
@@ -51,11 +53,12 @@ export async function importSafariDirect() {
 export async function importBookmarksHtml() {
   const api = importModule();
   const signal = importSignal();
+  const consent = consentToken();
   const path = await api.chooseImportFile("bookmarksHTML");
   if (!path || signal.aborted) return;
   try {
     const root = await api.importBookmarksHTML(path);
-    const bookmarks = importBookmarks(importNow().target, root, "HTML File", consentToken());
+    const bookmarks = importBookmarks(importNow().target, root, "HTML File", consent);
     patchImport({ source: null, step: { name: "done", counts: { ...emptyCounts(), bookmarks }, failures: [], notes: [], extensions: NO_EXTENSIONS } });
   } catch {
     if (!signal.aborted) patchImport({ step: { name: "choose", error: "The selected file is invalid. Please try again." } });
