@@ -1,9 +1,9 @@
 import { confirm } from "../../platform/dialogs";
 import { create } from "zustand";
 import { focus, openWindow } from "../browser/actions";
-import { bookmarkRoots, folderLinks, isWithin, ownerOfBookmark } from "./bookmarks";
+import { bookmarksByUrl, folderLinks, ownerOfBookmark } from "./bookmarks";
 import { storeAction, useBrowser } from "../browser/store";
-import { activeTabId, bookmarkProfileId, resolveWindowId, tabTitle, viewTabIds } from "../browser/model";
+import { activeTabId, bookmarkProfileId, engineProfile, resolveWindowId, tabTitle, viewTabIds } from "../browser/model";
 import { originalProfile } from "../windows/small";
 import { isWebPageUrl } from "../../lib/url";
 import { isBookmarklet, runBookmarklet } from "./bookmarklets";
@@ -95,12 +95,8 @@ export function bookmarkTab(windowId: string, tabId: string) {
   const tab = s.tabs[tabId];
   if (!s.windows[id] || !tab?.url) return null;
   const profileId = bookmarkProfileId(s, s.windows[id]);
-  const roots = bookmarkRoots(s, profileId);
-  const existing = Object.values(s.bookmarks.nodes).find(
-    (n) => n.kind === "url" && n.url === tab.url && roots && isWithin(useBrowser.getState().bookmarks, n.id, [roots.bar, roots.other]),
-  );
-  const bookmarkId =
-    existing?.id ?? s.addBookmark({ profileId, url: tab.url, title: tabTitle(tab), favicon: tab.favicon });
+  const existing = bookmarksByUrl(s.bookmarks, engineProfile(s, profileId)).get(tab.url)?.[0];
+  const bookmarkId = existing ?? s.addBookmark({ profileId, url: tab.url, title: tabTitle(tab), favicon: tab.favicon });
   useBookmarkDialog.setState({ open: { kind: "page", windowId: id, bookmarkId, added: !existing } });
   return existing ? "edited" : "added";
 }
