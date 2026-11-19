@@ -545,8 +545,8 @@ a `.sha256` file beside it (`sha256sum -c <asset>.sha256` checks a download):
   ```
 
   It installs under `/usr` (or `--prefix`), and no package manager knows about it: install the libraries yourself, and
-  to remove it delete `<prefix>/lib/ardia`, `<prefix>/bin/ardia`, the desktop entry, the icon,
-  `/usr/share/polkit-1/actions/dev.ardia.linux.policy` and, on Ubuntu, `/etc/apparmor.d/ardia`.
+  to remove it run `sudo /usr/lib/ardia/install.sh --uninstall` (or `sudo ./ardia/install.sh --uninstall` from the
+  extracted package), with the same `--prefix` if you used one (see Uninstalling below).
 
 ## Packaging and installing
 
