@@ -2,6 +2,7 @@ import { ardiaError } from "@ardia/core";
 import { applySafari, emptyCounts, importBookmarks, type ImportKind } from "./apply";
 import { finishImport, importNow, importSignal, NO_EXTENSIONS, patchImport, startProgress, updateStatus } from "./flow";
 import { importModule } from "./importApi";
+import { consentToken } from "../telemetry/client";
 
 export const chooseSafariExport = () => importModule().chooseImportFile("safariExport");
 export const openFullDiskAccessSettings = () => void importModule().openFullDiskAccessSettings();
@@ -14,7 +15,7 @@ export async function importSafariExport(path: string) {
   try {
     const data = await importModule().importSafariExport(path);
     const failed: ImportKind[] = [];
-    const counts = await applySafari(target, data, false, (k) => failed.push(k));
+    const counts = await applySafari(target, data, false, consentToken(), (k) => failed.push(k));
     updateStatus(signal, () => ({ bookmarks: "done", history: "done", passwords: "done", autofill: failed.includes("autofill") ? "failed" : "done" }));
     finishImport(signal, { counts, failures: failed.map((kind) => ({ kind, profiles: [] })), notes: [], extensions: NO_EXTENSIONS });
   } catch (e) {
@@ -31,7 +32,7 @@ export async function importSafariDirect() {
   try {
     const data = await api.importSafariDirect({ signal });
     const failed: ImportKind[] = [];
-    const counts = await applySafari(target, data, safariCookies, (k) => failed.push(k));
+    const counts = await applySafari(target, data, safariCookies, consentToken(), (k) => failed.push(k));
     updateStatus(signal, () => ({ bookmarks: "done", history: "done", tabs: "done", ...(safariCookies ? { cookies: failed.includes("cookies") ? "failed" : ("done" as const) } : {}) }));
     finishImport(signal, { counts, failures: failed.map((kind) => ({ kind, profiles: [] })), notes: [], extensions: NO_EXTENSIONS });
   } catch (e) {
@@ -54,7 +55,7 @@ export async function importBookmarksHtml() {
   if (!path || signal.aborted) return;
   try {
     const root = await api.importBookmarksHTML(path);
-    const bookmarks = importBookmarks(importNow().target, root, "HTML File");
+    const bookmarks = importBookmarks(importNow().target, root, "HTML File", consentToken());
     patchImport({ source: null, step: { name: "done", counts: { ...emptyCounts(), bookmarks }, failures: [], notes: [], extensions: NO_EXTENSIONS } });
   } catch {
     if (!signal.aborted) patchImport({ step: { name: "choose", error: "The selected file is invalid. Please try again." } });
