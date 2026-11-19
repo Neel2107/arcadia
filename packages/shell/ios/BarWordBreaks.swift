@@ -16,6 +16,7 @@ enum BarWordBreaks {
   }
 
   private static var extensionKey = 0
+  private static var settingOwnSelection = false
 
   static let install: Void = {
     let edits: [(String, Edit)] = [
@@ -42,7 +43,7 @@ enum BarWordBreaks {
       if !class_addMethod(NSTextView.self, selector, imp, method_getTypeEncoding(method)) { method_setImplementation(method, imp) }
     }
     _ = NotificationCenter.default.addObserver(forName: NSTextView.didChangeSelectionNotification, object: nil, queue: nil) { note in
-      guard let view = note.object as? NSTextView, let held = heldExtension(of: view), !NSEqualRanges(held.range, view.selectedRange()) else { return }
+      guard !settingOwnSelection, let view = note.object as? NSTextView, heldExtension(of: view) != nil else { return }
       hold(nil, in: view)
     }
   }()
@@ -112,7 +113,9 @@ enum BarWordBreaks {
       activeEndBackward = !forward
       hold(nil, in: view)
     }
+    settingOwnSelection = true
     view.setSelectedRange(next, affinity: activeEndBackward ? .upstream : .downstream, stillSelecting: false)
+    settingOwnSelection = false
     view.scrollRangeToVisible(NSRange(location: stop, length: 0))
     let changed = ChromeWordBreaks.countsAsWordMove(from: previous, to: next.location..<NSMaxRange(next))
     noteEdit(.move, changed: changed, stop: stop, forward: forward, from: from, in: text)
