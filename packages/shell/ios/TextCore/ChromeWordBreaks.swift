@@ -39,6 +39,10 @@ enum ChromeWordBreaks {
     return Extension(anchor: anchor, from: from, stop: stop(forward: forward, from: from, in: text, splittingLetterStops: splittingLetterStops))
   }
 
+  static func countsAsWordMove(from previous: Range<Int>, to next: Range<Int>) -> Bool {
+    previous != next
+  }
+
   static func containsRightToLeftText(_ text: String) -> Bool {
     text.unicodeScalars.contains { scalar in rightToLeft.contains { $0.contains(scalar.value) } }
   }

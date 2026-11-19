@@ -88,12 +88,13 @@ enum BarWordBreaks {
     view.didChangeText()
     view.setSelectedRange(NSRange(location: range.location, length: 0))
     view.scrollRangeToVisible(view.selectedRange())
-    noteEdit(.delete, stop: stop, forward: forward, from: caret, in: text)
+    noteEdit(.delete, changed: true, stop: stop, forward: forward, from: caret, in: text)
     return true
   }
 
   private static func move(forward: Bool, extending: Bool, in view: NSTextView, text: String) {
     let selection = view.selectedRange()
+    let previous = selection.location..<NSMaxRange(selection)
     let from: Int, stop: Int, next: NSRange, activeEndBackward: Bool
     if extending {
       let kept = heldExtension(of: view).flatMap { NSEqualRanges($0.range, selection) ? $0.anchor : nil }
@@ -113,7 +114,8 @@ enum BarWordBreaks {
     }
     view.setSelectedRange(next, affinity: activeEndBackward ? .upstream : .downstream, stillSelecting: false)
     view.scrollRangeToVisible(NSRange(location: stop, length: 0))
-    noteEdit(.move, stop: stop, forward: forward, from: from, in: text)
+    let changed = ChromeWordBreaks.countsAsWordMove(from: previous, to: next.location..<NSMaxRange(next))
+    noteEdit(.move, changed: changed, stop: stop, forward: forward, from: from, in: text)
   }
 
   private enum EditKind: String {
@@ -121,8 +123,8 @@ enum BarWordBreaks {
     case move
   }
 
-  private static func noteEdit(_ kind: EditKind, stop: Int, forward: Bool, from: Int, in text: String) {
-    guard stop != from else { return }
+  private static func noteEdit(_ kind: EditKind, changed: Bool, stop: Int, forward: Bool, from: Int, in text: String) {
+    guard changed else { return }
     let splitAtDot = stop != ChromeWordBreaks.stop(forward: forward, from: from, in: text, splittingLetterStops: false)
     ShellEvents.send(.app, ArdiaConsentStamp.begin().onto(["type": "barWordEdit", "kind": kind.rawValue, "splitAtDot": splitAtDot]))
   }

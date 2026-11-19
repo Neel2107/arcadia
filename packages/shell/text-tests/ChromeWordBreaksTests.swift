@@ -153,6 +153,20 @@ final class ChromeWordBreaksTests: XCTestCase {
     XCTAssertEqual(extended, ChromeWordBreaks.Extension(anchor: 4, from: 11, stop: 15))
   }
 
+  func testCollapsingASelectionCountsAsAMoveEvenWhenTheCaretStaysAtTheEdge() {
+    let text = "www.example.com"
+    let right = ChromeWordBreaks.stop(forward: true, from: 15, in: text)
+    XCTAssertEqual(right, 15)
+    XCTAssertTrue(ChromeWordBreaks.countsAsWordMove(from: 0..<15, to: right..<right))
+    let left = ChromeWordBreaks.stop(forward: false, from: 0, in: text)
+    XCTAssertEqual(left, 0)
+    XCTAssertTrue(ChromeWordBreaks.countsAsWordMove(from: 0..<15, to: left..<left))
+    XCTAssertFalse(ChromeWordBreaks.countsAsWordMove(from: 15..<15, to: right..<right))
+    XCTAssertFalse(ChromeWordBreaks.countsAsWordMove(from: 0..<0, to: left..<left))
+    let held = ChromeWordBreaks.extend(0..<15, keptAnchor: 0, activeEndAtStart: false, forward: true, in: text)
+    XCTAssertFalse(ChromeWordBreaks.countsAsWordMove(from: 0..<15, to: held.range))
+  }
+
   func testRightToLeftTextIsNoticed() {
     XCTAssertTrue(ChromeWordBreaks.containsRightToLeftText("שלום.com"))
     XCTAssertTrue(ChromeWordBreaks.containsRightToLeftText("مثال.com"))
