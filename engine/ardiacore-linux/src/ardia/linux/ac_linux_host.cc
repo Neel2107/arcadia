@@ -2757,7 +2757,7 @@ void ShellHostView::OpenStartupTab(linux_startup_tab::StartupTab saved, std::str
       contents->GetController().LoadURLWithParams(params);
     } else {
       NavigateParams navigation(browser_.get(), url, ui::PAGE_TRANSITION_TYPED);
-      navigation.disposition = WindowOpenDisposition::NEW_BACKGROUND_TAB;
+      navigation.disposition = WindowOpenDisposition::kNewBackgroundTab;
       navigation.window_action = NavigateParams::WindowAction::kNoAction;
       const auto weak = GetWeakPtr();
       app_operation_ = true;
@@ -5637,7 +5637,7 @@ void ShellHostView::CreateTabIn(
     }
     if (!contents) {
       NavigateParams navigation(member, url, ui::PAGE_TRANSITION_TYPED);
-      navigation.disposition = WindowOpenDisposition::NEW_BACKGROUND_TAB;
+      navigation.disposition = WindowOpenDisposition::kNewBackgroundTab;
       navigation.window_action = NavigateParams::WindowAction::kNoAction;
       Navigate(&navigation);
       contents = navigation.navigated_or_inserted_contents;
@@ -7746,13 +7746,13 @@ void TabBinding::DidOpenRequestedURL(
   if (!contents_ || !opened) return;
   std::string_view target;
   switch (disposition) {
-    case WindowOpenDisposition::NEW_FOREGROUND_TAB: target = "foreground"; break;
-    case WindowOpenDisposition::NEW_BACKGROUND_TAB: target = "background"; break;
-    case WindowOpenDisposition::NEW_POPUP: target = "popup"; break;
-    case WindowOpenDisposition::NEW_WINDOW: target = "window"; break;
+    case WindowOpenDisposition::kNewForegroundTab: target = "foreground"; break;
+    case WindowOpenDisposition::kNewBackgroundTab: target = "background"; break;
+    case WindowOpenDisposition::kNewPopup: target = "popup"; break;
+    case WindowOpenDisposition::kNewWindow: target = "window"; break;
     default: return;
   }
-  ReportOpened(opened, url, target, disposition == WindowOpenDisposition::NEW_FOREGROUND_TAB);
+  ReportOpened(opened, url, target, disposition == WindowOpenDisposition::kNewForegroundTab);
 }
 
 void TabBinding::ReportOpened(content::WebContents* opened, const GURL& url,

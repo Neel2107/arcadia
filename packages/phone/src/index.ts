@@ -118,6 +118,7 @@ export type {
   PageSetup,
   PageSnapshot,
   PageState,
+  PageSummaryProvider,
   PageTone,
   PageObscuredInsets,
   PageObscuredColors,

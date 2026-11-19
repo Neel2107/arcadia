@@ -53,9 +53,14 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 
-internal data class ChatGPTAccountState(val connection: ChatGPTConnection? = null, val isSigningIn: Boolean = false, val problem: String? = null) {
-    val isConnected: Boolean get() = connection != null
-    val accountLabel: String? get() = connection?.let { it.identity.email ?: it.identity.name ?: "ChatGPT account" }
+internal data class ChatGPTAccountState(
+    val connection: ChatGPTConnection? = null,
+    val isSigningIn: Boolean = false,
+    val problem: String? = null,
+    val isDisconnecting: Boolean = false,
+) {
+    val isConnected: Boolean get() = connection != null && !isDisconnecting
+    val accountLabel: String? get() = connection?.takeIf { isConnected }?.let { it.identity.email ?: it.identity.name ?: "ChatGPT account" }
 }
 
 internal class ChatGPTAccount(context: Context) {
@@ -65,10 +70,12 @@ internal class ChatGPTAccount(context: Context) {
     private val mutableState = MutableStateFlow(ChatGPTAccountState(connection = loadConnection()))
     private var refreshing: Deferred<Unit>? = null
     private var connectionGeneration = 0L
-    private var disconnecting = false
+    private var disconnecting: Boolean
+        get() = mutableState.value.isDisconnecting
+        set(value) = mutableState.update { it.copy(isDisconnecting = value) }
 
     val state: StateFlow<ChatGPTAccountState> = mutableState.asStateFlow()
-    val isConnected: Boolean get() = !disconnecting && state.value.isConnected
+    val isConnected: Boolean get() = state.value.isConnected
     var onDisconnected: (() -> Unit)? = null
 
     private val connection: ChatGPTConnection? get() = state.value.connection

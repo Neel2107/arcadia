@@ -35,3 +35,10 @@ test("where sync isn't offered, Clear Browsing Data, About and the licences drop
   assert.match(copy().historyClears, /Mac/);
   assert.match(copy().ardiaCredit, /Mac browser/);
 });
+
+test("each phone lists only its own page summary counts: ChatGPT and Gemini Nano on Android, Apple Intelligence on iPhone", () => {
+  assert.ok(texts("android", false).some((text) => /on Android: how often you summarized a page/.test(text)));
+  assert.ok(!texts("android", false).some((text) => /Apple Intelligence wrote on the phone/.test(text)));
+  assert.ok(texts("ios", true).some((text) => /on iPhone: how often you summarized a page/.test(text)));
+  assert.ok(!texts("ios", true).some((text) => /on Android: how often you summarized a page/.test(text)));
+});
