@@ -110,8 +110,11 @@ async function checkSidebarPeek() {
     await setDocked(windowId, true);
     for (const moment of DOCK_MOMENTS) slides.push(await dockMidClose(windowId, moment));
   } finally {
-    if (probes.has(windowId)) await setDocked(windowId, wasOpen);
-    if (pageTab) closeCheckPage(pageTab);
+    try {
+      if (probes.has(windowId)) await setDocked(windowId, wasOpen);
+    } finally {
+      if (pageTab) closeCheckPage(pageTab);
+    }
   }
   const midClose = slides.filter((slide) => slide > 0 && slide < 1).length;
   console.info(`[ardia windows] self-check note: sidebar peek, ${slides.length} cycles, ${midClose} docked mid-close, slide at dock ${slides.map((slide) => slide.toFixed(2)).join(" ")}`);

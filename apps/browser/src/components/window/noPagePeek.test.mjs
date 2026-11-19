@@ -40,3 +40,27 @@ test("a no-page peek is counted when it slides out for that reason, not when the
   reason.opened();
   assert.equal(await noPagePeeks(), before + 1);
 });
+
+test("a no-page request made while Ardia is in the background is shown on activation, and a hover's is not", async () => {
+  client.setSharing(true, "onboarding");
+  const before = await noPagePeeks();
+  const reason = noPagePeekReason();
+  let shows = 0;
+  const show = () => {
+    shows++;
+    reason.opened();
+  };
+
+  reason.activated(show);
+  assert.equal(shows, 0);
+
+  reason.ask(true);
+  reason.byHand();
+  reason.activated(show);
+  assert.equal(shows, 1);
+  assert.equal(await noPagePeeks(), before + 1);
+
+  reason.ask(false);
+  reason.activated(show);
+  assert.equal(shows, 1);
+});
