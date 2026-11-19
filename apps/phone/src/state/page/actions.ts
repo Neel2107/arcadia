@@ -23,7 +23,7 @@ import { pageUi, usePageUi, type Press } from "./store";
 import { closeVoiceSearch, useVoice } from "../voice/store";
 import { addOnlineAgainListener } from "../../platform/network";
 import { countUsage } from "../telemetry/telemetry";
-import { pageSummaryOpenedCount, pageSummarySettledCount } from "../../lib/telemetrySchema";
+import { pageSummaryOpenedCount, pageSummarySettledCounts } from "../../lib/telemetrySchema";
 import { dismissArchiveCard } from "../browse/archiveCard";
 import { copy } from "../../lib/platformCopy";
 import { launchValues } from "../../platform/launch";
@@ -418,11 +418,9 @@ function pageEvent(event: PageEngineEvent) {
       if (field) countUsage(field);
       return;
     }
-    case "page.summarySettled": {
-      const field = event.isPrivate ? null : pageSummarySettledCount(event.outcome);
-      if (field) countUsage(field);
+    case "page.summarySettled":
+      if (!event.isPrivate) for (const field of pageSummarySettledCounts(event.outcome, event.chatGPTFellBack)) countUsage(field);
       return;
-    }
     default:
       return;
   }

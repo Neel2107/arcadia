@@ -26,7 +26,7 @@ import { startSync } from "./state/sync/actions";
 import { setSpacesDesign } from "./state/sync/store";
 import { setAppearanceDesign, useDarkScheme } from "./state/settings/appearance";
 import { useSettingsNav } from "./state/settings/hooks";
-import { offerBrowseForMePage, offerSyncPages } from "./state/settings/nav";
+import { offerBrowseForMePage, offerPageSummaryPage, offerSyncPages } from "./state/settings/nav";
 import { useOnboarding } from "./state/onboarding/hooks";
 import { bootApp, useBoot } from "./state/app/boot";
 import { startLinks } from "./state/links/links";
@@ -56,6 +56,7 @@ import { setRootSize } from "./state/app/rootSize";
 import { syncOffered } from "./state/sync/offer";
 import { countDrawnMenu, countNativeMenu } from "./state/browse/menuCounts";
 import { browseForMeOffered } from "./state/browseForMe/offer";
+import { pageSummaryChoiceOffered } from "./state/pageSummary/store";
 import { listenForBrowseForMe } from "./state/browseForMe/events";
 
 export default function App() {
@@ -63,6 +64,7 @@ export default function App() {
     bootApp(() => {
       offerSyncPages(syncOffered);
       offerBrowseForMePage(browseForMeOffered);
+      offerPageSummaryPage(pageSummaryChoiceOffered);
       setSpacesDesign(appDesign);
       setAppearanceDesign(appDesign);
       startTelemetry();
