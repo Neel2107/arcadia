@@ -9,7 +9,7 @@ const stub = await import("../../test-native/index.ts");
 const S = () => useBrowser.getState();
 const URL = "https://deep.example/";
 
-test("the bookmark button edits a page saved 70 folders deep instead of adding it again", async () => {
+test("the bookmark button edits a page saved 70 folders deep instead of adding it again, in its own profile", async () => {
   S().hydrate({});
   stub.docs.clear();
   stub.bookmarkDbs.clear();
@@ -25,6 +25,6 @@ test("the bookmark button edits a page saved 70 folders deep instead of adding i
 
   assert.equal(bookmarkTab(windowId, tabId), "edited");
   assert.equal(Object.keys(S().bookmarks.nodes).length, before);
-  assert.deepEqual(useBookmarkDialog.getState().open, { kind: "page", windowId, bookmarkId: saved, added: false });
+  assert.deepEqual(useBookmarkDialog.getState().open, { kind: "page", windowId, profileId: "default", bookmarkId: saved, added: false });
   stop();
 });

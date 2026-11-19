@@ -1,7 +1,7 @@
 import { confirm } from "../../platform/dialogs";
 import { create } from "zustand";
 import { focus, openWindow } from "../browser/actions";
-import { bookmarksByUrl, folderLinks, ownerOfBookmark } from "./bookmarks";
+import { bookmarksByUrl, folderLinks } from "./bookmarks";
 import { storeAction, useBrowser } from "../browser/store";
 import { activeTabId, bookmarkProfileId, engineProfile, resolveWindowId, tabTitle, viewTabIds } from "../browser/model";
 import { originalProfile } from "../windows/small";
@@ -80,14 +80,12 @@ function openInOrder(windowId: string, links: { url: string }[], after: string |
 }
 
 export type BookmarkDialogState =
-  | { kind: "page"; windowId: string; bookmarkId: string; added: boolean }
+  | { kind: "page"; windowId: string; profileId: string; bookmarkId: string; added: boolean }
   | { kind: "allTabs"; windowId: string; profileId: string; tabs: { url: string; title: string }[] };
 
 export const useBookmarkDialog = create<{ open: BookmarkDialogState | null }>()(() => ({ open: null }));
 
 export const closeBookmarkDialog = () => useBookmarkDialog.setState({ open: null });
-
-export const profileOfBookmark = (id: string) => ownerOfBookmark(useBrowser.getState(), id);
 
 export function bookmarkTab(windowId: string, tabId: string) {
   const s = useBrowser.getState();
@@ -97,7 +95,7 @@ export function bookmarkTab(windowId: string, tabId: string) {
   const profileId = bookmarkProfileId(s, s.windows[id]);
   const existing = bookmarksByUrl(s.bookmarks, engineProfile(s, profileId)).get(tab.url)?.[0];
   const bookmarkId = existing ?? s.addBookmark({ profileId, url: tab.url, title: tabTitle(tab), favicon: tab.favicon });
-  useBookmarkDialog.setState({ open: { kind: "page", windowId: id, bookmarkId, added: !existing } });
+  useBookmarkDialog.setState({ open: { kind: "page", windowId: id, profileId, bookmarkId, added: !existing } });
   return existing ? "edited" : "added";
 }
 
