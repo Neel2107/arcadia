@@ -3,10 +3,11 @@ import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
 import type { BrowserProfile, BrowserSource, ImportedSearchEngine } from "../../platform/importModule";
 import { useBrowser } from "../browser/store";
 import { useOnboarding } from "../onboarding/onboarding";
-import { searchEngines } from "../settings/settings";
+import { controllingSearchExtension, searchEngines } from "../settings/settings";
 import type { ConsentToken } from "../telemetry/client";
 import { noteSearchEngineOfferTaken } from "../telemetry/importRuns";
 import { noteSearchEngineImport, type SearchEngineImportOutcome } from "../telemetry/searchEngineImports";
+import { settingSet } from "./arcExtras";
 import { importNow, patchImport, type EngineNotice } from "./flow";
 
 export type ImportedEngineMatch = { id: string } | { custom: EngineInput } | null;
@@ -70,10 +71,7 @@ export function sourceEngine(profiles: ProfileEngines): ImportedSearchEngine | u
   return (profiles.find((p) => p.profile.isDefault) ?? profiles[0])?.engine;
 }
 
-export function engineChosenByUser(): boolean {
-  const { chosen, inferred } = useBrowser.getState().settingsMeta;
-  return chosen.includes("searchEngine") && !inferred.includes("searchEngine");
-}
+export const engineChosenByUser = () => settingSet("searchEngine");
 
 function settingUpForTheFirstTime(): boolean {
   const { windowId, redo } = useOnboarding.getState();
@@ -95,15 +93,16 @@ function adopt(engine: ImportedSearchEngine | undefined): AdoptedEngine {
   const match = matchImportedEngine(engine, currentEngines());
   if (!match) return { outcome: "unusable", notice: null, changed: false };
   const outcome = "id" in match && BUILT_IN_ENGINES.some((e) => e.id === match.id) ? "built_in" : "custom";
-  const current = useBrowser.getState().settings.searchEngine;
-  if ("id" in match && match.id === current) return { outcome, notice: null, changed: false };
+  const { settings } = useBrowser.getState();
+  if (controllingSearchExtension(settings)) return { outcome, notice: null, changed: false };
+  const same = "id" in match && match.id === settings.searchEngine;
   if (engineChosenByUser() && !settingUpForTheFirstTime()) {
-    return { outcome, notice: { name: "id" in match ? nameOf(match.id) : match.custom.name, offered: true, engine }, changed: false };
+    return { outcome, notice: same ? null : { name: "id" in match ? nameOf(match.id) : match.custom.name, offered: true, engine }, changed: false };
   }
   const id = engineIdFor(match);
   if (!id) return { outcome: "unusable", notice: null, changed: false };
   useBrowser.getState().updateSettings({ searchEngine: id }, { inferred: true });
-  return { outcome, notice: { name: nameOf(id), offered: false, engine }, changed: true };
+  return { outcome, notice: same ? null : { name: nameOf(id), offered: false, engine }, changed: !same };
 }
 
 export function adoptImportedEngine(source: Pick<BrowserSource, "id" | "family">, profiles: ProfileEngines, consent: ConsentToken | null): AdoptedEngine | null {
@@ -115,7 +114,7 @@ export function adoptImportedEngine(source: Pick<BrowserSource, "id" | "family">
 
 export function takeOfferedEngine() {
   const { step } = importNow();
-  if (step.name !== "done" || !step.searchEngine?.offered) return;
+  if (step.name !== "done" || !step.searchEngine?.offered || controllingSearchExtension(useBrowser.getState().settings)) return;
   const match = matchImportedEngine(step.searchEngine.engine, currentEngines());
   const id = match && engineIdFor(match);
   if (!id) return;

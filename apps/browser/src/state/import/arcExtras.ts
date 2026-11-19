@@ -117,7 +117,7 @@ const ARC_ARCHIVE_READ = 1500;
 export type SettingOutcome = "none" | "applied" | "kept" | "unresolved" | "unsaved" | "same";
 export type RoutingImported = { rules: number; already: number; skipped: number; unsaved: number; fallback: SettingOutcome };
 
-function settingSet(key: SettingKey): boolean {
+export function settingSet(key: SettingKey): boolean {
   const { settings, settingsMeta } = useBrowser.getState();
   const chosen = settingsMeta.chosen.includes(key) && !settingsMeta.inferred.includes(key);
   return chosen || JSON.stringify(settings[key]) !== JSON.stringify(DEFAULT_SETTINGS[key]) || settingSyncedIn(appScopeRecords(), key);

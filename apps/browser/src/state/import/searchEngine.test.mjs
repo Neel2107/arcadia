@@ -158,16 +158,37 @@ test("importing from Arc on DuckDuckGo makes it Ardia's engine, says so, and sen
   assert.equal(sent().at(-1).properties.changed, false);
 });
 
-test("an engine an import brought over is Ardia's guess, so the next import may change it again", async () => {
+test("an engine an import adopted is marked inferred; once it isn't the default, a later import only offers", async () => {
   fresh();
   engines = { Default: DUCKDUCKGO };
   await importFrom(arc(["Default"]));
   assert.ok(S().settingsMeta.inferred.includes("searchEngine"));
-  assert.equal(engineChosenByUser(), false);
   engines = { Default: BING };
   const step = await importFrom(arc(["Default"]));
-  assert.equal(S().settings.searchEngine, "bing");
-  assert.equal(step.searchEngine.offered, false);
+  assert.equal(S().settings.searchEngine, "duckduckgo", "a legacy choice looks the same in the metadata, so a non-default engine is kept");
+  assert.equal(step.searchEngine.offered, true);
+});
+
+test("an engine chosen on another Mac and synced in, or saved by an older version, is kept", async () => {
+  fresh();
+  S().updateSettings({ searchEngine: "kagi" }, { fromSync: true });
+  engines = { Default: DUCKDUCKGO };
+  assert.equal((await importFrom(arc(["Default"]))).searchEngine.offered, true);
+  assert.equal(S().settings.searchEngine, "kagi");
+  fresh();
+  S().hydrate({ settings: { searchEngine: "kagi" }, settingsMeta: { chosen: ["searchEngine"], inferred: ["searchEngine"] } });
+  assert.equal((await importFrom(arc(["Default"]))).searchEngine.offered, true);
+  assert.equal(S().settings.searchEngine, "kagi");
+});
+
+test("while an extension controls search, an import neither switches nor offers", async () => {
+  fresh();
+  S().updateSettings({ extensionSearchEngines: [{ profile: "default", extensionId: "abcdefghijklmnopabcdefghijklmnop", extensionName: "Ext", name: "Ext", keyword: "ext", url: "https://ext.example/?q=%s", isDefault: true }] });
+  engines = { Default: DUCKDUCKGO };
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(step.searchEngine, undefined);
+  assert.equal(S().settings.searchEngine, "google");
+  assert.deepEqual(pick("outcome", "changed", "offered"), { outcome: "built_in", changed: false, offered: false });
 });
 
 test("an engine the user chose stays; the done screen offers the source's instead, and taking it is their choice", async () => {
@@ -260,6 +281,18 @@ test("in onboarding, the engine an import brought over wins over the browser's p
   const step = await importFrom(arc(["Default"]));
   assert.equal(S().settings.searchEngine, "duckduckgo", "an import after Continue still brings it during setup");
   assert.equal(step.searchEngine.offered, false);
+  fresh();
+});
+
+test("in onboarding, an imported engine that is already Ardia's still keeps the preset's engine out", async () => {
+  fresh();
+  startOnboarding(S().createWindow(), "source");
+  chooseSource("brave");
+  engines = { Default: GOOGLE };
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(step.searchEngine, undefined, "nothing to say: it was Google already");
+  confirmAnswer("source", sourcePatch(), []);
+  assert.equal(S().settings.searchEngine, "google", "Brave's preset doesn't put Brave Search over the imported Google");
   fresh();
 });
 
