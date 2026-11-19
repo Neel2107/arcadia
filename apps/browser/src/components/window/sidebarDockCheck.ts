@@ -1,5 +1,5 @@
 import { selfChecks } from "../../state/app/selfCheck";
-import { toggleSidebar } from "../../state/windows/actions";
+import { closeCheckPage, openCheckPage, toggleSidebar, windowShowsPage } from "../../state/windows/actions";
 import { animating, currentValue } from "../ui/motion";
 import type { usePeek } from "./usePeek";
 
@@ -104,11 +104,14 @@ async function checkSidebarPeek() {
   const wasOpen = probeFor(windowId).open;
   numericLayers = 0;
   const slides: number[] = [];
+  const pageTab = windowShowsPage(windowId) ? null : openCheckPage(windowId);
   try {
+    await until("a page to show in the window", () => windowShowsPage(windowId));
     await setDocked(windowId, true);
     for (const moment of DOCK_MOMENTS) slides.push(await dockMidClose(windowId, moment));
   } finally {
     if (probes.has(windowId)) await setDocked(windowId, wasOpen);
+    if (pageTab) closeCheckPage(pageTab);
   }
   const midClose = slides.filter((slide) => slide > 0 && slide < 1).length;
   console.info(`[ardia windows] self-check note: sidebar peek, ${slides.length} cycles, ${midClose} docked mid-close, slide at dock ${slides.map((slide) => slide.toFixed(2)).join(" ")}`);
