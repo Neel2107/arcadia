@@ -12,8 +12,6 @@ import {
   type SpaceSuggestion,
 } from "../../platform/importModule";
 import { passwordImportTally } from "../telemetry/passwordSaves";
-import { noteUntitledBookmarks } from "../telemetry/importRuns";
-import type { ConsentToken } from "../telemetry/client";
 import { bookmarkRoots, type BookmarkDraft } from "../bookmarks/bookmarks";
 import { useBrowser } from "../browser/store";
 import { engineProfile, isIncognitoProfile } from "../browser/model";
@@ -41,7 +39,9 @@ const toDraft = (n: ImportedNode): BookmarkDraft =>
 const linkCount = (nodes: ImportedNode[], counts: (link: ImportedNode) => boolean = () => true): number =>
   nodes.reduce((n, c) => n + (c.type === "url" ? (counts(c) ? 1 : 0) : linkCount(c.children ?? [], counts)), 0);
 
-export function importBookmarks(profileId: string, root: ImportedNode | undefined, browserName: string, consent: ConsentToken | null): number {
+export const untitledLinks = (root: ImportedNode | undefined): number => linkCount(root?.children ?? [], (link) => link.title === "");
+
+export function importBookmarks(profileId: string, root: ImportedNode | undefined, browserName: string): number {
   if (!root?.children?.length) return 0;
   if (!bookmarkRoots(useBrowser.getState(), profileId)) useBrowser.getState().addBookmarkTree(profileId, []);
   const roots = bookmarkRoots(useBrowser.getState(), profileId)!;
@@ -58,7 +58,6 @@ export function importBookmarks(profileId: string, root: ImportedNode | undefine
   };
   place(toolbar, roots.bar);
   place(other, roots.other);
-  noteUntitledBookmarks(linkCount([...toolbar, ...other], (link) => link.title === ""), consent);
   return linkCount([...toolbar, ...other]);
 }
 
@@ -128,13 +127,12 @@ export async function applyResult(
   result: ImportResult,
   browserName: string,
   requested: ImportKind[],
-  consent: ConsentToken | null,
   onFailed?: (kind: ImportKind) => void,
 ): Promise<ImportCounts> {
   const toolbar = (result.bookmarks?.children ?? []).filter((c) => c.role === "toolbar");
   importFavicons(profileId, result.favicons, [...result.favorites.map((t) => t.url), ...(result.spaces.length ? [] : result.tabs.map((t) => t.url)), ...linksOf(toolbar)]);
   const counts = emptyCounts();
-  counts.bookmarks += importBookmarks(profileId, result.bookmarks, browserName, consent);
+  counts.bookmarks += importBookmarks(profileId, result.bookmarks, browserName);
   if (result.history.length) counts.history += importHistory(profileId, result.history);
   const native = (["cookies", "autofill"] as const).filter((k) => requested.includes(k));
   Object.assign(counts, await importNative(profileId, result.vaultToken, native, onFailed));
@@ -144,9 +142,9 @@ export async function applyResult(
   return counts;
 }
 
-export async function applySafari(profileId: string, data: SafariExport, cookies: boolean, consent: ConsentToken | null, onFailed?: (kind: ImportKind) => void): Promise<ImportCounts> {
+export async function applySafari(profileId: string, data: SafariExport, cookies = true, onFailed?: (kind: ImportKind) => void): Promise<ImportCounts> {
   const counts = emptyCounts();
-  counts.bookmarks = importBookmarks(profileId, data.bookmarks, "Safari", consent);
+  counts.bookmarks = importBookmarks(profileId, data.bookmarks, "Safari");
   const history = data.profiles.find((p) => !p.name)?.history ?? data.profiles[0]?.history ?? [];
   counts.history = importHistory(profileId, history);
   Object.assign(counts, await importNative(profileId, data.vaultToken, cookies ? ["cookies", "autofill"] : ["autofill"], onFailed));

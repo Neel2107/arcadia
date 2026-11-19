@@ -2,7 +2,6 @@ import { applyResult as sharedApplyResult, type ImportCounts } from "../../brows
 import { engineProfile, isIncognitoProfile } from "../../browser/src/state/browser/model.ts";
 import { useBrowser } from "../../browser/src/state/browser/store.ts";
 import type { ImportKind, ImportResult } from "../../browser/src/platform/importModule.ts";
-import type { ConsentToken } from "../../browser/src/state/telemetry/client.ts";
 import type { PendingPasswords, WrittenPasswords } from "./hostImport.ts";
 
 export * from "../../browser/src/state/import/apply.ts";
@@ -50,10 +49,9 @@ export async function applyResult(
   result: ImportResult,
   browserName: string,
   requested: ImportKind[],
-  consent: ConsentToken | null,
   onFailed?: (kind: ImportKind) => void,
 ): Promise<ImportCounts> {
-  const counts = await sharedApplyResult(profileId, result, browserName, requested, consent, onFailed);
+  const counts = await sharedApplyResult(profileId, result, browserName, requested, onFailed);
   if (sink) counts.passwords += await applyPendingPasswords(sink, profileId, result, requested, onFailed);
   else if (requested.includes("passwords") && result && (result as { passwords?: unknown }).passwords) onFailed?.("passwords");
   return counts;
