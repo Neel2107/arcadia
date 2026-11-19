@@ -3,11 +3,12 @@ import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
 import type { BrowserProfile, BrowserSource, ImportedSearchEngine } from "../../platform/importModule";
 import { useBrowser } from "../browser/store";
 import { useOnboarding } from "../onboarding/onboarding";
-import { controllingSearchExtension, searchEngines } from "../settings/settings";
+import { controllingSearchExtension, DEFAULT_SETTINGS, searchEngines } from "../settings/settings";
+import { appScopeRecords } from "../sync/engine";
+import { settingSyncedIn } from "../sync/settingsAdapter";
 import type { ConsentToken } from "../telemetry/client";
 import { noteSearchEngineOfferTaken } from "../telemetry/importRuns";
 import { noteSearchEngineImport, type SearchEngineImportOutcome } from "../telemetry/searchEngineImports";
-import { settingSet } from "./arcExtras";
 import { importNow, patchImport, type EngineNotice } from "./flow";
 
 export type ImportedEngineMatch = { id: string } | { custom: EngineInput } | null;
@@ -71,7 +72,11 @@ export function sourceEngine(profiles: ProfileEngines): ImportedSearchEngine | u
   return (profiles.find((p) => p.profile.isDefault) ?? profiles[0])?.engine;
 }
 
-export const engineChosenByUser = () => settingSet("searchEngine");
+export function engineChosenByUser(): boolean {
+  const { settings, settingsMeta } = useBrowser.getState();
+  if (settingsMeta.chosen.includes("searchEngine") || settings.searchEngine !== DEFAULT_SETTINGS.searchEngine) return true;
+  return settingSyncedIn(appScopeRecords(), "searchEngine");
+}
 
 function settingUpForTheFirstTime(): boolean {
   const { windowId, redo } = useOnboarding.getState();

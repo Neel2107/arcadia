@@ -158,14 +158,14 @@ test("importing from Arc on DuckDuckGo makes it Ardia's engine, says so, and sen
   assert.equal(sent().at(-1).properties.changed, false);
 });
 
-test("an engine an import adopted is marked inferred; once it isn't the default, a later import only offers", async () => {
+test("an engine an import adopted is marked inferred, and a later import only offers", async () => {
   fresh();
   engines = { Default: DUCKDUCKGO };
   await importFrom(arc(["Default"]));
   assert.ok(S().settingsMeta.inferred.includes("searchEngine"));
   engines = { Default: BING };
   const step = await importFrom(arc(["Default"]));
-  assert.equal(S().settings.searchEngine, "duckduckgo", "a legacy choice looks the same in the metadata, so a non-default engine is kept");
+  assert.equal(S().settings.searchEngine, "duckduckgo", "a legacy choice looks the same in the metadata, so any engine already set is kept");
   assert.equal(step.searchEngine.offered, true);
 });
 
@@ -179,6 +179,10 @@ test("an engine chosen on another Mac and synced in, or saved by an older versio
   S().hydrate({ settings: { searchEngine: "kagi" }, settingsMeta: { chosen: ["searchEngine"], inferred: ["searchEngine"] } });
   assert.equal((await importFrom(arc(["Default"]))).searchEngine.offered, true);
   assert.equal(S().settings.searchEngine, "kagi");
+  fresh();
+  S().hydrate({ settings: { searchEngine: "google" }, settingsMeta: { chosen: ["searchEngine"], inferred: ["searchEngine"] } });
+  assert.equal((await importFrom(arc(["Default"]))).searchEngine.offered, true, "even when the saved engine is the default");
+  assert.equal(S().settings.searchEngine, "google");
 });
 
 test("while an extension controls search, an import neither switches nor offers", async () => {
