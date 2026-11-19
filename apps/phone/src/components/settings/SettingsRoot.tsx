@@ -19,6 +19,8 @@ import { BarButton, Group, IconTile, NavRow, PickerRow, SettingsPage, ToggleRow 
 import { syncOffered } from "../../state/sync/offer";
 import { browseForMeOffered, refreshChatGPTConnected, useChatGPTConnected } from "../../state/browseForMe/store";
 import { browseForMeRowValue } from "../../state/browseForMe/copy";
+import { pageSummaryChoiceOffered, refreshPageSummaryProvider, usePageSummaryProvider } from "../../state/pageSummary/store";
+import { pageSummaryRowValue } from "../../state/pageSummary/copy";
 
 const APP_LINKS = [
   { id: "ardia" as const, title: "Ardia" },
@@ -46,8 +48,12 @@ export function SettingsRoot() {
   const stacks = useWindowDimensions().fontScale >= settingsLayout.accessibilityFontScale;
   const redesigned = useDesign() === "redesigned";
   const chatGPT = useChatGPTConnected();
+  const summaryProvider = usePageSummaryProvider();
+  const offersBrowseForMe = browseForMeOffered();
+  const offersSummaryChoice = pageSummaryChoiceOffered();
   useEffect(() => {
     void refreshChatGPTConnected();
+    void refreshPageSummaryProvider();
   }, []);
   return (
     <SettingsPage title="Settings" trailing={<BarButton title="Done" emphasized onPress={closeSettings} />}>
@@ -123,9 +129,14 @@ export function SettingsRoot() {
         />
         <NavRow title={PHONE_SHARING_COPY.whatsSent} icon="info" tint={settingsTint.neutral} onPress={() => pushSettings({ page: "whatsSent" })} />
       </Group>
-      {browseForMeOffered() ? (
+      {offersBrowseForMe || offersSummaryChoice ? (
         <Group header="Experimental">
-          <NavRow title="Browse for Me" icon="sparkleMagnifyingglass" tint={settingsTint.nightShade} value={browseForMeRowValue(chatGPT)} onPress={() => pushSettings({ page: "browseForMe" })} />
+          {offersBrowseForMe ? (
+            <NavRow title="Browse for Me" icon="sparkleMagnifyingglass" tint={settingsTint.nightShade} value={browseForMeRowValue(chatGPT)} divider={offersSummaryChoice} onPress={() => pushSettings({ page: "browseForMe" })} />
+          ) : null}
+          {offersSummaryChoice ? (
+            <NavRow title="Pinch to Summarize" icon="sparkles" tint={settingsTint.nightShade} value={pageSummaryRowValue(summaryProvider, chatGPT)} onPress={() => pushSettings({ page: "pageSummary" })} />
+          ) : null}
         </Group>
       ) : null}
       <Group>

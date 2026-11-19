@@ -1,5 +1,6 @@
 package com.ardia.chatgpt
 
+import com.ardia.phone.ChatGPTAccountState
 import java.net.URLDecoder
 import java.security.KeyPair
 import java.security.KeyPairGenerator
@@ -238,6 +239,18 @@ class ChatGPTTest {
         assertEquals(ChatGPTFailure.Rejected(401), ChatGPTFailure.api(null, 401))
         assertTrue(ChatGPTFailure.Expired.requiresSignIn)
         assertFalse(ChatGPTFailure.UsageLimit.requiresSignIn)
+    }
+
+    @Test
+    fun disconnectMakesTheAccountUnavailableWhileRetainingTheConnectionForRevocation() {
+        val endpoints = ChatGPTEndpoints(issuer, issuer, issuer, null, issuer, ChatGPTEndpoints.OPENAI_API)
+        val connection = ChatGPTConnection("oaiapp_abc", ChatGPTIdentity("user-1", null, null), ChatGPTTokens("a", "r", 0, emptyList(), null), endpoints)
+        val connected = ChatGPTAccountState(connection = connection)
+        val disconnecting = connected.copy(isDisconnecting = true)
+        assertTrue(connected.isConnected)
+        assertFalse(disconnecting.isConnected)
+        assertEquals(connection, disconnecting.connection)
+        assertEquals(null, disconnecting.accountLabel)
     }
 
     @Test
