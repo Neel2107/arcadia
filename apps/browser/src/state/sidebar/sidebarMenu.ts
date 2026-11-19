@@ -10,14 +10,13 @@ import { toggleNewTabBar } from "../omnibox/newTabBar";
 import { newGroupWithSelection } from "./actions";
 import { closeAllTabs } from "./clearTabs";
 import { lastClosedEntry } from "../windows/reopenClosed";
-import { switchTabLayout } from "../splits/actions";
 import { consentToken } from "../telemetry/client";
 import { newLiveFolderMenuItem, runNewLiveFolder } from "./liveMenus";
 import { sections } from "./menuParts";
 import { pinnedFoldMenuItem, runPinnedFold } from "./pinnedFold";
 import { addSharedFolder } from "../sharedFolders/actions";
 import { canAddSharedFolder } from "../sharedFolders/removal";
-import { toggleSidebarSide } from "../settings/actions";
+import { switchTabLayout, toggleSidebarSide } from "../settings/actions";
 
 const store = () => useBrowser.getState();
 

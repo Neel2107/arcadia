@@ -22,12 +22,14 @@ type ActionDef = {
   command: BrowserCommand;
   arg?: string;
   title?: (c: Context) => string;
-  icon?: string;
+  icon?: string | ((c: Context) => string);
   keywords?: string[];
   needs?: "page" | "webPage" | "tab" | "profiles" | "pins";
 };
 
 const page = "page" as const;
+
+const layoutSwitchesTo = ({ s, windowId }: Context) => (tabLayoutOf(s, windowId) === "sidebar" ? "top" : "sidebar");
 
 const DEFS: ActionDef[] = [
   { command: "newTab", keywords: ["open tab"] },
@@ -91,9 +93,9 @@ const DEFS: ActionDef[] = [
   { command: "toggleFullUrl", title: ({ s }) => (s.settings.showFullUrl ? "Hide Full URL" : "Show Full URL") },
   {
     command: "toggleTabLayout",
-    title: ({ s, windowId }) => (tabLayoutOf(s, windowId) === "sidebar" ? "Switch to Top Tabs" : "Switch to Sidebar Tabs"),
-    icon: "sidebar.left",
-    keywords: ["tab layout", "top tabs", "tab bar", "horizontal tabs", "sidebar tabs", "vertical tabs", "tabs in sidebar"],
+    title: (c) => (layoutSwitchesTo(c) === "top" ? "Show Tabs Across the Top" : "Show Tabs in Sidebar"),
+    icon: (c) => (layoutSwitchesTo(c) === "top" ? "rectangle.topthird.inset.filled" : c.s.settings.sidebarSide === "right" ? "sidebar.right" : "sidebar.left"),
+    keywords: ["tab layout", "top tabs", "tabs on top", "tabs across the top", "horizontal tabs", "horizontal row", "tab bar", "tab strip", "vertical tabs", "vertical sidebar", "sidebar tabs", "tabs in sidebar"],
   },
   { command: "toggleSidebar", keywords: ["toggle sidebar", "hide sidebar", "show sidebar", "focus mode"] },
   { command: "toggleBookmarksBar", keywords: ["bookmarks bar"] },
@@ -139,7 +141,7 @@ export function barActions(s: BrowserState, windowId: string): CommandAction[] {
     out.push({
       id,
       title: d.title?.(c) ?? commandBarTitle(d.command, d.arg),
-      icon: d.icon ?? commandSymbol(d.command, d.arg),
+      icon: (typeof d.icon === "function" ? d.icon(c) : d.icon) ?? commandSymbol(d.command, d.arg),
       ...(hint ? { hint } : {}),
       ...(d.keywords ? { keywords: d.keywords } : {}),
     });
