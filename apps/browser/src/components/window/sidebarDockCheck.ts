@@ -1,5 +1,6 @@
 import { selfChecks } from "../../state/app/selfCheck";
-import { closeCheckPage, openCheckPage, toggleSidebar, windowShowsPage } from "../../state/windows/actions";
+import { toggleSidebar } from "../../state/windows/actions";
+import { closeCheckPage, openCheckPage, windowIsEmpty } from "../../state/windows/dockCheckPage";
 import { animating, currentValue } from "../ui/motion";
 import type { usePeek } from "./usePeek";
 
@@ -104,9 +105,9 @@ async function checkSidebarPeek() {
   const wasOpen = probeFor(windowId).open;
   numericLayers = 0;
   const slides: number[] = [];
-  const pageTab = windowShowsPage(windowId) ? null : openCheckPage(windowId);
+  const pageTab = windowIsEmpty(windowId) ? openCheckPage(windowId) : null;
   try {
-    await until("a page to show in the window", () => windowShowsPage(windowId));
+    await until("a page to open in the window", () => !windowIsEmpty(windowId));
     await setDocked(windowId, true);
     for (const moment of DOCK_MOMENTS) slides.push(await dockMidClose(windowId, moment));
   } finally {

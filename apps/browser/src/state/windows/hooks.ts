@@ -1,6 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 import { useBrowser, type BrowserState } from "../browser/store";
-import { activeTabId, engineProfile, tabsShownIn } from "../browser/model";
+import { engineProfile, showsEmptyWindow, tabsShownIn } from "../browser/model";
 import { focusedWindowOf } from "./ui";
 import { sidebarAddressChosen } from "./layout";
 
@@ -30,11 +30,7 @@ export const useSidebarDockState = (windowId: string) =>
     ),
   );
 
-export const useShowsNoPage = (windowId: string) =>
-  useBrowser((s) => {
-    const active = activeTabId(s, windowId);
-    return !active || !s.tabs[active]?.url;
-  });
+export const useShowsEmptyWindow = (windowId: string) => useBrowser((s) => showsEmptyWindow(s, windowId));
 
 export const useProfileNeighbours = (windowId: string) =>
   useBrowser(

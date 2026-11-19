@@ -58,7 +58,7 @@ import {
 } from "../../state/windows/dockMotion";
 import { useTabDrag } from "../../state/drag/tabDrag";
 import { usePeek } from "./usePeek";
-import { useNoPagePeek } from "./useNoPagePeek";
+import { useEmptyWindowPeek } from "./useEmptyWindowPeek";
 import { useSidebarLights, useTopStripLights } from "./useDockLights";
 import { useCardFrame } from "./cardFrame";
 import { forgetSidebarDock, noteSidebarDock } from "./sidebarDockCheck";
@@ -221,7 +221,7 @@ function SidebarDock({
   pageFullScreen.current = fullscreen;
   const opened = (bounce: boolean) => {
     noteSidebarPeek(bounce);
-    noPage.opened();
+    emptyWindow.opened();
     if (pageFullScreen.current) notePageFullScreenPeek();
     if (windowFullScreen.current) noteFullScreenPeek();
     fullScreenPeekAt.current = windowFullScreen.current ? Date.now() : null;
@@ -233,15 +233,15 @@ function SidebarDock({
     fullScreenPeekAt.current = null;
     dismissHoverIn(windowId);
   };
-  const peek = usePeek((!open || fullscreen) && !moving, arc, () => edgeOver.current || noPage.held() || peekHeld(windowId), closed, opened);
+  const peek = usePeek((!open || fullscreen) && !moving, arc, () => edgeOver.current || emptyWindow.held() || peekHeld(windowId), closed, opened);
   const reveal = () => {
-    noPage.byHand();
+    emptyWindow.byHand();
     if (arm.current.armed) latestPeek.current.show();
     else noteSidebarPeekRevealHeldBack();
   };
   const latestPeek = useRef(peek);
   latestPeek.current = peek;
-  const noPage = useNoPagePeek(windowId, !open && !moving && !fullscreen, latestPeek);
+  const emptyWindow = useEmptyWindowPeek(windowId, !open && !moving && !fullscreen, latestPeek);
   useEffect(() => {
     if (open && !fullscreen) latestPeek.current.reset();
   }, [open, fullscreen]);
