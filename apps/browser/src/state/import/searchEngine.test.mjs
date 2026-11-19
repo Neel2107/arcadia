@@ -43,7 +43,8 @@ const { useBrowser } = await import("../browser/store.ts");
 const { searchEngines } = await import("../settings/settings.ts");
 const { useImportFlow } = await import("./flow.ts");
 const { runImport } = await import("./runImport.ts");
-const { chromiumTemplateUrl, matchImportedEngine, sourceEngine, useImportedSettings } = await import("./searchEngine.ts");
+const { chromiumTemplateUrl, engineChosenByUser, matchImportedEngine, sourceEngine, takeOfferedEngine } = await import("./searchEngine.ts");
+const { takeImportRuns } = await import("../telemetry/importRuns.ts");
 const { chooseSource, confirmAnswer, maybeStartOnboarding, sourcePatch, startOnboarding, useOnboarding } = await import("../onboarding/onboarding.ts");
 const { saveOnboarding } = await import("../onboarding/onboardingDocument.ts");
 client.startClient();
@@ -53,8 +54,9 @@ const S = () => useBrowser.getState();
 const sent = () => (local.flushLocal(), stub.telemetryLocal.records().filter((r) => r.event === "search_engine_import"));
 const fresh = () => {
   S().hydrate({});
-  useImportedSettings.setState({ keys: [] });
+  useOnboarding.setState({ windowId: null, leaving: false, redo: false });
 };
+const pick = (...keys) => Object.fromEntries(keys.map((k) => [k, sent().at(-1).properties[k]]));
 
 test("Chromium's URL templates become Ardia's %s URLs", () => {
   assert.equal(chromiumTemplateUrl(GOOGLE.url), "https://www.google.com/search?q=%s&ie=UTF-8");
@@ -146,17 +148,70 @@ test("importing from Arc on DuckDuckGo makes it Ardia's engine, says so, and sen
   const before = sent().length;
   const step = await importFrom(arc(["Profile 1", "Default"]));
   assert.equal(S().settings.searchEngine, "duckduckgo");
-  assert.equal(step.searchEngine, "DuckDuckGo");
+  assert.deepEqual(step.searchEngine, { name: "DuckDuckGo", offered: false, engine: DUCKDUCKGO });
   const events = sent().slice(before);
   assert.equal(events.length, 1);
-  assert.deepEqual(
-    Object.fromEntries(["source", "outcome", "changed"].map((k) => [k, events[0].properties[k]])),
-    { source: "arc", outcome: "built_in", changed: true },
-  );
+  assert.deepEqual(pick("source", "outcome", "changed", "offered"), { source: "arc", outcome: "built_in", changed: true, offered: false });
   assert.ok(!JSON.stringify(events[0]).toLowerCase().includes("duckduckgo"), "never which engine");
   const again = await importFrom(arc(["Default"]));
   assert.equal(again.searchEngine, undefined, "nothing to say when the engine was already this one");
   assert.equal(sent().at(-1).properties.changed, false);
+});
+
+test("an engine an import brought over is Ardia's guess, so the next import may change it again", async () => {
+  fresh();
+  engines = { Default: DUCKDUCKGO };
+  await importFrom(arc(["Default"]));
+  assert.ok(S().settingsMeta.inferred.includes("searchEngine"));
+  assert.equal(engineChosenByUser(), false);
+  engines = { Default: BING };
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(S().settings.searchEngine, "bing");
+  assert.equal(step.searchEngine.offered, false);
+});
+
+test("an engine the user chose stays; the done screen offers the source's instead, and taking it is their choice", async () => {
+  fresh();
+  S().setSearchEngine("kagi");
+  assert.equal(engineChosenByUser(), true);
+  engines = { Default: DUCKDUCKGO };
+  takeImportRuns();
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(S().settings.searchEngine, "kagi");
+  assert.deepEqual(step.searchEngine, { name: "DuckDuckGo", offered: true, engine: DUCKDUCKGO });
+  assert.deepEqual(pick("outcome", "changed", "offered"), { outcome: "built_in", changed: false, offered: true });
+  takeOfferedEngine();
+  assert.equal(S().settings.searchEngine, "duckduckgo");
+  assert.deepEqual(useImportFlow.getState().step.searchEngine, { name: "DuckDuckGo", offered: false, engine: DUCKDUCKGO });
+  assert.equal(engineChosenByUser(), true, "taking the offer is a choice of the user's");
+  assert.equal(takeImportRuns().import_search_engine_offers_taken, 1);
+  takeOfferedEngine();
+  assert.equal(takeImportRuns().import_search_engine_offers_taken, 0, "the button counts once");
+});
+
+test("after an import picked the engine, choosing one in Settings makes the next import only offer", async () => {
+  fresh();
+  engines = { Default: DUCKDUCKGO };
+  await importFrom(arc(["Default"]));
+  S().setSearchEngine("ecosia");
+  engines = { Default: BING };
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(S().settings.searchEngine, "ecosia");
+  assert.equal(step.searchEngine.offered, true);
+});
+
+test("a custom engine the user didn't take isn't added; taking it adds it once", async () => {
+  fresh();
+  S().setSearchEngine("kagi");
+  engines = { Default: DOCS };
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(S().settings.customSearchEngines.length, 0);
+  assert.deepEqual(step.searchEngine, { name: "Ardia Docs", offered: true, engine: DOCS });
+  assert.equal(sent().at(-1).properties.outcome, "custom");
+  takeOfferedEngine();
+  const custom = S().settings.customSearchEngines;
+  assert.equal(custom.length, 1);
+  assert.equal(S().settings.searchEngine, custom[0].id);
 });
 
 test("a custom engine comes over once and becomes the default", async () => {
@@ -179,7 +234,7 @@ test("a source on its own default leaves Ardia's engine alone", async () => {
   const step = await importFrom(arc(["Default"]));
   assert.equal(S().settings.searchEngine, "kagi");
   assert.equal(step.searchEngine, undefined);
-  assert.equal(sent().at(-1).properties.outcome, "source_default");
+  assert.deepEqual(pick("outcome", "offered"), { outcome: "source_default", offered: false });
 });
 
 test("in onboarding, the engine an import brought over wins over the browser's preset, whichever comes first", async () => {
@@ -201,9 +256,22 @@ test("in onboarding, the engine an import brought over wins over the browser's p
   chooseSource("arc");
   confirmAnswer("source", sourcePatch(), []);
   assert.equal(S().settings.searchEngine, "google");
-  await importFrom(arc(["Default"]));
-  assert.equal(S().settings.searchEngine, "duckduckgo", "an import after Continue still brings it");
-  useOnboarding.setState({ windowId: null, leaving: false, redo: false });
+  assert.equal(engineChosenByUser(), true);
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(S().settings.searchEngine, "duckduckgo", "an import after Continue still brings it during setup");
+  assert.equal(step.searchEngine.offered, false);
+  fresh();
+});
+
+test("redoing setup from Settings counts as a later import: a chosen engine is only offered", async () => {
+  fresh();
+  S().setSearchEngine("kagi");
+  useOnboarding.setState({ windowId: S().createWindow(), redo: true });
+  engines = { Default: DUCKDUCKGO };
+  const step = await importFrom(arc(["Default"]));
+  assert.equal(S().settings.searchEngine, "kagi");
+  assert.equal(step.searchEngine.offered, true);
+  fresh();
 });
 
 test("in onboarding, the imported engine still wins after a relaunch on the source step", async () => {
@@ -213,13 +281,16 @@ test("in onboarding, the imported engine still wins after a relaunch on the sour
   saveOnboarding({ startedAt: Date.now() });
   engines = { Default: DUCKDUCKGO };
   await importFrom(arc(["Default"]));
+  const saved = JSON.parse(JSON.stringify({ settings: S().settings, settingsMeta: S().settingsMeta }));
   useOnboarding.setState({ windowId: null, leaving: false, redo: false, step: "intro" });
-  useImportedSettings.setState({ keys: [] });
+  S().hydrate(saved);
+  S().createWindow();
+  assert.ok(S().settingsMeta.inferred.includes("searchEngine"), "the session keeps that the engine came from an import");
   assert.equal(maybeStartOnboarding(), true);
   assert.equal(useOnboarding.getState().step, "source");
   const patch = sourcePatch();
   assert.equal("searchEngine" in patch, false, "the preset doesn't put Google back");
   confirmAnswer("source", patch, []);
   assert.equal(S().settings.searchEngine, "duckduckgo");
-  useOnboarding.setState({ windowId: null, leaving: false, redo: false });
+  fresh();
 });

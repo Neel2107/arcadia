@@ -6,6 +6,7 @@ import { plural } from "../../../state/browser/model";
 import { useProfileOrder, useProfileRecords } from "../../../state/profiles/hooks";
 import type { ImportCounts } from "../../../state/import/apply";
 import { backTo, closeImport, openFoundExtensions, type ImportFlow } from "../../../state/import/flow";
+import { takeOfferedEngine } from "../../../state/import/searchEngine";
 import { useOnboarding } from "../../../state/onboarding/onboarding";
 import { Button, space, Symbol, Text, useTheme } from "../../ui";
 import { APP, kindTitle } from "../model";
@@ -72,10 +73,16 @@ function LeftBehind({ notes, failed }: { notes: string[]; failed: boolean }) {
 function SearchEngineLine({ flow, failed }: { flow: ImportFlow; failed: boolean }) {
   const { source, step } = flow;
   if (step.name !== "done" || !step.searchEngine) return null;
+  const { name, offered } = step.searchEngine;
+  const from = source?.name ?? "Your other browser";
+  const line = offered ? `${from} searches with ${name}. ${APP} kept the search engine you chose.` : `Search uses ${name} now, as in ${from}. You can change it in Settings › Profiles.`;
   return (
-    <Text size="small" tone="textSecondary" style={failed ? { marginTop: space.s } : { textAlign: "center" }}>
-      {`Search uses ${step.searchEngine} now, as in ${source?.name ?? "your other browser"}. You can change it in Settings › Search Engine.`}
-    </Text>
+    <View style={{ alignItems: failed ? "flex-start" : "center", gap: space.m, marginTop: failed ? space.s : 0 }}>
+      <Text size="small" tone="textSecondary" style={failed ? undefined : { textAlign: "center" }}>
+        {line}
+      </Text>
+      {offered && <Button title={`Use ${name} for Search`} onPress={takeOfferedEngine} />}
+    </View>
   );
 }
 

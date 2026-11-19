@@ -17,7 +17,6 @@ export type Saved = {
   defaultBrowserTrialStartedAt?: number;
   defaultBrowserCheckInDoneAt?: number;
   introMusicMuted?: boolean;
-  imported?: string[];
 };
 
 export function readSaved(): Saved | null {

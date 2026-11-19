@@ -1,28 +1,19 @@
 import { BUILT_IN_ENGINES, engineById, hostOf, validateEngine, type EngineInput, type SearchEngine } from "@ardia/core";
-import { create } from "zustand";
-import type { BrowserProfile, ImportedSearchEngine } from "../../platform/importModule";
+import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
+import type { BrowserProfile, BrowserSource, ImportedSearchEngine } from "../../platform/importModule";
 import { useBrowser } from "../browser/store";
-import { DEFAULT_SETTINGS, searchEngines, type Settings } from "../settings/settings";
+import { useOnboarding } from "../onboarding/onboarding";
+import { searchEngines } from "../settings/settings";
 import type { ConsentToken } from "../telemetry/client";
+import { noteSearchEngineOfferTaken } from "../telemetry/importRuns";
 import { noteSearchEngineImport, type SearchEngineImportOutcome } from "../telemetry/searchEngineImports";
+import { importNow, patchImport, type EngineNotice } from "./flow";
 
 export type ImportedEngineMatch = { id: string } | { custom: EngineInput } | null;
 
-export type AdoptedEngine = { outcome: SearchEngineImportOutcome; name: string | null; changed: boolean };
+export type AdoptedEngine = { outcome: SearchEngineImportOutcome; notice: EngineNotice | null; changed: boolean };
 
-export const useImportedSettings = create<{ keys: readonly (keyof Settings)[] }>()(() => ({ keys: [] }));
-
-export const restoreImportedSettings = (keys: readonly string[] | undefined) =>
-  useImportedSettings.setState({ keys: (keys ?? []).filter((k): k is keyof Settings => k in DEFAULT_SETTINGS) });
-
-const noteImportedSettings = (keys: readonly (keyof Settings)[]) =>
-  useImportedSettings.setState((s) => ({ keys: [...new Set([...s.keys, ...keys])] }));
-
-export function withoutImportedSettings(patch: Partial<Settings>): Partial<Settings> {
-  const { keys } = useImportedSettings.getState();
-  if (!keys.some((k) => k in patch)) return patch;
-  return Object.fromEntries(Object.entries(patch).filter(([k]) => !keys.includes(k as keyof Settings))) as Partial<Settings>;
-}
+type ProfileEngines = readonly { profile: BrowserProfile; engine?: ImportedSearchEngine }[];
 
 export function chromiumTemplateUrl(template: string): string {
   return template
@@ -75,31 +66,60 @@ export function matchImportedEngine(engine: ImportedSearchEngine, engines: reado
   return custom ? { custom } : null;
 }
 
-export function sourceEngine(profiles: readonly { profile: BrowserProfile; engine?: ImportedSearchEngine }[]): ImportedSearchEngine | undefined {
+export function sourceEngine(profiles: ProfileEngines): ImportedSearchEngine | undefined {
   return (profiles.find((p) => p.profile.isDefault) ?? profiles[0])?.engine;
 }
 
-function adopt(engine: ImportedSearchEngine | undefined): AdoptedEngine {
-  if (!engine) return { outcome: "source_default", name: null, changed: false };
-  const s = useBrowser.getState();
-  const match = matchImportedEngine(engine, searchEngines(s.settings));
-  if (!match) return { outcome: "unusable", name: null, changed: false };
-  let id: string;
-  if ("id" in match) id = match.id;
-  else {
-    const made = s.addCustomEngine(match.custom);
-    if ("error" in made) return { outcome: "unusable", name: null, changed: false };
-    id = made.id;
-  }
-  const changed = useBrowser.getState().settings.searchEngine !== id;
-  useBrowser.getState().setSearchEngine(id);
-  noteImportedSettings(["searchEngine"]);
-  const builtIn = BUILT_IN_ENGINES.some((e) => e.id === id);
-  return { outcome: builtIn ? "built_in" : "custom", name: engineById(searchEngines(useBrowser.getState().settings), id).name, changed };
+export function engineChosenByUser(): boolean {
+  const { chosen, inferred } = useBrowser.getState().settingsMeta;
+  return chosen.includes("searchEngine") && !inferred.includes("searchEngine");
 }
 
-export function adoptImportedEngine(sourceId: string, engine: ImportedSearchEngine | undefined, consent: ConsentToken | null): AdoptedEngine {
-  const adopted = adopt(engine);
-  noteSearchEngineImport(sourceId, adopted.outcome, adopted.changed, consent);
+function settingUpForTheFirstTime(): boolean {
+  const { windowId, redo } = useOnboarding.getState();
+  return windowId !== null && !redo;
+}
+
+const currentEngines = () => searchEngines(useBrowser.getState().settings);
+
+const nameOf = (id: string) => engineById(currentEngines(), id).name;
+
+function engineIdFor(match: NonNullable<ImportedEngineMatch>): string | null {
+  if ("id" in match) return match.id;
+  const made = useBrowser.getState().addCustomEngine(match.custom);
+  return "error" in made ? null : made.id;
+}
+
+function adopt(engine: ImportedSearchEngine | undefined): AdoptedEngine {
+  if (!engine) return { outcome: "source_default", notice: null, changed: false };
+  const match = matchImportedEngine(engine, currentEngines());
+  if (!match) return { outcome: "unusable", notice: null, changed: false };
+  const outcome = "id" in match && BUILT_IN_ENGINES.some((e) => e.id === match.id) ? "built_in" : "custom";
+  const current = useBrowser.getState().settings.searchEngine;
+  if ("id" in match && match.id === current) return { outcome, notice: null, changed: false };
+  if (engineChosenByUser() && !settingUpForTheFirstTime()) {
+    return { outcome, notice: { name: "id" in match ? nameOf(match.id) : match.custom.name, offered: true, engine }, changed: false };
+  }
+  const id = engineIdFor(match);
+  if (!id) return { outcome: "unusable", notice: null, changed: false };
+  useBrowser.getState().updateSettings({ searchEngine: id }, { inferred: true });
+  return { outcome, notice: { name: nameOf(id), offered: false, engine }, changed: true };
+}
+
+export function adoptImportedEngine(source: Pick<BrowserSource, "id" | "family">, profiles: ProfileEngines, consent: ConsentToken | null): AdoptedEngine | null {
+  if (!PLATFORM_FEATURES.readsSearchEngine || !profiles.length || (source.family !== "chromium" && source.family !== "arc")) return null;
+  const adopted = adopt(sourceEngine(profiles));
+  noteSearchEngineImport(source.id, adopted.outcome, adopted.changed, !!adopted.notice?.offered, consent);
   return adopted;
+}
+
+export function takeOfferedEngine() {
+  const { step } = importNow();
+  if (step.name !== "done" || !step.searchEngine?.offered) return;
+  const match = matchImportedEngine(step.searchEngine.engine, currentEngines());
+  const id = match && engineIdFor(match);
+  if (!id) return;
+  useBrowser.getState().setSearchEngine(id);
+  noteSearchEngineOfferTaken();
+  patchImport({ step: { ...step, searchEngine: { ...step.searchEngine, name: nameOf(id), offered: false } } });
 }
