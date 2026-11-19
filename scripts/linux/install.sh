@@ -88,6 +88,13 @@ package_owner() {
   return 1
 }
 
+package_owner_of_install() {
+  local chrome="$target/lib/ardia/chrome" resolved
+  package_owner "$chrome" && return
+  resolved=$(realpath -e -- "$chrome" 2>/dev/null) || return 1
+  [[ "$resolved" != "$chrome" ]] && package_owner "$resolved"
+}
+
 remove_if_ours() {
   local path=$1 marker=$2
   if [[ -f "$path" ]] && grep -qxF -- "$marker" "$path"; then
@@ -132,7 +139,7 @@ uninstall() {
     exit 1
   fi
   local owner
-  if [[ -z "$destdir" ]] && owner=$(package_owner "$target/lib/ardia/chrome"); then
+  if [[ -z "$destdir" ]] && owner=$(package_owner_of_install); then
     echo "install.sh: $prefix/lib/ardia belongs to a package; remove it with $owner instead" >&2
     exit 1
   fi

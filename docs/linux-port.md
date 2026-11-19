@@ -671,11 +671,12 @@ command ([linux-ci.md](linux-ci.md) › Linux releases).
   the tarball beside them renamed `ardia-bin-<pkgver>.tar.xz` (makepkg then skips the download), and run
   `makepkg -si`. `pkaction --action-id dev.ardia.linux.reauthenticate` then lists the polkit action.
 - **Uninstalling.** `sudo /usr/lib/ardia/install.sh --uninstall` (or the extracted package's `install.sh --uninstall`,
-  with the same `--prefix`) removes what the install put down: `lib/ardia`, the launcher and the desktop entry and
+  with the same `--prefix`, and the same `--destdir` for a staged tree) removes what the install put down: `lib/ardia`, the launcher and the desktop entry and
   icon when they're Ardia's for that prefix, the AppArmor profile when its attachment is exactly that prefix's `chrome`
   (unloaded first), and the polkit policy unless a package owns it, `/usr/lib/ardia` still holds an Ardia, or another
   prefix in `/var/lib/ardia/installs` still does. It refuses a prefix
-  with no Ardia in it, and an Ardia a `.deb`, Arch or RPM package installed (remove that with its package manager).
+  with no Ardia in it, and an Ardia a `.deb`, Arch or RPM package installed, also when the prefix reaches it through a symlink (remove that
+  with its package manager).
   Each user's profile in `~/.config/ardia` stays. Two tarball installs share one AppArmor profile, so the last
   install's prefix owns it. `scripts/linux/install.test.mjs` covers the staged round trip.
 - **Ubuntu.** On a host whose AppArmor reads the 4.0 ABI (`/etc/apparmor.d/abi/4.0`, Ubuntu 24.04 and later), an
