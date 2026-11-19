@@ -3,6 +3,7 @@ import { storeAction, useBrowser } from "../browser/store";
 import { noteDownloadsPanel } from "../telemetry/downloadsPanelCounts";
 import { activeTabId } from "../browser/model";
 import { httpPagesPort } from "../../platform/launchConfig";
+import { closeQuietly } from "../pins/closedTabs";
 
 export const toggleSidebar = storeAction("toggleSidebar");
 export const restoreClosed = storeAction("restoreClosed");
@@ -47,5 +48,5 @@ export function openCheckPage(windowId: string) {
 }
 
 export function closeCheckPage(tabId: string) {
-  if (useBrowser.getState().tabs[tabId]) useBrowser.getState().closeTab(tabId);
+  if (useBrowser.getState().tabs[tabId]) useBrowser.setState((s) => closeQuietly(s, [tabId]));
 }
