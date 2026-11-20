@@ -199,6 +199,7 @@ export function noteReopenedPage(canGoBack: boolean) {
 
 export const noteToolbarPeekPageHidden = () => void counts.toolbarPeekPageHides++;
 export const noteSidebarPeekPageHidden = () => void counts.sidebarPeekPageHides++;
+export const noteSidebarEmptyWindowPeek = () => void counts.sidebarEmptyWindowPeeks++;
 export const notePinch = (on: "peek" | "littleArdia", outcome: "open" | "close") => void counts[on === "peek" ? (outcome === "open" ? "peekPinchOpens" : "peekPinchCloses") : outcome === "open" ? "littleArdiaPinchOpens" : "littleArdiaPinchCloses"]++;
 
 export const noteSwipeClose = (closed: boolean) => void counts[closed ? "littleArdiaSwipeCloses" : "littleArdiaSwipeCloseCancels"]++;
@@ -209,8 +210,6 @@ export const noteGroupHeaderHide = () => counts.groupHeaderHides++;
 export const noteLinkTabWait = (wait: "matched" | "skipped" | "timedOut") => void counts[wait === "matched" ? "linkTabsMatched" : wait === "skipped" ? "linkTabWaitsSkipped" : "linkTabWaitTimeouts"]++;
 
 export const noteHistorySearchFocus = (step: "requested" | "focused") => void counts[step === "requested" ? "historySearchFocusRequests" : "historySearchFocused"]++;
-
-export const noteSidebarEmptyWindowPeek = () => void counts.sidebarEmptyWindowPeeks++;
 
 export const noteSidebarMotion = (what: "merge" | "overrun") => void counts[what === "merge" ? "sidebarMotionMerges" : "sidebarSlideOverruns"]++;
 
