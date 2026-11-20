@@ -8,23 +8,8 @@ import { createProfile } from "../profiles/actions";
 import { noteImportedSpaces } from "../telemetry/usage";
 import { noteDiaSidebar, noteDiaTabProfiles, noteFirefoxFavicons, noteImportRun, noteUntitledBookmarks } from "../telemetry/importRuns";
 import { consentToken, type ConsentToken } from "../telemetry/client";
-import {
-  adoptSpaceIdentity,
-  applyResult,
-  emptyCounts,
-  importFavorites,
-  importDiaProfile,
-  profileColorFor,
-  profileNamed,
-  type BrowserProfile,
-  type DiaTabsResult,
-  type ImportCounts,
-  type ImportedExtension,
-  type ImportKind,
-  type ImportedSearchEngine,
-  type ImportResult,
-  untitledLinks,
-} from "./apply";
+import { adoptSpaceIdentity, applyResult, emptyCounts, importFavorites, importDiaProfile, profileColorFor, profileNamed, untitledLinks } from "./apply";
+import type { BrowserProfile, DiaTabsResult, ImportCounts, ImportedExtension, ImportKind, ImportedSearchEngine, ImportResult } from "./apply";
 import { diaProfilesFor, diaProfilesWithoutFolder } from "./diaTabs";
 import { importArcSpace, importDiaSpace } from "./sidebarTree";
 import { arcNotes, importArcArchive, importArcRouting, withArcGlyph } from "./arcExtras";
