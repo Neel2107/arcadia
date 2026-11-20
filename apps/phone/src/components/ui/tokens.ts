@@ -510,7 +510,7 @@ export const startInk = {
   dark: { pageDot: "rgba(255,255,255,0.32)", badgeInk: "#FFFFFF" },
 } as const;
 
-export const chromeLayout = { edge: 0.5, shadowRadius: 10, shadowY: 2, barSideInset: 24 } as const;
+export const chromeLayout = { edge: 0.5, shadowRadius: 10, shadowY: 2, barSideInset: 24, barCastsShadow: Platform.OS === "ios" } as const;
 
 export const chromeInk = {
   light: { surface: "#FFFFFF", edge: "rgba(0,0,0,0.12)", shadow: "rgba(0,0,0,0.12)", foreground: "rgba(14,15,16,0.9)", secondary: "rgba(0,0,0,0.5)", notSecure: lightRoles.destructive },

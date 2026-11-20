@@ -2167,6 +2167,18 @@ Not audited at all: Compose's `SyncSetupContent` internals inside onboarding.
   - **Main** shows the words (`BarControls.swift`). Arc's own indicator hasn't been measured here; the capture from
     Arc Search on the F4 decides whether shape, size, colour or position change.
 
+- Collapse Bottom Bar on Android is enabled when no valid saved choice exists. Explicit on and off values,
+  including imported values, win. iPhone keeps its existing default and spring. Android keeps the 30 dp host pill
+  mounted but hidden from touch and accessibility while expanded. Collapse and expand run iPhone's fold on
+  iPhone's spring (0.26 s, no bounce): the bar shrinks to 62 % into the pill as the pill grows out of it, and the
+  pill's surface fades with it, since Android has no glass to fade. On Android the bar and the pill cast no shadow:
+  inside the folds' hardware layers a shadow was cut flat at the pill's edges, and without the layers the shadows laid
+  a grey strip the bar's height across the page (POCO F4, 2026-11-20). Remove animations snaps to the endpoint. The page's
+  direction update no longer waits for a second effect to choose the toolbar state. Tapping the pill expands it;
+  the next upward then downward scroll can collapse it again. The deck keeps its own motion settings.
+  Watch the consent-gated `usage_counts.bottom_bar_collapses` count, never recorded in Incognito. This measures
+  collapse use, not frame smoothness. Smoothness and viewport resize counts still need real-device captures.
+
 - The page under the bar (the owner's decision, 2026-11-16).
   - **iPhone:** the page runs full screen under the glass bar, and WebKit gets the covered edges as
     `obscuredContentInsets`, so fixed footers and the page's last lines stay above the bar.
@@ -2179,7 +2191,13 @@ Not audited at all: Compose's `SyncSetupContent` internals inside onboarding.
     `obscuredInsets` and `toneInsets` on both. It also passes `obscuredColors`, the colours its own bars use: the
     page's remembered tone, or the theme's surface before it has one.
   - **What Android's page view does with them** (`PageView`, `PageBands`):
-    - it lays the WebView out between the bands and paints the bands in those colours, in the same commit as the bars;
+    - it lays the WebView out between the bands and paints the bands in those colours;
+    - a collapse or expand changes only transforms and opacity while scrolling. A bottom-only viewport change
+      waits 300 ms for the toolbar's fold and 120 ms without WebView scroll movement, including a fling,
+      with no finger still on the page. Only the latest endpoint is applied, once. Fixed footers and the page's
+      end then fit above the settled bar or pill. Top insets, view size changes, Find, search, full-screen video
+      and turning collapse off apply their viewport clearance immediately. A pending change belongs to its
+      page and WebView, and is cancelled when either is replaced or detached;
     - it samples the tone at the WebView's own edge;
     - it composes deck snapshots with the bands, so a card is the page as shown.
   - **Revisit** if Android's WebView gains an equivalent of `obscuredContentInsets`, or a way to keep fixed and
