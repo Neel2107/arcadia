@@ -62,6 +62,14 @@ final class PageView: ExpoView {
   }
 
   @MainActor
+  static func stopAllSummaries() {
+    for view in hosts.objectEnumerator()?.allObjects.compactMap({ $0 as? PageView }) ?? [] {
+      view.madePinchWatcher?.reset()
+      view.dismissSummary(animated: true)
+    }
+  }
+
+  @MainActor
   private var gestures: PageGestures {
     if let madeGestures { return madeGestures }
     let made = PageGestures(container: self)
@@ -78,7 +86,7 @@ final class PageView: ExpoView {
     if let madePinchWatcher { return madePinchWatcher }
     let made = PagePinchWatcher(container: self)
     made.ignoresTouch = { [weak self] in self?.isSummaryTouch($0) == true }
-    made.moment = { [weak self] in self?.pinchMoment() }
+    made.moment = { [weak self] in PageSummarySwitch.shared.isOn ? self?.pinchMoment() : nil }
     made.onPinchedIn = { [weak self] in _ = self?.summarize(.pinch) }
     madePinchWatcher = made
     return made
@@ -343,7 +351,7 @@ final class PageView: ExpoView {
 
   @MainActor
   func summarize(_ trigger: PageSummarySession.Trigger) -> Bool {
-    guard let pageID = registeredPageID, let page, let moment = pinchMoment(), moment.isVisible, !moment.isLoading else { return false }
+    guard PageSummarySwitch.shared.isOn, let pageID = registeredPageID, let page, let moment = pinchMoment(), moment.isVisible, !moment.isLoading else { return false }
     if let current = summaryLayer?.presenter.session, current.isCurrent(for: page) {
       if case .failed = current.phase {} else { return true }
     }

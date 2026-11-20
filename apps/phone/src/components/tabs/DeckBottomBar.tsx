@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Pressable, StyleSheet, TextInput, View, type StyleProp, type TextInputInstance, type ViewInstance, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { floatingBarCenter } from "../../lib/deckGeometry";
 import { haptics } from "../../state/app/haptics";
 import { newIncognitoTab, newRegularTab, newTab, reopenLastClosed, switchDeckIncognito } from "../../state/browse/store";
 import { menuOpenedHaptic } from "../../state/browse/tabMenus";
@@ -133,7 +135,10 @@ export function DeckBottomBar({ shown, barCenterY, deckHeight, safeSide, incogni
   const { focused } = search;
   const row = useRef<ViewInstance>(null);
   const keyboard = useKeyboardTopFromBottom(shown);
-  const lift = focused && keyboard > 0 ? Math.max(0, barCenterY - deckBarAboveKeyboard(deckHeight, keyboard)) : 0;
+  const barCenterFromBottom = floatingBarCenter(useSafeAreaInsets().bottom, "android");
+  const centerY = iPhoneOr(barCenterY, deckHeight - barCenterFromBottom);
+  const rest = iPhoneOr<ViewStyle>({ top: centerY - deckChromeLayout.barCircle / 2 }, { bottom: barCenterFromBottom - deckChromeLayout.barCircle / 2 });
+  const lift = focused && keyboard > 0 ? Math.max(0, centerY - deckBarAboveKeyboard(deckHeight, keyboard)) : 0;
   const rise = useSharedValue(0);
   useEffect(() => {
     rise.value = withTiming(-lift, { duration: deckChromeMotion.keyboard, easing: tabsCurve.easeOut });
@@ -148,11 +153,11 @@ export function DeckBottomBar({ shown, barCenterY, deckHeight, safeSide, incogni
     return () => watchDeckBar(null);
   }, []);
   return (
-    <Animated.View pointerEvents="box-none" style={[styles.place, { top: barCenterY - deckChromeLayout.barCircle / 2 }, riseStyle]}>
+    <Animated.View pointerEvents="box-none" style={[styles.place, rest, riseStyle]}>
       <View ref={row} testID="deckBottomBar" onLayout={measure} pointerEvents="box-none" style={[styles.bar, { paddingHorizontal: safeSide + chromeLayout.barSideInset }]}>
         <IncognitoSwitch incognito={incognito} dark={dark} {...fade} />
         <SearchTabsField search={search} style={styles.searchHit} {...fade} />
-        <PlusMenuButton width={deckChromeLayout.barCircle} label={incognito ? "New Incognito Tab" : "New Tab"} testID="deckBarPlus" dark={dark} place={{ bottom: deckHeight - barCenterY + deckChromeLayout.barCircle / 2 + deckChromeLayout.menuGap, right: chromeLayout.barSideInset, width: tabsLayout.menuWidth }} menusShown={menusShown} onMenu={onMenu} {...fade} />
+        <PlusMenuButton width={deckChromeLayout.barCircle} label={incognito ? "New Incognito Tab" : "New Tab"} testID="deckBarPlus" dark={dark} place={{ bottom: deckHeight - centerY + deckChromeLayout.barCircle / 2 + deckChromeLayout.menuGap, right: chromeLayout.barSideInset, width: tabsLayout.menuWidth }} menusShown={menusShown} onMenu={onMenu} {...fade} />
       </View>
     </Animated.View>
   );

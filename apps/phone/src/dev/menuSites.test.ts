@@ -28,6 +28,7 @@ const SITES: Record<string, Over[]> = {
   "duo/DuoBrowsing.tsx": ["page"],
   "duo/DuoSidebar.tsx": ["page", "page", "card", "page", "page", "page"],
   "library/ExpoLibrary.tsx": ["system", "system", "system", "system"],
+  "library/LibraryView.tsx": ["sheet", "sheet", "card"],
   "search/SearchTray.tsx": ["page"],
   "search/StartPage.tsx": ["frostable"],
   "search/StartScreen.tsx": ["frostable"],

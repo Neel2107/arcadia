@@ -141,6 +141,11 @@ Launch with `scripts/agent/ac launch <app> --data <dir> [--instance K=V] [--test
   in the dev harness has the current scale, `pixelRatio` and `hairline`. For a real 1× backing scale (pixel checks),
   add `--arg=-AppleMagnifiedMode --arg=YES` (low resolution mode, `devicePixelRatio` 1). Dev clicks and `windows.dev`
   points are root points.
+- **`applePasswordsPanel`** (password manager plugins, `docs/plugins.md` › passwordManager): background mode only logs
+  `[ardiacore] system passwords panel (background mode, not shown)` for the key and Edit › AutoFill › Passwords…; with
+  this key it sends AppKit's `_handleInsertFromPasswordsCommand:` for real and logs the first responder, the target and
+  whether AppKit took it (`log show --predicate 'eventMessage CONTAINS "system passwords panel"'`). Apple's panel
+  belongs to another process and can show on screen, so use it only with the screen locked or the owner's OK.
 - **`appDialog`**: `confirm` and `prompt` write their options (and `kind`) to `<data dir>/dialog.json` and answer from
   `dialog.json.pick` (deleted): `confirm` (with `,suppress` to tick the suppression box) or anything else to cancel; a
   prompt's answer is the text, empty to cancel. With no pick file they run as usual (background mode cancels).
