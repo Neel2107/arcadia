@@ -19,7 +19,8 @@ export type NavigationState = {
 };
 
 export type AppBadge = { origin: string; count: number | null; flag: boolean };
-export type FieldProviderOpened = { via: "badge" | "menu"; shown: boolean };
+export type FieldProviderPanelRefusal = "hidden" | "notFocused" | "unavailable" | "notKey" | "notEditing" | "throttled" | "refused" | "noPanel";
+export type FieldProviderOpened = { via: "badge" | "menu"; shown: boolean; reason?: FieldProviderPanelRefusal };
 export type VerificationCodeFound = { token: string; app: string; main: boolean };
 
 export type MediaState = { playing: boolean; muted: boolean };
@@ -280,6 +281,7 @@ export type WebViewHandle = {
 
   resolvePasswordPrompt(answer: PasswordPromptAnswer, edits?: { username?: string; password?: string; offer?: string }): Promise<void>;
   resolveAutofillPrompt(id: number, answer: AutofillPromptAnswer): Promise<void>;
+  answerAutofillPrompt?(id: number, answer: AutofillPromptAnswer): Promise<boolean>;
   executeExtensionAction(extensionId: string): Promise<ExtensionActionResult | null>;
 
   resolveDisplayMedia(id: string, sourceId: string | null, audio?: boolean): Promise<void>;

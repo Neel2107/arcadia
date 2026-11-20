@@ -61,6 +61,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)resolveUnresponsive:(BOOL)terminate NS_SWIFT_NAME(resolveUnresponsive(terminate:));
 - (NSString *)discard:(BOOL)unload NS_SWIFT_NAME(discard(unload:));
 - (NSArray<NSNumber *> *)sleepIfHiddenFor:(NSTimeInterval)seconds NS_SWIFT_NAME(sleepIfHidden(for:));
++ (nullable NSString *)appTabIdContainingView:(nullable NSView *)view NS_SWIFT_NAME(appTabId(containing:));
 @end
 
 @interface ArdiaWebView (Reveals)
@@ -153,11 +154,13 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(querySystemPanel(in:owner:profile:generation:ask:completion:));
 + (void)resetFieldProviderPage:(id)owner NS_SWIFT_NAME(resetFieldProviderPage(_:));
 + (void)dropVerificationCodesOf:(id)owner frame:(nullable NSString *)frame NS_SWIFT_NAME(dropVerificationCodes(of:frame:));
-+ (NSDictionary *)requestSystemPanelIn:(NSView *)page
-                                owner:(id)owner
-                              profile:(NSString *)profile
-                                field:(nullable NSString *)field
-                           generation:(double)generation NS_SWIFT_NAME(requestSystemPanel(in:owner:profile:field:generation:));
++ (void)requestSystemPanelIn:(NSView *)page
+                       owner:(id)owner
+                     profile:(NSString *)profile
+                       field:(nullable NSString *)field
+                  generation:(double)generation
+                  completion:(void (^)(NSDictionary *result))completion
+    NS_SWIFT_NAME(requestSystemPanel(in:owner:profile:field:generation:completion:));
 + (nullable NSDictionary *)offerVerificationCode:(NSString *)url
                                        owner:(id)owner
                                        frame:(NSString *)frame
@@ -260,6 +263,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)resolvePasswordPrompt:(NSString *)action username:(nullable NSString *)username password:(nullable NSString *)password
     NS_SWIFT_NAME(resolvePasswordPrompt(_:username:password:));
 - (void)resolveAutofillPrompt:(NSInteger)promptId action:(NSString *)action NS_SWIFT_NAME(resolveAutofillPrompt(_:action:));
+- (BOOL)answerAutofillPrompt:(NSInteger)promptId action:(NSString *)action NS_SWIFT_NAME(answerAutofillPrompt(_:action:));
 - (nullable NSString *)executeExtensionAction:(NSString *)extensionId NS_SWIFT_NAME(executeExtensionAction(_:));
 - (void)notificationAction:(NSString *)notificationId action:(NSString *)action NS_SWIFT_NAME(notificationAction(_:action:));
 @end
