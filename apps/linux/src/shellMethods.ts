@@ -87,6 +87,8 @@ const frameCornerRadius = (host?: ArdiaHost) => (id: string): Promise<number> =>
     () => 0,
   );
 
+const noGeometry = (): Promise<null> => Promise.resolve(null);
+
 const HOST_SHELL_METHODS: Record<string, (host?: ArdiaHost) => ShellMethod> = { frameCornerRadius };
 
 const LINUX_SHELL_METHODS: Record<string, ShellMethod> = {
@@ -121,8 +123,13 @@ const LINUX_SHELL_METHODS: Record<string, ShellMethod> = {
   startDictation: unavailable("Dictation"),
   dictationAvailable: () => linuxCapabilities().dictation,
   pickFiles: unavailable("Choosing files to open"),
+  dismissShownOnly: unavailable("Taking away a question Ardia asked on the control socket's behalf"),
   replyToTerminate: resolved,
   readText: readClipboardText,
+  windowGeometry: noGeometry,
+  setWindowFrame: noGeometry,
+  setWindowZoomed: noGeometry,
+  setWindowFullScreen: noGeometry,
 };
 
 export function watchSidebarEdgeBesideNativeLeftEdge(host: ArdiaHost) {
