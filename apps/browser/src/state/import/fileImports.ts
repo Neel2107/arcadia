@@ -10,16 +10,16 @@ export const openFullDiskAccessSettings = () => void importModule().openFullDisk
 
 
 export async function importSafariExport(path: string) {
+  const consent = consentToken();
   const { target } = importNow();
   const signal = importSignal();
-  const consent = consentToken();
   startProgress({ bookmarks: "active", history: "active", passwords: "active", autofill: "active" }, 1);
   try {
     const data = await importModule().importSafariExport(path);
     const failed: ImportKind[] = [];
-    const counts = await applySafari(target, data, false, (k) => failed.push(k));
+    const counts = await applySafari(target, data, false, (k) => failed.push(k), consent);
     noteUntitledBookmarks(untitledLinks(data.bookmarks), consent);
-    updateStatus(signal, () => ({ bookmarks: "done", history: "done", passwords: "done", autofill: failed.includes("autofill") ? "failed" : "done" }));
+    updateStatus(signal, () => ({ bookmarks: "done", history: failed.includes("history") ? "failed" : "done", passwords: "done", autofill: failed.includes("autofill") ? "failed" : "done" }));
     finishImport(signal, { counts, failures: failed.map((kind) => ({ kind, profiles: [] })), notes: [], extensions: NO_EXTENSIONS });
   } catch (e) {
     if (signal.aborted) return;
@@ -28,17 +28,17 @@ export async function importSafariExport(path: string) {
 }
 
 export async function importSafariDirect() {
+  const consent = consentToken();
   const { target, safariCookies } = importNow();
   const signal = importSignal();
-  const consent = consentToken();
   const api = importModule();
   startProgress({ bookmarks: "active", history: "active", tabs: "active", ...(safariCookies ? { cookies: "active" as const } : {}) }, 1);
   try {
     const data = await api.importSafariDirect({ signal });
     const failed: ImportKind[] = [];
-    const counts = await applySafari(target, data, safariCookies, (k) => failed.push(k));
+    const counts = await applySafari(target, data, safariCookies, (k) => failed.push(k), consent);
     noteUntitledBookmarks(untitledLinks(data.bookmarks), consent);
-    updateStatus(signal, () => ({ bookmarks: "done", history: "done", tabs: "done", ...(safariCookies ? { cookies: failed.includes("cookies") ? "failed" : ("done" as const) } : {}) }));
+    updateStatus(signal, () => ({ bookmarks: "done", history: failed.includes("history") ? "failed" : "done", tabs: "done", ...(safariCookies ? { cookies: failed.includes("cookies") ? "failed" : ("done" as const) } : {}) }));
     finishImport(signal, { counts, failures: failed.map((kind) => ({ kind, profiles: [] })), notes: [], extensions: NO_EXTENSIONS });
   } catch (e) {
     const { code } = ardiaError(e);
