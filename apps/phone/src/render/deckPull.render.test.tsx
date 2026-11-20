@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import { getAnimatedStyle, runOnUI } from "react-native-reanimated";
@@ -343,6 +343,73 @@ test("the bar is one bar throughout: its three glass shapes stay while the brows
   expect(DECK_GLYPHS.map((glyphs) => opacity(host(root, glyphs)!))).toEqual([0, 0, 0]);
   act(() => pull.resetDeckPull());
   frame();
+});
+
+const onAndroid = Platform.OS === "android" ? test : test.skip;
+
+for (const lands of [true, false]) {
+  onAndroid(`an Android deck pull ${lands ? "lands" : "returns"} in 300 ms after release`, () => {
+    app();
+    const id = currentTabs().selectedId!;
+    const settled = jest.fn();
+    act(() => {
+      pull.beginDeckPull(id, 0);
+      pull.trackDeckPull(-150);
+    });
+    caughtUp();
+    act(() => pull.settleDeckPull(lands, -300, settled));
+    frame();
+    act(() => void jest.advanceTimersByTime(DECK_PULL.androidSettleMs - 32));
+    expect(settled).not.toHaveBeenCalled();
+    act(() => void jest.advanceTimersByTime(64));
+    expect(settled).toHaveBeenCalledWith(id, lands, expect.any(Number));
+  });
+}
+
+const barCenterFromTop = (root: Root, testID: string) => {
+  let at: ReactTestInstance | null = host(root, testID);
+  let y = 0;
+  let bottom: number | undefined;
+  let top: number | undefined;
+  while (at) {
+    if (typeof at.type === "string") {
+      y += moved(at).translateY ?? 0;
+      const flat = StyleSheet.flatten(at.props.style) ?? {};
+      if (top === undefined && bottom === undefined && (typeof flat.top === "number" || typeof flat.bottom === "number")) {
+        top = typeof flat.top === "number" ? flat.top : undefined;
+        bottom = typeof flat.bottom === "number" ? flat.bottom : undefined;
+      }
+    }
+    at = at.parent;
+  }
+  return (top !== undefined ? top : SCREEN.height - bottom! - 48) + 24 + y;
+};
+
+onAndroid("on Android, whose bar has no glass to hand over, the page's bar stays the one bar from the first move to the swap: it never moves, never empties, takes the tab view's glyphs as the page lands and holds them until the deck's identical bar replaces it in place, with no React hand-over mid-landing", () => {
+  const root = app();
+  const id = currentTabs().selectedId!;
+  const pageBar = barCenterFromTop(root, "floatingBar");
+  expect(barCenterFromTop(root, "deckBottomBar")).toBe(pageBar);
+  const owned: boolean[] = [];
+  const watch = pull.usePullBar.subscribe((state) => owned.push(state.deckOwns));
+  swipe([{ dy: -22 }, { dy: -60 }, { dy: -150 }]);
+  let frames = 0;
+  while (surface() !== "deck" && frames < 240) {
+    expect(barCenterFromTop(root, "floatingBar")).toBe(pageBar);
+    expect(hosts(root, "pullGhost")).toHaveLength(3);
+    if (deckPull.stage.value === PULL_STAGE.landed || deckPull.stage.value === PULL_STAGE.handed) {
+      expect(hosts(root, "pullGhost").map(opacity)).toEqual([1, 1, 1]);
+      expect(hosts(root, "pullGlyphs").every((glyphs) => opacity(glyphs) === 0)).toBe(true);
+    }
+    frame();
+    frames += 1;
+  }
+  watch();
+  expect(surface()).toBe("deck");
+  expect(owned).not.toContain(true);
+  expect(barCenterFromTop(root, "deckBottomBar")).toBe(pageBar);
+  expect(DECK_GLYPHS.map((glyphs) => opacity(host(root, glyphs)!))).toEqual([1, 1, 1]);
+  expect(currentTabs().selectedId).toBe(id);
 });
 
 const CACHED = "file:///snapshots/cached.jpg";

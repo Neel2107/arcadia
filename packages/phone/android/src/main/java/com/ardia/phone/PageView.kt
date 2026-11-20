@@ -79,6 +79,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
 
     private val pinches = PagePinchWatcher(
         density = context.resources.displayMetrics.density,
+        isOn = { PageSummaryChoice.isEnabled(context) },
         moment = ::pinchMoment,
         measureRest = ::measureRest,
         later = { millis, run -> postDelayed({ run() }, millis) },
@@ -418,6 +419,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
     }
 
     internal fun summarize(trigger: PageSummarySession.Trigger): Boolean {
+        if (!PageSummaryChoice.isEnabled(context)) return false
         val opened = page ?: return false
         val moment = pinchMoment() ?: return false
         if (!moment.isVisible || moment.isLoading) return false
@@ -429,6 +431,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
         val web = opened.view.value
         val account = BrowseForMeHost.get(context).account
         val provider = PageSummaryChoice.stored(context)
+        val revision = PageSummaryChoice.revision
         val made = PageSummarySession(
             trigger = trigger,
             pageId = opened.id,
@@ -438,7 +441,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
             provider = provider,
             writing = PageSummaryWriting.live(account),
             read = { opened.readableContent() },
-            isCurrent = { page === opened && document.generation == generation && web != null && opened.view.value === web },
+            isCurrent = { PageSummaryChoice.revision == revision && page === opened && document.generation == generation && web != null && opened.view.value === web },
         )
         made.onSettled = { settled ->
             PhonePages.report(settled.pageId, "page.summarySettled", "trigger" to settled.trigger.raw, "outcome" to settled.outcome, "chatGPTFellBack" to settled.chatGPTFellBack, "isPrivate" to settled.isPrivate)

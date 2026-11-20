@@ -464,6 +464,7 @@ export const startLayout = {
   pageDot: 7,
   pageDotSpacing: 21,
   invitationPadding: 20,
+  logoPressOpacity: 0.85,
 } as const;
 
 export const deckChromeLayout = {

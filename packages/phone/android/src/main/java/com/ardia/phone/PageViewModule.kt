@@ -193,6 +193,14 @@ class PageViewModule : Module() {
 
         AsyncFunction("dismissPageSummaries") { -> PhonePages.dismissSummaries() }.runOnQueue(Queues.MAIN)
 
+        AsyncFunction("pageSummariesEnabled") { -> PageSummaryChoice.isEnabled(context) }.runOnQueue(Queues.MAIN)
+
+        AsyncFunction("setPageSummariesEnabled") { enabled: Boolean ->
+            PageSummaryChoice.enable(context, enabled)
+            if (!enabled) PhonePages.dismissSummaries()
+            PageSummaryChoice.isEnabled(context)
+        }.runOnQueue(Queues.MAIN)
+
         AsyncFunction("pageSummaryProvider") { -> PageSummaryChoice.stored(context).raw }.runOnQueue(Queues.MAIN)
 
         AsyncFunction("setPageSummaryProvider") { provider: String ->

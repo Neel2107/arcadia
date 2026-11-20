@@ -41,6 +41,7 @@ import { useTab } from "../../state/tabs/hooks";
 import { capsule, ConfirmDialog, FloatingMenu, font, menuLayout, PressScale, Sheet, space, Symbol, tabsMotion, Toggle, useDesign, useTheme, type SymbolName } from "../ui";
 import { PageMenuWords, usePageMenuInk } from "./PageMenuWords";
 import { syncOffered } from "../../state/sync/offer";
+import { usePageSummariesEnabled } from "../../state/pageSummary/enabled";
 
 export function PageMenu({ tabId, open, onHidden }: { tabId: string; open: boolean; onHidden: () => void }) {
   const model = useMenuModel(tabId);
@@ -79,7 +80,7 @@ export function PageMenu({ tabId, open, onHidden }: { tabId: string; open: boole
 function MenuMain({ tabId, model, onTranslate }: { tabId: string; model: MenuModel; onTranslate: () => void }) {
   const { fontScale } = useWindowDimensions();
   const large = fontScale >= copy().menuLargeTextScale;
-  const offersSummary = canSummarizePages();
+  const offersSummary = usePageSummariesEnabled() && canSummarizePages();
   return (
     <ScrollView contentContainerStyle={styles.column} bounces={false}>
       <NavigationCapsule tabId={tabId} />

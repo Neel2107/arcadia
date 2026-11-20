@@ -19,6 +19,8 @@ export type NavigationState = {
 };
 
 export type AppBadge = { origin: string; count: number | null; flag: boolean };
+export type FieldProviderOpened = { via: "badge" | "menu"; shown: boolean };
+export type VerificationCodeFound = { token: string; app: string; main: boolean };
 
 export type MediaState = { playing: boolean; muted: boolean };
 
@@ -236,6 +238,8 @@ export type WebViewProps = ViewProps & {
   onPreferredSize?: (size: { width: number; height: number }) => void;
   onTransferRefused?: (fromWindowId: string) => void;
   onAppBadge?: (badge: AppBadge) => void;
+  onFieldProviderOpened?: (opened: FieldProviderOpened) => void;
+  onVerificationCodeFound?: (found: VerificationCodeFound) => void;
 };
 
 export type WebViewHandle = {

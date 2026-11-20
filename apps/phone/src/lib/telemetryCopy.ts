@@ -62,7 +62,19 @@ export const PHONE_WHATS_SENT: { title: string; items: SentItem[] }[] = [
         fields: ["page_summaries_pinched", "page_summaries_from_menu", "page_summaries_on_device", "page_summaries_excerpts", "page_summaries_failed"],
       },
       {
-        text: "In the same daily counts, on Android: how often you summarized a page by pinching in or from the page menu, how many summaries ChatGPT wrote, Gemini Nano wrote on the phone or were the page’s own lines, how many it couldn’t write, and how often ChatGPT couldn’t summarize so the phone did, never while browsing privately. Counts only, never which page or what the summary said",
+        text: "In the same daily counts: how often you tapped Paste and Go with a link or with text, and how often it found nothing to paste because you didn’t allow the paste or the clipboard had emptied. Never what you copied, and never while browsing privately",
+        fields: ["paste_and_go_links", "paste_and_go_texts", "paste_and_go_unread"],
+      },
+      {
+        text: "In the same daily counts, on Android: how often you opened Ardia from its Search, Voice Search and New Incognito Tab tiles in Quick Settings. Counts only",
+        fields: ["search_tile_taps", "voice_tile_taps", "incognito_tile_taps"],
+      },
+      {
+        text: "In the same daily counts, on Android: how often you tapped the Ardia logo on the start page to search. Counts only, and never while browsing privately",
+        fields: ["start_logo_taps"],
+      },
+      {
+        text: "In the same daily counts, on Android: how often you summarized a page by pinching in or from the page menu, how many summaries ChatGPT or Gemini Nano wrote, how many neither could write, and how often ChatGPT couldn’t summarize so Gemini Nano did on the phone, never while browsing privately. Counts only, never which page or what the summary said",
         fields: ["page_summaries_chatgpt", "page_summaries_chatgpt_fallbacks"],
       },
     ],
