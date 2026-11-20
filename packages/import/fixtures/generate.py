@@ -524,9 +524,7 @@ def build_chrome():
     write(os.path.join(MISC, "Session_v5_encrypted"), snss_encrypted(cmds))
 
     p1 = os.path.join(root, "Profile 1")
-    write_json(os.path.join(p1, "Preferences"), {"profile": {"name": "Work"}, "default_search_provider_data": {
-        "template_url_data": {"short_name": BING[0], "keyword": BING[1], "url": BING[2], "prepopulate_id": BING[3],
-                              "synced_guid": BING[4]}}})
+    write_json(os.path.join(p1, "Preferences"), {"profile": {"name": "Work"}})
     chromium_bookmarks(os.path.join(p1, "Bookmarks"),
                        bar=[bookmark("Work wiki", "https://wiki.work.example/", t, "00000000-0000-4000-8000-000000000301")],
                        other=[], synced=[])
@@ -538,7 +536,7 @@ def build_brave():
     root = os.path.join(SUPPORT, "BraveSoftware", "Brave-Browser")
     chromium_local_state(root, {"Default": {"name": "Person 1"}})
     d = os.path.join(root, "Default")
-    write_json(os.path.join(d, "Preferences"), default_search(""))
+    write_json(os.path.join(d, "Preferences"), {})
     chromium_bookmarks(os.path.join(d, "Bookmarks"), bar=[bookmark("Brave Search", "https://search.brave.example/",
                                                                    BASE_UNIX, "00000000-0000-4000-8000-000000000401")],
                        other=[], synced=[])
@@ -597,8 +595,7 @@ def build_helium():
     root = os.path.join(SUPPORT, "net.imput.helium")
     chromium_local_state(root, {"Default": {"name": "Helium", "user_name": ""}})
     d = os.path.join(root, "Default")
-    write_json(os.path.join(d, "Preferences"), default_search(GOOGLE[4]))
-    chromium_keywords(os.path.join(d, "Web Data"), [GOOGLE, DUCKDUCKGO])
+    write_json(os.path.join(d, "Preferences"), {})
     t = BASE_UNIX - 86400 * 5
     chromium_bookmarks(os.path.join(d, "Bookmarks"),
                        bar=[bookmark("Helium", "https://helium.example/", t, "00000000-0000-4000-8000-000000000601"),
@@ -654,7 +651,7 @@ def build_dia():
     ]
     write(os.path.join(d, "Sessions", f"Session_{webkit(BASE_UNIX)}"), snss_plain(cmds))
     p2 = os.path.join(root, "Profile 2")
-    write_json(os.path.join(p2, "Preferences"), default_search("00000000-0000-4000-8000-00000000e404"))
+    write_json(os.path.join(p2, "Preferences"), {})
     chromium_bookmarks(os.path.join(p2, "Bookmarks"),
                        bar=[bookmark("Work", "https://work.dia.example/", t, "00000000-0000-4000-8000-000000000705")],
                        other=[], synced=[])

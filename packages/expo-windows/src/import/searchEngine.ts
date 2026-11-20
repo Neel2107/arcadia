@@ -15,7 +15,7 @@ const positive = (value: unknown) => {
   return n !== undefined && Number.isInteger(n) && n > 0 ? n : undefined;
 };
 
-export function chromiumEngine(name: unknown, keyword: unknown, url: unknown, prepopulateId: unknown): SearchEngine | undefined {
+function chromiumEngine(name: unknown, keyword: unknown, url: unknown, prepopulateId: unknown): SearchEngine | undefined {
   const template = nonEmpty(url)?.replace(/\{searchTerms\?\}/g, "{searchTerms}");
   if (!template?.includes("{searchTerms}")) return undefined;
   const id = positive(prepopulateId);

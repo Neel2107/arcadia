@@ -95,7 +95,7 @@ sqlite3 CLI: it checkpoints the WAL the tests depend on.
 
 | Function | Writes (under `fixtures/`) |
 |---|---|
-| `build_chrome` | `home/Library/Application Support/Google/Chrome/` (Default + Profile 1, each with extensions and toolbar pins from `chrome_extensions`: Web Store ones on and off, a Manifest V2, an unpacked and a policy one), `misc/Cookies-v23`, `misc/Session_v5_encrypted`. Default's search engine is a custom one (`keywords` in `Web Data`), Profile 1's is Bing from `template_url_data` |
+| `build_chrome` | `home/Library/Application Support/Google/Chrome/` (Default + Profile 1, each with extensions and toolbar pins from `chrome_extensions`: Web Store ones on and off, a Manifest V2, an unpacked and a policy one), `misc/Cookies-v23`, `misc/Session_v5_encrypted`. Default's search engine is a custom one (`keywords` in `Web Data`) |
 | `build_brave` | `home/Library/Application Support/BraveSoftware/Brave-Browser/` |
 | `build_opera` | `home/Library/Application Support/com.operasoftware.Opera/` (the root is the profile) |
 | `build_helium` | `home/Library/Application Support/net.imput.helium/` |

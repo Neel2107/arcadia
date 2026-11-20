@@ -44,10 +44,7 @@ const onHost = (host: string, engine: SearchEngine) => {
 function customInput(engine: ImportedSearchEngine, url: string, engines: readonly SearchEngine[]): EngineInput | null {
   const host = hostOf(url.replace(/%s/g, "q"));
   const name = engine.name.trim() || host;
-  const preferred = [...new Set([engine.keyword.trim().toLowerCase(), host].filter(Boolean))];
-  const base = preferred.find((k) => !/\s/.test(k));
-  const suffixed = base ? Array.from({ length: engines.length + 1 }, (_, i) => `${base}-${i + 2}`) : [];
-  for (const keyword of [...preferred, ...suffixed]) {
+  for (const keyword of new Set([engine.keyword.trim().toLowerCase(), host].filter(Boolean))) {
     const input = { name, keyword, url };
     if (!validateEngine(input, engines)) return input;
   }
