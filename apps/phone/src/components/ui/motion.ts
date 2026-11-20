@@ -51,7 +51,7 @@ export const tabsMotion = {
   sheetIn: spring(0.39, 1),
   sheetOut: spring(0.32, 1),
   surfaceFade: iPhoneOr(150, 200),
-  barCollapse: iPhoneOr(spring(0.26, 1), spring(0.4, 1)),
+  barCollapse: spring(0.26, 1),
   sheetRise: spring(0.42, 0.9),
   sheetDismiss: spring(0.32, 1),
   sheetReduced: 200,

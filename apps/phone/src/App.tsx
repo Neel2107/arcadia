@@ -15,7 +15,8 @@ import { ExpoSettingsSheet } from "./components/settings/ExpoSettingsStack";
 import { ExpoArchiveSheet } from "./components/tabs/ExpoArchive";
 import { ExpoSpacesSheet } from "./components/sync/ExpoSpaces";
 import { ExpoLibrarySheet } from "./components/library/ExpoLibrary";
-import { useLibrary } from "./state/library/store";
+import { LibraryView } from "./components/library/LibraryView";
+import { closeLibrary, useLibrary } from "./state/library/store";
 import { SettingsView } from "./components/settings/SettingsView";
 import { SpacesView } from "./components/sync/SpacesView";
 import { ToastHost } from "./components/toasts/ToastHost";
@@ -134,7 +135,7 @@ export function Surfaces() {
   const sheetProgress = useSharedValue(0);
   const libraryOpen = useLibrary((s) => s.open);
   const systemSheet = SYSTEM_SHEETS && (settingsOpen || libraryOpen || sheet === "archive" || sheet === "spaces");
-  const front = frontSheet(settingsOpen && !SYSTEM_SHEETS, SYSTEM_SHEETS && (sheet === "archive" || sheet === "spaces") ? null : sheet);
+  const front = frontSheet(settingsOpen && !SYSTEM_SHEETS, SYSTEM_SHEETS && (sheet === "archive" || sheet === "spaces") ? null : sheet, libraryOpen && !SYSTEM_SHEETS);
   const theme = useTheme();
   countRender("Surfaces");
   const incognito = useIncognito();
@@ -166,8 +167,8 @@ export function Surfaces() {
         </Layer>
       </SheetBackground>
       <Layer covered={onboarding || voice}>
-        <FullSheet sheet={front} progress={sheetProgress} onDismiss={front === "settings" ? closeSettings : closeArchive}>
-          {(shown) => (shown === "settings" ? <SettingsView /> : shown === "archive" ? <ArchiveView /> : <SpacesView />)}
+        <FullSheet sheet={front} progress={sheetProgress} onDismiss={front === "settings" ? closeSettings : front === "library" ? closeLibrary : closeArchive}>
+          {(shown) => (shown === "settings" ? <SettingsView /> : shown === "library" ? <LibraryView /> : shown === "archive" ? <ArchiveView /> : <SpacesView />)}
         </FullSheet>
       </Layer>
       {SYSTEM_SHEETS ? <ExpoSettingsSheet /> : null}

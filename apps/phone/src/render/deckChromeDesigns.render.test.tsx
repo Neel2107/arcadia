@@ -230,7 +230,10 @@ test("the bottom bar is the Incognito switch, the Search Tabs capsule and a 48-p
   expect(bar).toMatchObject({ height: 48, gap: 8, paddingHorizontal: 24 });
   let place = host(root, "deckBottomBar")!.parent;
   while (place && StyleSheet.flatten(place.props.style)?.position !== "absolute") place = place.parent;
-  expect((StyleSheet.flatten(place!.props.style).top as number) + 24).toBe(height - redesignedBarCenterFromBottom(SAFE_BOTTOM, Platform.OS));
+  const anchor = StyleSheet.flatten(place!.props.style);
+  const centerFromBottom = redesignedBarCenterFromBottom(SAFE_BOTTOM, Platform.OS);
+  if (Platform.OS === "android") expect(anchor).toMatchObject({ bottom: centerFromBottom - 24 });
+  else expect((anchor.top as number) + 24).toBe(height - centerFromBottom);
   expect(host(root, "deckBarGrid")).toBeUndefined();
   expect(style(root, "deckBarIncognito")).toMatchObject({ width: 48, height: 48, borderRadius: 24 });
   expect(style(root, "deckBarPlus")).toMatchObject({ width: 48, height: 48, borderRadius: 24 });
