@@ -13,7 +13,7 @@ const springs = {
   "deck scroll settle (tabsMotion.settle)": [tabsMotion.settle, [0.28, 1], [0.4, 1]],
   "gap close (tabsMotion.gapClose)": [tabsMotion.gapClose, [0.22, 1], [0.4, 0.8]],
   "pager settle (tabsMotion.pagerSettle)": [tabsMotion.pagerSettle, [0.26, 1], [0.38, 1]],
-  "bar collapse (tabsMotion.barCollapse)": [tabsMotion.barCollapse, [0.26, 1], [0.4, 1]],
+  "bar collapse (tabsMotion.barCollapse)": [tabsMotion.barCollapse, [0.26, 1], [0.26, 1]],
   "panel settle (trayMotion.settle)": [trayMotion.settle, [0.26, 1], [0.34, 0.86]],
   "panel dismiss (trayMotion.dismiss)": [trayMotion.dismiss, [0.14, 1], [0.32, 1]],
   "row press (trayMotion.press)": [trayMotion.press, [0.16, 1], [0.2, 0.7]],

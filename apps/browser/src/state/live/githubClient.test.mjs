@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createGithubClient, DETAILS_FRESH_MS, LIST_SHARED_MS, PENDING_FRESH_MS } from "./githubClient.ts";
 import { createGithubLimits, FALLBACK_COOLDOWN_MS, graphqlRateLimited, retryAtFromHeaders } from "./githubLimits.ts";
 import { takeLiveGithubCounts } from "../telemetry/liveGithub.ts";
+import { setConsentPeriod } from "../telemetry/consentPeriod.ts";
 import { request } from "./net.ts";
 import { LiveError } from "./types.ts";
 
@@ -130,11 +131,27 @@ test("pull requests an organization's token policy hides drop out and the folder
   const message = "The 'acme' organization forbids access via a fine-grained personal access tokens if the token's lifetime is greater than 366 days. Please adjust your token's lifetime at the following URL: https://github.com/settings/personal-access-tokens/1";
   gh.list.data.authored.nodes[0] = null;
   gh.blockSearch("list", [{ type: "FORBIDDEN", message, path: ["search", "nodes", 0] }]);
+  setConsentPeriod(true, "github-blocked-test");
   const items = await client.fetchFolder("t", folder, true);
+  setConsentPeriod(false, null);
   assert.ok(items.length > 0);
   assert.equal(client.warning()?.kind, "tokenBlocked");
   assert.equal(client.warning()?.message, message);
   assert.equal(takeLiveGithubCounts().live_github_blocked_listings, 1);
+});
+
+test("a blocked listing that started while sharing was off is not counted", async () => {
+  const { gh, client } = setup();
+  gh.list.data.authored.nodes[0] = null;
+  gh.blockSearch("list", [{ type: "FORBIDDEN", message: "Forbidden by the organization's token policy", path: ["search", "nodes", 0] }]);
+  takeLiveGithubCounts();
+  setConsentPeriod(false, null);
+  const listing = client.fetchFolder("t", folder, true);
+  setConsentPeriod(true, "github-blocked-late-test");
+  await listing;
+  setConsentPeriod(false, null);
+  assert.equal(client.warning()?.kind, "tokenBlocked");
+  assert.equal(takeLiveGithubCounts().live_github_blocked_listings, 0);
 });
 
 test("a listing GitHub hides entirely for SAML says Single Sign-On, and clears once access comes back", async () => {

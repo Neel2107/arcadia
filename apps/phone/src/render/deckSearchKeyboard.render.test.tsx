@@ -3,12 +3,13 @@ import { getAnimatedStyle } from "react-native-reanimated";
 import { act, type ReactTestInstance } from "react-test-renderer";
 import { DeckBottomBar } from "../components/tabs/DeckBottomBar";
 import { deckChromeLayout } from "../components/ui";
+import { redesignedBarCenterFromBottom } from "../lib/deckGeometry";
 import * as telemetry from "../state/telemetry/telemetry";
 import { renderSurface, unmount, withTabs } from "../../test/render/harness";
 
 const SAFE_BOTTOM = 24;
 const DECK_HEIGHT = 873;
-const BAR_CENTER = DECK_HEIGHT - SAFE_BOTTOM - 40;
+const BAR_CENTER = DECK_HEIGHT - redesignedBarCenterFromBottom(SAFE_BOTTOM, Platform.OS);
 const KEYBOARD = 300;
 
 let listeners: Map<string, ((event: KeyboardEvent) => void)[]>;
