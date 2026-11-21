@@ -198,7 +198,7 @@ export const noteTabSwitcherOpened = (closedLeftOut: number, unseenLast: number)
   void (counts.tabSwitcherOpens++, (counts.tabSwitcherClosedLeftOut += closedLeftOut), (counts.tabSwitcherUnseenLast += unseenLast));
 
 export const noteApprovalNoticeDeferred = () => counts.approvalNoticesDeferred++;
-
+export const noteBookmarkButton = (opened: "added" | "edited", consent?: ConsentToken | null) => bump(consent, { [opened === "added" ? "bookmarkButtonAdds" : "bookmarkButtonEdits"]: 1 });
 export const noteDockReopen = (pastFloating: boolean) => void (counts.dockReopens++, pastFloating && counts.dockReopensPastFloating++);
 export const notePiPActivationReturn = (success: boolean, consent?: ConsentToken | null) => bump(consent, { pipActivationReturns: 1, pipActivationReturnFailures: success ? 0 : 1 });
 export function noteReopenedPage(canGoBack: boolean) {
@@ -220,8 +220,6 @@ export const noteGroupHeaderHide = () => counts.groupHeaderHides++;
 export const noteLinkTabWait = (wait: "matched" | "skipped" | "timedOut") => void counts[wait === "matched" ? "linkTabsMatched" : wait === "skipped" ? "linkTabWaitsSkipped" : "linkTabWaitTimeouts"]++;
 
 export const noteHistorySearchFocus = (step: "requested" | "focused") => void counts[step === "requested" ? "historySearchFocusRequests" : "historySearchFocused"]++;
-
-export const noteBookmarkButton = (opened: "added" | "edited", consent?: ConsentToken | null) => bump(consent, { [opened === "added" ? "bookmarkButtonAdds" : "bookmarkButtonEdits"]: 1 });
 
 export const noteSidebarMotion = (what: "merge" | "overrun") => void counts[what === "merge" ? "sidebarMotionMerges" : "sidebarSlideOverruns"]++;
 
