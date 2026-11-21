@@ -82,6 +82,7 @@ if [ "$part" != engine ]; then
   start linux-build pnpm --filter @ardia/linux build
   start ardiacore-linux-bootstrap node --test engine/ardiacore-linux/tests/bootstrap.test.mjs
   start linux-smoke-gate node --test scripts/linux/smoke.test.mjs
+  start linux-install node --test scripts/linux/install.test.mjs
   start linux-ubo-seed node --test scripts/linux/ubo-seed.test.mjs
   start linux-sign-update node --test scripts/linux/sign-update.test.mjs
   report
