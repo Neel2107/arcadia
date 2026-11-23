@@ -15,11 +15,12 @@ type Blob = { color: string; from: { x: number; y: number }; to: { x: number; y:
 
 const tone = (hue: number, saturation: number, lightness: number) => toHex(hslToRgb(((hue % 1) + 1) % 1, saturation, lightness).map((channel) => channel * 255));
 
-export function introPalette(look: ProfileLook): { base: string; blobs: Blob[] } {
+export function introPalette(look: ProfileLook): { hue: number; base: string; blobs: Blob[] } {
   const [r, g, b] = parseColor(look.swatch);
   const [hue] = rgbToHsl(r / 255, g / 255, b / 255);
   const vivid = look.isNeutral ? welcomeIntro.neutralSaturation : welcomeIntro.saturation;
   return {
+    hue: Math.round(hue * 1000) + (look.isNeutral ? 1000 : 0),
     base: tone(hue, vivid, welcomeIntro.baseLightness),
     blobs: welcomeIntro.blobs.map((blob) => ({
       color: tone(hue + blob.hueShift, vivid, blob.lightness),
@@ -58,12 +59,13 @@ export function WelcomeMesh({ onShown }: { onShown?: () => void }) {
     <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.base }]}>
     <Host testID="welcomeMesh" ignoreSafeArea="all" style={StyleSheet.absoluteFill} colorScheme="dark">
       <ZStack modifiers={[accessibilityHidden(true), onAppear(shown)]}>
-        <Rectangle modifiers={[foregroundStyle(palette.base)]} />
+        <Rectangle modifiers={[foregroundStyle(palette.base), animation(Animation.smooth({ duration: welcomeIntro.recolorS }), palette.hue)]} />
         {palette.blobs.map((blob, index) => (
           <Ellipse
             key={index}
             modifiers={[
               foregroundStyle(blob.color),
+              animation(Animation.smooth({ duration: welcomeIntro.recolorS }), palette.hue),
               frame({ width: blob.side, height: blob.side }),
               scaleEffect(bloomed || reduceMotion ? 1 : welcomeIntro.bloomFrom),
               opacity(bloomed || reduceMotion ? blob.fade : 0),
