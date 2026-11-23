@@ -21,7 +21,7 @@ import { SyncFlight } from "./SyncFlight";
 import { WelcomeIntro } from "./WelcomeIntro";
 import { Landscape } from "./Landscape";
 import { BlurStage } from "./BlurStage";
-import { KitPrimary, KitSecondary, KitSettingRow, KitSubtitle } from "./OnboardingKit";
+import { KIT_DEFAULT_BROWSER, KitPrimary, KitSecondary, KitSettingRow, KitSubtitle } from "./OnboardingKit";
 import { StartBackdrop } from "../search/StartSpaces";
 import { startLogo } from "../search/startLook";
 import { blurStage, brand, onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
@@ -250,6 +250,7 @@ function StepContent({ step }: { step: OnboardingStep }) {
 
 function DefaultBrowserStep() {
   const theme = useTheme();
+  const intro = useIntro();
   const startLook = onboardingLayout.startBackdrop && useDesign() !== "material";
   return (
     <View style={styles.fill}>
@@ -257,7 +258,7 @@ function DefaultBrowserStep() {
         <LinkBubble />
       </View>
       <View testID="defaultBrowserSheet" style={startLook ? styles.browserWords : [styles.browserSheet, { backgroundColor: theme.groupFill, boxShadow: shadowCss("floating", theme.dark) }]}>
-        <DefaultBrowserSteps headingRef={useStepHeading()} onLater={advanceOnboarding} onDone={advanceOnboarding} inkActions={startLook} />
+        <DefaultBrowserSteps headingRef={useStepHeading()} onLater={advanceOnboarding} onDone={advanceOnboarding} inkActions={startLook} palette={intro ? KIT_DEFAULT_BROWSER : undefined} />
       </View>
     </View>
   );

@@ -8,6 +8,16 @@ export const KIT_INK = {
   secondary: { fill: "transparent", label: brand.cream, edge: "transparent" },
 } as const satisfies Record<string, ActionInk>;
 
+export const KIT_DEFAULT_BROWSER = {
+  title: brand.cream,
+  body: brand.creamMuted,
+  cardFill: brand.glass,
+  cardEdge: brand.glassEdge,
+  divider: brand.glassEdge,
+  primary: KIT_INK.primary,
+  secondary: KIT_INK.secondary,
+} as const;
+
 export function KitPrimary({ title, onPress, testID = "onboardingPrimary" }: { title: string; onPress: () => void; testID?: string }) {
   return <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primary} />;
 }
