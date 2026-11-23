@@ -155,7 +155,7 @@ export function OnboardingView() {
   const startLook = onboardingLayout.startBackdrop && !material;
   const intro = startLook && settingsUIAvailable();
   return (
-    <ForcedDark value={intro}>
+    <ForcedDark value={intro ? true : null}>
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
       {intro ? (
         <WelcomeMesh />
