@@ -25,13 +25,14 @@ export function MeadowBackdrop({ step }: { step: OnboardingStep }) {
   const live = useAnimatedStyle(() => ({ opacity: withTiming(state === "ready" ? 1 : 0, { duration: reduceMotion ? meadow.reducedFadeMs : meadow.fadeInMs }) }), [state, reduceMotion]);
   return (
     <View testID="onboardingMeadow" pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      {covered ? null : <Landscape step={step} />}
+      {state === "failed" ? <Landscape step={step} /> : covered ? null : <View testID="meadowCover" style={[StyleSheet.absoluteFill, { experimental_backgroundImage: meadow.dawnWash }]} />}
       {state === "failed" ? null : (
         <Animated.View style={[StyleSheet.absoluteFill, live]}>
-          <PhoneMeadow hour={meadowHourOf(step)} onMeadow={(event) => setState(event.nativeEvent.state)} style={StyleSheet.absoluteFill} />
+          <PhoneMeadow hour={meadowHourOf(step)} travelMs={meadow.travelMs} onMeadow={(event) => setState(event.nativeEvent.state)} style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, { experimental_backgroundImage: meadow.scrim }]} />
         </Animated.View>
       )}
+      <View style={[StyleSheet.absoluteFill, { experimental_backgroundImage: meadow.statusFade }]} />
     </View>
   );
 }

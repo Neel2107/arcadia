@@ -4,7 +4,7 @@ import Animated, { Easing, FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { advanceOnboarding, finishOnboarding, useOnboarding } from "../../state/onboarding/hooks";
 import { refreshSettings, setBlockingCategory, useBlocking } from "../../state/settings/actions";
-import { ForcedDark, iPhoneOr, overlayInk, spring, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
+import { actionLayout, ForcedDark, iPhoneOr, overlayInk, spring, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
 import type { Motion } from "../ui/motion";
 import { useDesign } from "../ui";
 import { useMaterialRipple } from "../ui/MaterialSurfaces";
@@ -154,11 +154,13 @@ export function OnboardingView() {
   const liveStep = useRef(step);
   liveStep.current = step;
   const [primaryRect, setPrimaryRect] = useState<SlotRect | null>(null);
+  const [primaryTitle, setPrimaryTitle] = useState<string | null>(null);
   const primarySlot = useMemo<PrimarySlot>(
     () => ({
-      report: (owner, rect) => {
+      report: (owner, rect, title) => {
         if (owner !== liveStep.current) return;
         setPrimaryRect((now) => (now && now.x === rect.x && now.y === rect.y && now.width === rect.width && now.height === rect.height ? now : rect));
+        setPrimaryTitle(title);
       },
     }),
     [],
@@ -216,7 +218,7 @@ export function OnboardingView() {
       {intro ? (
         <>
           <MeadowBackdrop step={step} />
-          <PrimaryCapsule rect={primaryRect} firstDelayMs={step === "welcome" ? onboardingMotion.capsuleFirstDelayMs : 0} />
+          <PrimaryCapsule rect={primaryRect} title={primaryTitle} firstDelayMs={step === "welcome" ? onboardingMotion.capsuleFirstDelayMs : 0} />
         </>
       ) : startLook ? (
         <StartLookBackdrop />
@@ -234,7 +236,7 @@ export function OnboardingView() {
 
 const capsuleMove = spring(onboardingMotion.capsuleMove.response, onboardingMotion.capsuleMove.damping);
 
-function PrimaryCapsule({ rect, firstDelayMs }: { rect: SlotRect | null; firstDelayMs: number }) {
+function PrimaryCapsule({ rect, title, firstDelayMs }: { rect: SlotRect | null; title: string | null; firstDelayMs: number }) {
   const reduceMotion = useReduceMotion();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
@@ -266,7 +268,16 @@ function PrimaryCapsule({ rect, firstDelayMs }: { rect: SlotRect | null; firstDe
     borderRadius: height.value / 2,
     transform: [{ translateX: x.value }, { translateY: y.value }],
   }));
-  return <Animated.View testID="onboardingPrimaryCapsule" pointerEvents="none" style={[styles.capsule, style]} />;
+  const swap = reduceMotion ? onboardingMotion.capsuleFadeMs : onboardingMotion.labelSwapMs;
+  return (
+    <Animated.View testID="onboardingPrimaryCapsule" pointerEvents="none" style={[styles.capsule, style]}>
+      {title ? (
+        <Animated.Text key={title} entering={FadeIn.duration(swap)} exiting={FadeOut.duration(swap)} numberOfLines={1} style={styles.capsuleLabel}>
+          {title}
+        </Animated.Text>
+      ) : null}
+    </Animated.View>
+  );
 }
 
 function StartLookBackdrop() {
@@ -565,7 +576,7 @@ function Blocking() {
 
 const tipsFor = (interval: AutoArchiveInterval): { icon: SymbolName; text: string }[] => [
   { icon: "plus", text: "Tap + to search." },
-  { icon: "squareOnSquare", text: "Flick a tab up to close it." },
+  { icon: "squareOnSquare", text: "Swipe a tab up to close it." },
   { icon: "handDrawFill", text: "Swipe a page to go back." },
   { icon: "archivebox", text: archiveTip(interval) },
 ];
@@ -638,7 +649,8 @@ const styles = StyleSheet.create({
   welcomeWords: { paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   words: { paddingTop: onboardingLayout.wordsTop, paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   heavy: { fontWeight: "700", textAlign: "center" },
-  capsule: { position: "absolute", left: 0, top: 0, zIndex: 1, backgroundColor: brand.paper, borderCurve: "continuous" },
+  capsule: { position: "absolute", left: 0, top: 0, zIndex: 1, backgroundColor: brand.paper, borderCurve: "continuous", alignItems: "center", justifyContent: "center" },
+  capsuleLabel: { position: "absolute", ...actionLayout.label.hero, fontWeight: actionLayout.labelWeight, color: brand.ink },
   kitTitle: { ...onboardingLayout.title, fontWeight: "700", textAlign: "center", color: brand.cream, ...textHalo },
   centered: { textAlign: "center" },
   actions: { paddingHorizontal: onboardingLayout.actionsInset, paddingBottom: onboardingLayout.actionsBottom, gap: onboardingLayout.actionsGap },

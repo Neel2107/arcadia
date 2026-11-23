@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   syncPhone: { position: "absolute" },
   caption: { marginTop: tipsReel.captionGap, minHeight: tipsReel.captionHeight, textAlign: "center", fontWeight: "600", paddingHorizontal: space.l, color: tipsReel.captionInk, ...textHalo },
   dots: { flexDirection: "row", gap: tipsReel.dot.gap, marginTop: tipsReel.dotsGap },
-  dot: { width: tipsReel.dot.width, height: tipsReel.dot.height, borderRadius: tipsReel.dot.height / 2, overflow: "hidden", backgroundColor: withAlpha(tipsReel.captionInk, 0.3) },
+  dot: { width: tipsReel.dot.width, height: tipsReel.dot.height, borderRadius: tipsReel.dot.height / 2, overflow: "hidden", backgroundColor: withAlpha(tipsReel.captionInk, 0.6) },
   dotFill: { height: "100%", borderRadius: tipsReel.dot.height / 2, backgroundColor: tipsReel.captionInk },
   dotDone: { width: "100%" },
 });

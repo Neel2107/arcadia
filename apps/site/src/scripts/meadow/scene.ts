@@ -35,7 +35,7 @@ export interface MeadowOptions {
 
 export interface Meadow {
   dispose(): void;
-  travelTo(cycle: number): void;
+  travelTo(cycle: number, ms?: number): void;
 }
 
 interface Tier {
@@ -154,6 +154,7 @@ const SUN_MAX_BLUE_SHARE = 0.45;
 const MOON_MIN_SUM = 520;
 const MOB_COMPILE_AFTER_FRAMES = 2;
 const STROKE_CELL_PX = 16;
+const CALM_STROKE_SCALE = 0.6;
 const RELIEF_PER_CSS_PX = 0.55;
 const PAINT_REVEAL_MS = 900;
 const CELL_MARGIN = 7;
@@ -201,7 +202,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
   const look = { x: 0, y: 0, settled: true };
   const [openFrom, openTo] = options.opening ?? [SUNRISE_FROM, SUNRISE_TO];
   const startCycle = reducedMotion ? openTo : openFrom;
-  const day = { c: startCycle, target: startCycle, mode: (reducedMotion ? "rest" : "sunrise") as DayMode, from: 0, to: 0, start: 0 };
+  const day = { c: startCycle, target: startCycle, mode: (reducedMotion ? "rest" : "sunrise") as DayMode, from: 0, to: 0, start: 0, ms: DAY_MOVE_MS };
   const bodies = { sun: { x: -999, y: -999, up: false }, moon: { x: -999, y: -999, up: false }, radius: 40 };
   const projection: Mat4 = new Float32Array(16);
   const view: Mat4 = new Float32Array(16);
@@ -862,9 +863,10 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
     day.from = day.c;
     day.to = day.c + delta;
     day.start = performance.now();
+    day.ms = DAY_MOVE_MS;
   };
 
-  const travelTo = (cycle: number) => {
+  const travelTo = (cycle: number, ms = DAY_MOVE_MS) => {
     const delta = wrapCycle(cycle - day.c);
     if (reducedMotion) {
       day.c = day.target = wrapCycle(cycle);
@@ -875,6 +877,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
       day.from = day.c;
       day.to = day.c + delta;
       day.start = performance.now();
+      day.ms = ms;
     }
     wake();
   };
@@ -887,7 +890,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
       return;
     }
     if (day.mode === "settle") {
-      const t = (now - day.start) / DAY_MOVE_MS;
+      const t = (now - day.start) / day.ms;
       day.c = day.target = wrapCycle(mix(day.from, day.to, easeInOutSine(t)));
       if (t >= 1) stay();
       return;
@@ -1194,7 +1197,8 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     captureProbe(now, t);
 
-    const cells = ensureCellTable(dpr);
+    const strokeDpr = dpr * (calm ? CALM_STROKE_SCALE : 1);
+    const cells = ensureCellTable(strokeDpr);
     if (cells) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, cells.framebuffer);
       gl.viewport(0, 0, cells.columns, cells.rows);
@@ -1203,7 +1207,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
         .use()
         .int("uFlow", 1)
         .vec2("uResolution", width, height)
-        .float("uDpr", dpr)
+        .float("uDpr", strokeDpr)
         .vec2("uCellOrigin", -CELL_MARGIN, -CELL_MARGIN);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       bindTexture(gl, 4, cells.shape);
@@ -1230,7 +1234,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
       .int("uSmear", 2)
       .int("uHorizonTex", 3)
       .vec2("uResolution", width, height)
-      .float("uDpr", dpr)
+      .float("uDpr", strokeDpr)
       .vec3("uLight", lightDir)
       .vec3("uSpecColor", specColor)
       .vec2("uSunPx", bodies.sun.x * dpr, (cssHeight - bodies.sun.y) * dpr)

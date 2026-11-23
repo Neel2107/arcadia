@@ -8,11 +8,12 @@ export const KIT_INK = {
   primary: { fill: brand.paper, label: brand.ink, edge: "transparent" },
   secondary: { fill: "transparent", label: brand.cream, edge: "transparent" },
   primaryLabel: { fill: "transparent", label: brand.ink, edge: "transparent" },
+  carriedLabel: { fill: "transparent", label: "transparent", edge: "transparent" },
 } as const satisfies Record<string, ActionInk>;
 
 export type SlotRect = { x: number; y: number; width: number; height: number };
 
-export type PrimarySlot = { report: (owner: string, rect: SlotRect) => void };
+export type PrimarySlot = { report: (owner: string, rect: SlotRect, title: string) => void };
 
 export const PrimarySlotContext = createContext<PrimarySlot | null>(null);
 
@@ -31,10 +32,10 @@ export function KitPrimary({ title, onPress, testID = "onboardingPrimary" }: { t
   const owner = useContext(StepOwner);
   const frame = useRef<ViewInstance>(null);
   if (!slot || !owner) return <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primary} />;
-  const measure = () => frame.current?.measureInWindow((x, y, width, height) => slot.report(owner, { x, y, width, height }));
+  const measure = () => frame.current?.measureInWindow((x, y, width, height) => slot.report(owner, { x, y, width, height }, title));
   return (
     <View ref={frame} collapsable={false} onLayout={measure}>
-      <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primaryLabel} />
+      <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.carriedLabel} />
     </View>
   );
 }

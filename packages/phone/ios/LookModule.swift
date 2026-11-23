@@ -29,6 +29,7 @@ public final class LookModule: Module {
     View(PhoneMeadowView.self) {
       ViewName("PhoneMeadow")
       Events("onMeadow")
+      Prop("travelMs") { (view: PhoneMeadowView, value: Int?) in view.travelMs = value ?? 0 }
       Prop("hour") { (view: PhoneMeadowView, value: String?) in view.hour = value }
     }
 

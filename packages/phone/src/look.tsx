@@ -121,7 +121,7 @@ export const DeckBackdrop = look<DeckBackdropProps>("DeckBackdrop");
 
 export type MeadowHour = "dawn" | "morning" | "golden" | "dusk" | "night";
 
-export type PhoneMeadowProps = ViewProps & { hour: MeadowHour | "sunrise"; onMeadow?: (event: { nativeEvent: { state: "ready" | "failed" } }) => void };
+export type PhoneMeadowProps = ViewProps & { hour: MeadowHour | "sunrise"; travelMs?: number; onMeadow?: (event: { nativeEvent: { state: "ready" | "failed" } }) => void };
 
 export const PhoneMeadow = look<PhoneMeadowProps>("PhoneMeadow");
 

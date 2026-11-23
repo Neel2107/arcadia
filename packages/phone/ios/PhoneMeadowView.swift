@@ -12,6 +12,8 @@ final class PhoneMeadowView: ExpoView {
     didSet { sendHour() }
   }
 
+  var travelMs: Int = 0
+
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     backgroundColor = .clear
@@ -69,7 +71,8 @@ final class PhoneMeadowView: ExpoView {
     guard isReady, let hour, hour != sentHour, let webView else { return }
     sentHour = hour
     let quoted = (try? String(data: JSONSerialization.data(withJSONObject: [hour]), encoding: .utf8)) ?? "[]"
-    webView.evaluateJavaScript("meadowHour(\(quoted)[0])")
+    let duration = travelMs > 0 ? ", \(travelMs)" : ""
+    webView.evaluateJavaScript("meadowHour(\(quoted)[0]\(duration))")
   }
 }
 

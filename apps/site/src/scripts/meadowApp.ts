@@ -65,9 +65,9 @@ function boot(hero: HTMLElement) {
   const hours: Record<string, number> = { dawn: SUNRISE_FROM, morning: SUNRISE_TO, golden: CYCLE_STOPS[1], dusk: DUSK, night: NIGHT };
   Object.assign(window, {
     meadowNight: (night: boolean) => meadow.travelTo(night ? NIGHT : SUNRISE_TO),
-    meadowHour: (hour: string) => {
+    meadowHour: (hour: string, ms?: number) => {
       const cycle = hours[hour];
-      if (cycle !== undefined) meadow.travelTo(cycle);
+      if (cycle !== undefined) meadow.travelTo(cycle, ms);
     },
   });
 }

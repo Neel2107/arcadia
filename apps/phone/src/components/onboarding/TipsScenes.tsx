@@ -7,7 +7,7 @@ import { ForcedDark, space, Symbol, tabsMotion, useReduceMotion, useTheme, type 
 import { phoneScene, tipsReel } from "./onboardingTokens";
 import { BottomBar, Finger, glide, PageMock, pulse, SceneCanvas, SCENE, settle, span, type FingerPath } from "./sceneKit";
 
-export const REEL_TIPS = ["Tap + to search.", "Flick a tab up to close it.", "Swipe a page to go back."] as const;
+export const REEL_TIPS = ["Tap + to search.", "Swipe a tab up to close it.", "Swipe a page to go back."] as const;
 
 const SCREEN_W = SCENE.width;
 const SCREEN_H = SCENE.height;

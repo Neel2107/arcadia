@@ -165,7 +165,7 @@ onIos("the all-set step shows three tips as a looping reel instead of a list: on
   const caption = () => textIn(hosts(root, "tipsReelCaption").at(-1)!);
   expect(caption()).toBe("Tap + to search.");
   act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
-  expect(caption()).toBe("Flick a tab up to close it.");
+  expect(caption()).toBe("Swipe a tab up to close it.");
   act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
   expect(caption()).toBe("Swipe a page to go back.");
   act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
@@ -190,7 +190,7 @@ onIos("with Reduce Motion the reel draws no finger and still steps through the t
   const root = showStep("allSet", false);
   expect(hosts(root, "sceneFinger")).toHaveLength(0);
   act(() => jest.advanceTimersByTime(tipsReel.reducedSceneMs));
-  expect(textIn(hosts(root, "tipsReelCaption").at(-1)!)).toBe("Flick a tab up to close it.");
+  expect(textIn(hosts(root, "tipsReelCaption").at(-1)!)).toBe("Swipe a tab up to close it.");
   unmount(root);
 });
 
