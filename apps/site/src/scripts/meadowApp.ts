@@ -62,7 +62,9 @@ function boot(hero: HTMLElement) {
     },
   });
   if (!meadow) return post({ state: "failed" });
-  const hours: Record<string, number> = { dawn: SUNRISE_FROM, morning: SUNRISE_TO, golden: CYCLE_STOPS[1], dusk: DUSK, night: NIGHT };
+  const golden = CYCLE_STOPS[1];
+  const between = (share: number) => SUNRISE_TO + (golden - SUNRISE_TO) * share;
+  const hours: Record<string, number> = { dawn: SUNRISE_FROM, morning: SUNRISE_TO, midday: between(1 / 3), afternoon: between(2 / 3), golden, dusk: DUSK, night: NIGHT };
   Object.assign(window, {
     meadowNight: (night: boolean) => meadow.travelTo(night ? NIGHT : SUNRISE_TO),
     meadowHour: (hour: string, ms?: number) => {
