@@ -230,7 +230,7 @@ export function OnboardingView() {
   );
 }
 
-const capsuleMove = spring(0.5, 0.86);
+const capsuleMove = spring(onboardingMotion.capsuleMove.response, onboardingMotion.capsuleMove.damping);
 
 function PrimaryCapsule({ rect, firstDelayMs }: { rect: SlotRect | null; firstDelayMs: number }) {
   const reduceMotion = useReduceMotion();
@@ -251,7 +251,7 @@ function PrimaryCapsule({ rect, firstDelayMs }: { rect: SlotRect | null; firstDe
       shown.value = withDelay(reduceMotion ? 0 : firstDelayMs, withTiming(1, { duration: onboardingMotion.capsuleFadeMs }));
       return;
     }
-    const to = (target: number) => (reduceMotion ? withTiming(target, { duration: onboardingMotion.capsuleFadeMs }) : withSpring(target, capsuleMove));
+    const to = (target: number) => (reduceMotion ? withTiming(target, { duration: onboardingMotion.capsuleFadeMs }) : withDelay(onboardingMotion.capsuleMoveDelayMs, withSpring(target, capsuleMove)));
     x.value = to(rect.x);
     y.value = to(rect.y);
     width.value = to(rect.width);

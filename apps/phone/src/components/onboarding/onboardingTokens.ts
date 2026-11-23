@@ -193,6 +193,8 @@ export const onboardingMotion = {
   stepTravel: 72,
   capsuleFirstDelayMs: 1350,
   capsuleFadeMs: 280,
+  capsuleMove: { response: 0.6, damping: 1 },
+  capsuleMoveDelayMs: 90,
   riseDelayMs: 50,
   step: motionAliases.onboardingStep,
   stepReduced: motionAliases.onboardingStepReduced,
