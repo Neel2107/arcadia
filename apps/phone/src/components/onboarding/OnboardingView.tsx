@@ -214,13 +214,14 @@ function StepContent({ step }: { step: OnboardingStep }) {
 
 function DefaultBrowserStep() {
   const theme = useTheme();
+  const startLook = onboardingLayout.startBackdrop && useDesign() !== "material";
   return (
     <View style={styles.fill}>
       <View style={[styles.fill, styles.art]}>
         <LinkBubble />
       </View>
-      <View style={[styles.browserSheet, { backgroundColor: theme.groupFill, boxShadow: shadowCss("floating", theme.dark) }]}>
-        <DefaultBrowserSteps headingRef={useStepHeading()} onLater={advanceOnboarding} onDone={advanceOnboarding} />
+      <View testID="defaultBrowserSheet" style={startLook ? styles.browserWords : [styles.browserSheet, { backgroundColor: theme.groupFill, boxShadow: shadowCss("floating", theme.dark) }]}>
+        <DefaultBrowserSteps headingRef={useStepHeading()} onLater={advanceOnboarding} onDone={advanceOnboarding} inkActions={startLook} />
       </View>
     </View>
   );
@@ -532,6 +533,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: radius.card, ...smoothCorners, paddingVertical: space.xs },
   plainCard: { borderRadius: onboardingLayout.cardRadius, borderCurve: "continuous", paddingVertical: onboardingLayout.cardInset },
   art: { alignItems: "center", justifyContent: "center", paddingHorizontal: space.huge },
+  browserWords: { paddingBottom: space.m },
   browserSheet: {
     borderTopLeftRadius: onboardingArt.sheetRadius,
     borderTopRightRadius: onboardingArt.sheetRadius,

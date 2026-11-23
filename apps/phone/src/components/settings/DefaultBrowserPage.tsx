@@ -6,7 +6,7 @@ import { defaultBrowserCopy } from "../../state/settings/settingsRules";
 import { ActionButton, AppIcon, font, ink, PrimaryButton, radius, settingsLayout, settingsTint, space, spacesLayout, Symbol, useTheme, smoothCorners } from "../ui";
 import { SettingsPage } from "./SettingsKit";
 
-export function DefaultBrowserSteps({ onLater, onDone, headingRef }: { onLater?: () => void; onDone?: () => void; headingRef?: (node: ViewInstance | null) => void }) {
+export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = false }: { onLater?: () => void; onDone?: () => void; headingRef?: (node: ViewInstance | null) => void; inkActions?: boolean }) {
   const theme = useTheme();
   const status = useDefaultBrowser((s) => s.status);
   const { fontScale } = useWindowDimensions();
@@ -56,12 +56,12 @@ export function DefaultBrowserSteps({ onLater, onDone, headingRef }: { onLater?:
       ) : null}
       <View style={styles.actions}>
         {copy.action ? (
-          <PrimaryButton title={copy.action} onPress={() => void ask()} />
+          inkActions ? <ActionButton title={copy.action} onPress={() => void ask()} variant="filled" tone="ink" size="hero" capsule /> : <PrimaryButton title={copy.action} onPress={() => void ask()} />
         ) : onLater ? (
-          <PrimaryButton title="Continue" onPress={onLater} />
+          inkActions ? <ActionButton title="Continue" onPress={onLater} variant="filled" tone="ink" size="hero" capsule /> : <PrimaryButton title="Continue" onPress={onLater} />
         ) : null}
         {copy.action && onLater ? (
-          <ActionButton title="Maybe Later" onPress={onLater} variant="plain" tone="neutral" size="regular" />
+          <ActionButton title="Maybe Later" onPress={onLater} variant="plain" tone={inkActions ? "ink" : "neutral"} size="regular" />
         ) : null}
       </View>
     </View>
