@@ -35,60 +35,25 @@ const fraction = (value: number, from: number) => {
 
 export function BlockingDemo() {
   const reduceMotion = useReduceMotion();
-  const blocking = useBlocking((store) => store.state);
-  const everythingBlocked = blocksEverything(blocking);
-  const [previewing, setPreviewing] = useState(() => !reduceMotion && everythingBlocked);
+  const [adsShown, setAdsShown] = useState(true);
   const [scale, setScale] = useState<number | null>(null);
-  const staging = previewing && !reduceMotion;
-  const switchOn = staging ? false : everythingBlocked;
 
   useEffect(() => {
-    if (!staging) return;
-    const timer = setTimeout(() => {
-      setPreviewing(false);
-      if (!blocksEverything(useBlocking.getState().state)) return;
-      haptics.selection();
-      blockEverything(true);
-    }, blockingDemo.previewMs);
+    const timer = setTimeout(() => setAdsShown((shown) => !shown), adsShown ? blockingDemo.clutteredMs : blockingDemo.cleanMs);
     return () => clearTimeout(timer);
-  }, [staging]);
-
-  const choose = (on: boolean) => {
-    setPreviewing(false);
-    blockEverything(on);
-  };
+  }, [adsShown]);
 
   const measure = (event: LayoutChangeEvent) => setScale(demoScale(event.nativeEvent.layout.width, event.nativeEvent.layout.height));
   const shown = scale ?? 1;
-  const adsShown = !switchOn;
 
   return (
-    <View testID="blockingDemo" onLayout={measure} style={[styles.fill, { opacity: scale === null ? 0 : 1 }]}>
+    <View testID="blockingDemo" onLayout={measure} style={[styles.fill, { opacity: scale === null ? 0 : 1 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       <View style={[styles.fit, { width: blockingDemo.content.width * shown, height: blockingDemo.content.height * shown }]}>
         <View style={[styles.content, { transform: [{ scale: shown }] }]}>
           <PhoneFrame>{reduceMotion ? <FadingArticle adsShown={adsShown} /> : <CollapsingArticle adsShown={adsShown} />}</PhoneFrame>
-          <BlockingSwitch on={switchOn} onChange={choose} />
         </View>
       </View>
     </View>
-  );
-}
-
-function BlockingSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
-  return (
-    <Pressable
-      testID="blockingDemoSwitch"
-      accessibilityRole="switch"
-      accessibilityLabel={PILL.label}
-      accessibilityState={{ checked: on }}
-      onPress={() => onChange(!on)}
-      style={({ pressed }) => [styles.pill, { backgroundColor: pressed ? PILL.pressedFill : PILL.fill }]}
-    >
-      <Text style={styles.pillLabel} numberOfLines={1} adjustsFontSizeToFit importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-        {PILL.label}
-      </Text>
-      <ToggleTrack value={on} />
-    </Pressable>
   );
 }
 
@@ -294,21 +259,6 @@ const styles = StyleSheet.create({
   fill: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
   fit: { alignItems: "center", justifyContent: "center" },
   content: { width: blockingDemo.content.width, height: blockingDemo.content.height, alignItems: "center", gap: blockingDemo.pillGap },
-  pill: {
-    width: PILL.width,
-    height: PILL.height,
-    borderRadius: capsule(PILL.height),
-    ...smoothCorners,
-    borderWidth: PILL.edgeWidth,
-    borderColor: PILL.edge,
-    boxShadow: PILL.shadow,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingLeft: PILL.leading,
-    paddingRight: PILL.trailing,
-    gap: PILL.trailing,
-  },
-  pillLabel: { flex: 1, ...font.body, fontWeight: PILL.weight, color: PILL.ink },
   paper: { flex: 1, backgroundColor: INK.paper },
   column: { paddingTop: demoPage.top, paddingHorizontal: demoPage.pad, gap: demoPage.gap },
   collapsing: { overflow: "hidden", justifyContent: "center" },

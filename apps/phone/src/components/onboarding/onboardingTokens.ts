@@ -43,9 +43,66 @@ export const onboardingInk = {
   dark: { welcome: "#000000", steps: "#000000", subtitle: "rgba(235,235,245,0.8)" },
 } as const;
 
+export type Hour = "dawn" | "morning" | "noon" | "golden" | "dusk";
+
+type HourLook = { sky: { top: string; mid: string; low: string }; hills: { back: string; front: string } };
+
+export const brand = {
+  paper: "#FAF2DF",
+  ink: "#16130F",
+  cream: "#F3E9D6",
+  creamMuted: "rgba(243, 233, 214, 0.72)",
+  forest: "#1E5141",
+  glass: "rgba(243, 233, 214, 0.12)",
+  glassEdge: "rgba(243, 233, 214, 0.18)",
+} as const;
+
+export const landscape = {
+  hours: {
+    dawn: { sky: { top: "#919ABB", mid: "#B8A7BD", low: "#F4B08A" }, hills: { back: "#9AA66C", front: "#2C5F4A" } },
+    morning: { sky: { top: "#BCCFD9", mid: "#E1E4DC", low: "#F7E5C2" }, hills: { back: "#A6B96C", front: "#1E5141" } },
+    noon: { sky: { top: "#AEC7D7", mid: "#D6E0E0", low: "#F4EAD6" }, hills: { back: "#ADC070", front: "#22594A" } },
+    golden: { sky: { top: "#B9B0B6", mid: "#E2BFA4", low: "#F8C47C" }, hills: { back: "#B5AB5C", front: "#3B6243" } },
+    dusk: { sky: { top: "#5D5281", mid: "#B36871", low: "#EF9070" }, hills: { back: "#7D7563", front: "#2A3D3A" } },
+  } satisfies Record<Hour, HourLook>,
+  skyStops: [30, 52],
+  stepHours: { welcome: 1, blocking: 2, defaultBrowser: 2.5, sync: 3, allSet: 4 },
+  sunriseFrom: 0,
+  sunriseMs: 2600,
+  travelMs: 1100,
+  reducedMs: 250,
+  view: { width: 400, height: 1000 },
+  hills: {
+    back: "M-20 430C50 372 130 340 220 352C300 362 360 400 420 440V1000H-20Z",
+    front: "M-20 540C70 500 170 478 270 468C330 462 380 458 420 456V1000H-20Z",
+  },
+  sun: {
+    share: 0.2,
+    glowShare: 3.2,
+    glow: "radial-gradient(circle, rgba(255, 196, 120, 0.55) 0%, rgba(255, 196, 120, 0.22) 38%, rgba(255, 196, 120, 0) 70%)",
+    path: [
+      { hour: 0, x: 0.24, y: 0.5 },
+      { hour: 1, x: 0.3, y: 0.2 },
+      { hour: 2, x: 0.56, y: 0.11 },
+      { hour: 3, x: 0.76, y: 0.24 },
+      { hour: 4, x: 0.82, y: 0.42 },
+    ],
+  },
+  oilOpacity: 0.55,
+} as const;
+
+export const blurStage = {
+  radius: 26,
+  inS: 0.55,
+  inDelayS: 0.12,
+  outS: 0.27,
+  holdMs: 320,
+  reducedS: 0.2,
+} as const;
+
 export const blurTitle = {
   size: 30,
-  ink: "#FFFFFF",
+  ink: brand.cream,
   maxWidth: 340,
   room: 24,
   blur: 22,
@@ -78,25 +135,8 @@ export const phoneFrame = {
 } as const;
 
 export const welcomeIntro = {
-  saturation: 0.86,
-  neutralSaturation: 0.08,
-  baseLightness: 0.3,
-  blobs: [
-    { hueShift: 0, lightness: 0.5, from: { x: -130, y: -250 }, to: { x: -50, y: -190 }, side: 440, fade: 1, driftS: 7 },
-    { hueShift: 0.12, lightness: 0.56, from: { x: 170, y: 60 }, to: { x: 90, y: 150 }, side: 420, fade: 0.95, driftS: 8.5 },
-    { hueShift: -0.05, lightness: 0.64, from: { x: -110, y: 300 }, to: { x: -170, y: 220 }, side: 380, fade: 0.8, driftS: 9.5 },
-    { hueShift: -0.08, lightness: 0.44, from: { x: 170, y: -330 }, to: { x: 110, y: -260 }, side: 360, fade: 0.9, driftS: 6.5 },
-  ],
-  blobBlur: 90,
-  recolorS: 0.8,
   appearSettleMs: 60,
   titleMaxWidth: 340,
-  bloomFrom: 0.35,
-  bloomS: 1.1,
-  bloomDelayS: 0.45,
-  bloomStaggerS: 0.08,
-  driftDelayMs: 1600,
-  driftRepeats: 10000,
   iconSide: 76,
   iconTopShare: 0.12,
   launchScale: 2.7,
@@ -133,7 +173,7 @@ export const tipsReel = {
   tray: { share: 0.6, radius: 20, field: 28, query: "ardia.dev", queryWidth: 47, caret: 12, keyRows: [10, 9, 7], keyHeight: 17, keyGap: 3, rowGap: 5 },
   deck: { widthShare: 0.62, heightShare: 0.58, topShare: 0.15, gap: 10, radius: 16, lift: 0.17 },
   back: { parallax: -0.33, shade: 0.32, edge: 8, dragShare: 0.55 },
-  captionInk: "#FFFFFF",
+  captionInk: brand.cream,
   fingerFill: "rgba(110,110,118,0.5)",
   fingerRing: "rgba(255,255,255,0.95)",
   fingerShadow: "0px 2px 10px rgba(0, 0, 0, 0.35)",

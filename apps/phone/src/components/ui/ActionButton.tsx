@@ -39,12 +39,13 @@ export type ActionButtonProps = {
   capsule?: boolean;
   frostSource?: string;
   buttonRef?: RefObject<ViewInstance | null>;
+  ink?: ActionInk;
   testID?: string;
 };
 
-export function ActionButton({ title, onPress, variant = "filled", tone = "accent", size = "regular", icon, busy = false, disabled = false, hint, stretch = false, capsule = false, frostSource, buttonRef, testID }: ActionButtonProps) {
+export function ActionButton({ title, onPress, variant = "filled", tone = "accent", size = "regular", icon, busy = false, disabled = false, hint, stretch = false, capsule = false, frostSource, buttonRef, ink: chosenInk, testID }: ActionButtonProps) {
   const theme = useTheme();
-  const colors = actionInk(theme, variant, tone);
+  const colors = chosenInk ?? actionInk(theme, variant, tone);
   const role = primaryActionRoles[actionRoleOf[size]];
   const cornerRadius = capsule ? capsuleRadius(role.height) : role.radius;
   const frosted = variant === "glass" && frostSource !== undefined;

@@ -2,36 +2,13 @@ import { useEffect, useState } from "react";
 import { StyleSheet, useWindowDimensions, View, type ViewInstance } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ellipse, Host, Rectangle, Text as SwiftText, ZStack } from "@expo/ui/swift-ui";
-import { accessibilityHidden, animation, Animation, blur, font, foregroundStyle, frame, multilineTextAlignment, offset, onAppear, opacity, padding, scaleEffect } from "@expo/ui/swift-ui/modifiers";
-import { hslToRgb, parseColor, rgbToHsl, toHex } from "../../lib/color";
-import type { ProfileLook } from "../../lib/profileLook";
-import { ActionButton, AppIcon, spring, useProfileLook, useReduceMotion } from "../ui";
-import { welcomeIntro } from "./onboardingTokens";
+import { Host, Text as SwiftText } from "@expo/ui/swift-ui";
+import { accessibilityHidden, animation, Animation, blur, font, foregroundStyle, frame, multilineTextAlignment, onAppear, opacity, padding, scaleEffect } from "@expo/ui/swift-ui/modifiers";
+import { AppIcon, spring, useReduceMotion } from "../ui";
+import { KitPrimary } from "./OnboardingKit";
+import { brand, welcomeIntro } from "./onboardingTokens";
 
 export const WELCOME_TITLE = "Welcome to Ardia";
-
-type Blob = { color: string; from: { x: number; y: number }; to: { x: number; y: number }; side: number; fade: number; driftS: number };
-
-const tone = (hue: number, saturation: number, lightness: number) => toHex(hslToRgb(((hue % 1) + 1) % 1, saturation, lightness).map((channel) => channel * 255));
-
-export function introPalette(look: ProfileLook): { hue: number; base: string; blobs: Blob[] } {
-  const [r, g, b] = parseColor(look.swatch);
-  const [hue] = rgbToHsl(r / 255, g / 255, b / 255);
-  const vivid = look.isNeutral ? welcomeIntro.neutralSaturation : welcomeIntro.saturation;
-  return {
-    hue: Math.round(hue * 1000) + (look.isNeutral ? 1000 : 0),
-    base: tone(hue, vivid, welcomeIntro.baseLightness),
-    blobs: welcomeIntro.blobs.map((blob) => ({
-      color: tone(hue + blob.hueShift, vivid, blob.lightness),
-      from: blob.from,
-      to: blob.to,
-      side: blob.side,
-      fade: blob.fade,
-      driftS: blob.driftS,
-    })),
-  };
-}
 
 function useAfterAppear(delayMs = 0): [boolean, () => void] {
   const [appeared, setAppeared] = useState(false);
@@ -42,44 +19,6 @@ function useAfterAppear(delayMs = 0): [boolean, () => void] {
     return () => clearTimeout(timer);
   }, [appeared, delayMs]);
   return [started, () => setAppeared(true)];
-}
-
-export function WelcomeMesh({ onShown }: { onShown?: () => void }) {
-  const look = useProfileLook();
-  const reduceMotion = useReduceMotion();
-  const palette = introPalette(look);
-  const [bloomed, appeared] = useAfterAppear(welcomeIntro.appearSettleMs);
-  const [drifting, appearedForDrift] = useAfterAppear(welcomeIntro.driftDelayMs);
-  const shown = () => {
-    appeared();
-    appearedForDrift();
-    onShown?.();
-  };
-  return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.base }]}>
-    <Host testID="welcomeMesh" ignoreSafeArea="all" style={StyleSheet.absoluteFill} colorScheme="dark">
-      <ZStack modifiers={[accessibilityHidden(true), onAppear(shown)]}>
-        <Rectangle modifiers={[foregroundStyle(palette.base), animation(Animation.smooth({ duration: welcomeIntro.recolorS }), palette.hue)]} />
-        {palette.blobs.map((blob, index) => (
-          <Ellipse
-            key={index}
-            modifiers={[
-              foregroundStyle(blob.color),
-              animation(Animation.smooth({ duration: welcomeIntro.recolorS }), palette.hue),
-              frame({ width: blob.side, height: blob.side }),
-              scaleEffect(bloomed || reduceMotion ? 1 : welcomeIntro.bloomFrom),
-              opacity(bloomed || reduceMotion ? blob.fade : 0),
-              animation(Animation.smooth({ duration: welcomeIntro.bloomS }).delay(welcomeIntro.bloomDelayS + index * welcomeIntro.bloomStaggerS), bloomed),
-              offset(drifting && !reduceMotion ? blob.to : blob.from),
-              animation(Animation.easeInOut({ duration: blob.driftS }).repeat({ repeatCount: welcomeIntro.driftRepeats, autoreverses: true }), drifting),
-              blur(welcomeIntro.blobBlur),
-            ]}
-          />
-        ))}
-      </ZStack>
-    </Host>
-    </View>
-  );
 }
 
 export function WelcomeIntro({ onStart, headingRef }: { onStart: () => void; headingRef?: (node: ViewInstance | null) => void }) {
@@ -130,7 +69,7 @@ export function WelcomeIntro({ onStart, headingRef }: { onStart: () => void; hea
           <SwiftText
             modifiers={[
               font({ size: welcomeIntro.titleSize, weight: "bold", design: "rounded" }),
-              foregroundStyle("#FFFFFF"),
+              foregroundStyle(brand.cream),
               multilineTextAlignment("center"),
               frame({ maxWidth: welcomeIntro.titleMaxWidth }),
               padding({ all: welcomeIntro.blurRoom }),
@@ -147,7 +86,7 @@ export function WelcomeIntro({ onStart, headingRef }: { onStart: () => void; hea
         </Host>
       </View>
       <Animated.View testID="onboardingActions" style={[styles.actions, start]}>
-        <ActionButton testID="onboardingPrimary" title="Get Started" onPress={onStart} variant="filled" tone="overlay" size="hero" capsule />
+        <KitPrimary title="Get Started" onPress={onStart} />
       </Animated.View>
     </View>
   );

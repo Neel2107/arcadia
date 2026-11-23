@@ -23,7 +23,8 @@ const pill = {
 const pillGap = space.xl;
 
 export const blockingDemo = {
-  previewMs: 900,
+  clutteredMs: 1500,
+  cleanMs: 2600,
   staggerMs: 90,
   hide: spring(0.42, 1),
   show: spring(0.5, 0.86),
@@ -33,7 +34,7 @@ export const blockingDemo = {
   cookieFadeLead: 0.15,
   minScale: 0.5,
   maxScale: 1,
-  content: { width: Math.max(phoneFrame.width, pill.width), height: phoneFrame.height + pillGap + pill.height },
+  content: { width: phoneFrame.width, height: phoneFrame.height },
   pillGap,
   pill,
 } as const;

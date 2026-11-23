@@ -18,12 +18,13 @@ import { SyncScanIllustration } from "./SyncScanIllustration";
 import { TipsReel } from "./TipsReel";
 import { BlockingDemo } from "./BlockingDemo";
 import { SyncFlight } from "./SyncFlight";
-import { WelcomeIntro, WelcomeMesh } from "./WelcomeIntro";
-import { BlurTitle } from "./BlurTitle";
-import { ColorChoices } from "./ColorChoices";
+import { WelcomeIntro } from "./WelcomeIntro";
+import { Landscape } from "./Landscape";
+import { BlurStage } from "./BlurStage";
+import { KitPrimary, KitSecondary, KitSettingRow, KitSubtitle } from "./OnboardingKit";
 import { StartBackdrop } from "../search/StartSpaces";
 import { startLogo } from "../search/startLook";
-import { onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
+import { blurStage, brand, onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
 import { PHONE_SHARING_COPY } from "../../lib/telemetryCopy";
 import { copy } from "../../lib/platformCopy";
 import { syncWords } from "../../lib/sharedWords";
@@ -37,8 +38,8 @@ import { useSyncConnected } from "../../state/sync/hooks";
 export const SYNC_SUBTITLE = iPhoneOr({ offer: "End-to-end encrypted.", connected: "Connected." }, { offer: "Your Mac’s tabs, right here. End-to-end encrypted.", connected: "Your Mac’s tabs are here, end-to-end encrypted." });
 
 export const STEP_WORDS = iPhoneOr(
-  { color: "Pick a color", blocking: "No ads, no trackers", sync: "Your Mac’s tabs, on your phone", allSet: "All set" },
-  { color: "Pick a color", blocking: "Never see another ad.", sync: "Every tab, anywhere.", allSet: "You’re all set!" },
+  { blocking: "No ads, no trackers", sync: "Your Mac’s tabs, on your phone", allSet: "All set" },
+  { blocking: "Never see another ad.", sync: "Every tab, anywhere.", allSet: "You’re all set!" },
 );
 
 const useIntro = () => onboardingLayout.startBackdrop && useDesign() !== "material" && settingsUIAvailable();
@@ -51,7 +52,7 @@ export const archiveTip = (interval: AutoArchiveInterval) => (interval === "neve
 
 type ShownStep = { step: OnboardingStep; closing: boolean };
 
-export function useDepartingSteps(step: OnboardingStep): ShownStep[] {
+export function useDepartingSteps(step: OnboardingStep, holdMs = 0): ShownStep[] {
   const [shown, setShown] = useState<ShownStep[]>([{ step, closing: false }]);
   let next = shown;
   if (shown[shown.length - 1]!.step !== step) {
@@ -60,9 +61,14 @@ export function useDepartingSteps(step: OnboardingStep): ShownStep[] {
   }
   useEffect(() => {
     if (!shown.some((entry) => entry.closing)) return;
-    const frame = requestAnimationFrame(() => setShown((now) => now.filter((entry) => !entry.closing)));
+    const drop = () => setShown((now) => now.filter((entry) => !entry.closing));
+    if (holdMs > 0) {
+      const timer = setTimeout(drop, holdMs);
+      return () => clearTimeout(timer);
+    }
+    const frame = requestAnimationFrame(drop);
     return () => cancelAnimationFrame(frame);
-  }, [shown]);
+  }, [shown, holdMs]);
   return next;
 }
 
@@ -142,7 +148,8 @@ export function OnboardingView() {
   const reduceMotion = useReduceMotion();
   const { fontScale } = useWindowDimensions();
   const material = useDesign() === "material";
-  const steps = useDepartingSteps(step);
+  const introMode = onboardingLayout.startBackdrop && !material && settingsUIAvailable();
+  const steps = useDepartingSteps(step, introMode ? blurStage.holdMs : 0);
   const mounted = useLingering(showing);
   useEffect(() => {
     if (showing) void refreshSettings();
@@ -158,7 +165,7 @@ export function OnboardingView() {
     <ForcedDark value={intro ? true : null}>
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
       {intro ? (
-        <WelcomeMesh />
+        <Landscape step={step} />
       ) : startLook ? (
         <StartLookBackdrop />
       ) : (
@@ -166,15 +173,8 @@ export function OnboardingView() {
         {material ? <LookBackdrop softened={!welcome} fadesOut={!welcome} /> : null}
       </Animated.View>
       )}
-      {steps.map((shown) => (
-        <Animated.View
-          key={shown.step}
-          testID="onboardingStep"
-          entering={material && !reduceMotion ? (forward ? MATERIAL_STEP.inForward : MATERIAL_STEP.inBack) : stepIn(forward ? 1 : -1, reduceMotion)}
-          exiting={material && !reduceMotion ? (forward ? MATERIAL_STEP.outForward : MATERIAL_STEP.outBack) : stepOut(forward ? 1 : -1, reduceMotion)}
-          {...closingGate(shown.closing)}
-          style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step, paddingTop: insets.top, paddingBottom: insets.bottom }]}
-        >
+      {steps.map((shown) => {
+        const content = (
           <StepFocus live={showing && !shown.closing}>
             {scrolls ? (
               <ScrollView contentContainerStyle={styles.scrolled} keyboardShouldPersistTaps="handled">
@@ -184,8 +184,28 @@ export function OnboardingView() {
               <StepContent step={shown.step} />
             )}
           </StepFocus>
-        </Animated.View>
-      ))}
+        );
+        if (intro)
+          return (
+            <View key={shown.step} testID="onboardingStep" {...closingGate(shown.closing)} style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step }]}>
+              <BlurStage leaving={shown.closing}>
+                <View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>{content}</View>
+              </BlurStage>
+            </View>
+          );
+        return (
+          <Animated.View
+            key={shown.step}
+            testID="onboardingStep"
+            entering={material && !reduceMotion ? (forward ? MATERIAL_STEP.inForward : MATERIAL_STEP.inBack) : stepIn(forward ? 1 : -1, reduceMotion)}
+            exiting={material && !reduceMotion ? (forward ? MATERIAL_STEP.outForward : MATERIAL_STEP.outBack) : stepOut(forward ? 1 : -1, reduceMotion)}
+            {...closingGate(shown.closing)}
+            style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step, paddingTop: insets.top, paddingBottom: insets.bottom }]}
+          >
+            {content}
+          </Animated.View>
+        );
+      })}
     </Animated.View>
     </ForcedDark>
   );
@@ -222,19 +242,10 @@ const useStepHeading = () => useContext(StepHeading)?.attach;
 
 function StepContent({ step }: { step: OnboardingStep }) {
   if (step === "welcome") return <Welcome />;
-  if (step === "color") return <ColorStep />;
   if (step === "blocking") return <Blocking />;
   if (step === "sync") return <SyncStep />;
   if (step === "defaultBrowser") return <DefaultBrowserStep />;
   return <AllSet />;
-}
-
-function ColorStep() {
-  return (
-    <Page title={STEP_WORDS.color} illustration={<ColorChoices />}>
-      <Primary title="Continue" onPress={advanceOnboarding} />
-    </Page>
-  );
 }
 
 function DefaultBrowserStep() {
@@ -310,6 +321,7 @@ function SyncStep() {
 }
 
 function Secondary({ title, onPress }: { title: string; onPress: () => void }) {
+  const intro = useIntro();
   const { scheme } = useMaterialTheme();
   const ripple = useMaterialRipple();
   if (useDesign() === "material")
@@ -318,10 +330,12 @@ function Secondary({ title, onPress }: { title: string; onPress: () => void }) {
         <Text style={[materialType.labelLarge, { color: scheme.primary }]}>{title}</Text>
       </Pressable>
     );
+  if (intro) return <KitSecondary title={title} onPress={onPress} />;
   return <ActionButton title={title} onPress={onPress} variant="plain" tone={onboardingLayout.startBackdrop ? "ink" : "accent"} size="regular" />;
 }
 
 function Primary({ title, onPress }: { title: string; onPress: () => void }) {
+  const intro = useIntro();
   const { scheme } = useMaterialTheme();
   const ripple = useMaterialRipple();
   if (useDesign() === "material")
@@ -330,6 +344,7 @@ function Primary({ title, onPress }: { title: string; onPress: () => void }) {
         <Text style={[materialType.titleMedium, styles.centeredText, { color: scheme.onPrimary }]}>{title}</Text>
       </Pressable>
     );
+  if (intro) return <KitPrimary title={title} onPress={onPress} />;
   if (onboardingLayout.startBackdrop) return <ActionButton testID="onboardingPrimary" title={title} onPress={onPress} variant="filled" tone="ink" size="hero" capsule />;
   return <PrimaryButton title={title} onPress={onPress} />;
 }
@@ -389,20 +404,17 @@ function Page({ title, subtitle, illustration, sitsLow, children }: { title: str
   const heading = useStepHeading();
   const material = useDesign() === "material";
   const subtitleInk = material ? theme.secondaryLabel : (theme.dark ? onboardingInk.dark : onboardingInk.light).subtitle;
+  const intro = useIntro();
   return (
     <View style={styles.fill}>
       <View testID="onboardingIllustration" style={[styles.illustration, { justifyContent: sitsLow && material ? "flex-end" : "center" }]}>
         {illustration}
       </View>
       <View testID="onboardingWords" style={styles.words}>
-        {useIntro() ? (
-          <BlurTitle text={title} headingRef={heading} />
-        ) : (
-          <Text ref={heading} accessibilityRole="header" style={material ? [materialType.headlineMedium, styles.centeredText, { color: theme.label }] : [onboardingLayout.title, styles.heavy, { color: theme.label }]}>
-            {title}
-          </Text>
-        )}
-        {subtitle ? <CrossfadeText testID="onboardingSubtitle" text={subtitle} style={[material ? materialType.bodyLarge : font.body, styles.centered, { color: subtitleInk }]} /> : null}
+        <Text ref={heading} accessibilityRole="header" style={material ? [materialType.headlineMedium, styles.centeredText, { color: theme.label }] : intro ? [styles.kitTitle] : [onboardingLayout.title, styles.heavy, { color: theme.label }]}>
+          {title}
+        </Text>
+        {subtitle ? intro ? <KitSubtitle text={subtitle} /> : <CrossfadeText testID="onboardingSubtitle" text={subtitle} style={[material ? materialType.bodyLarge : font.body, styles.centered, { color: subtitleInk }]} /> : null}
       </View>
       <View testID="onboardingActions" style={[styles.actions, { paddingTop: onboardingLayout.actionsTop }]}>
         {children}
@@ -512,9 +524,11 @@ function AllSet() {
 function SharingChoice() {
   const theme = useTheme();
   const sharing = useUsageSharing((s) => s.sharing);
+  const intro = useIntro();
+  if (intro) return <KitSettingRow testID="onboardingSharing" label={PHONE_SHARING_COPY.toggle} value={sharing} onChange={(on) => setUsageSharing(on, "onboarding")} />;
   return (
     <View style={styles.sharing}>
-      <View style={[styles.sharingCard, { backgroundColor: useIntro() ? overlayInk.glass : theme.groupFill }]}>
+      <View style={[styles.sharingCard, { backgroundColor: theme.groupFill }]}>
         {onboardingLayout.plainSharing ? (
           <SwitchRow label={PHONE_SHARING_COPY.toggle} value={sharing} onChange={(on) => setUsageSharing(on, "onboarding")} press={copy().menuRowTogglesSwitch ? "row" : "knob"} />
         ) : (
@@ -545,6 +559,7 @@ const styles = StyleSheet.create({
   welcomeWords: { paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   words: { paddingTop: onboardingLayout.wordsTop, paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   heavy: { fontWeight: "700", textAlign: "center" },
+  kitTitle: { ...onboardingLayout.title, fontWeight: "700", textAlign: "center", color: brand.cream },
   centered: { textAlign: "center" },
   actions: { paddingHorizontal: onboardingLayout.actionsInset, paddingBottom: onboardingLayout.actionsBottom, gap: onboardingLayout.actionsGap },
   materialPrimary: { minHeight: 56, borderRadius: materialShape.full, overflow: "hidden", alignItems: "center", justifyContent: "center", paddingHorizontal: 24 },
