@@ -1,19 +1,13 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect } from "react";
 import { AppState, Platform, StyleSheet, Text, useWindowDimensions, View, type ViewInstance } from "react-native";
 import { askForDefaultBrowser, refreshDefaultBrowser, useDefaultBrowser } from "../../state/settings/defaultBrowser";
 import { popSettings } from "../../state/settings/nav";
 import { defaultBrowserCopy } from "../../state/settings/settingsRules";
-import { ActionButton, AppIcon, font, ink, PrimaryButton, radius, settingsLayout, settingsTint, space, spacesLayout, Symbol, useTheme, smoothCorners, type ActionInk } from "../ui";
+import { ActionButton, AppIcon, font, ink, PrimaryButton, radius, settingsLayout, settingsTint, space, spacesLayout, Symbol, useTheme, smoothCorners } from "../ui";
 import { SettingsPage } from "./SettingsKit";
 
-export type DefaultBrowserPalette = { title: string; body: string; cardFill: string; cardEdge: string; divider: string; primary: ActionInk; secondary: ActionInk; renderPrimary?: (title: string, onPress: () => void) => ReactNode };
-
-export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = false, palette }: { onLater?: () => void; onDone?: () => void; headingRef?: (node: ViewInstance | null) => void; inkActions?: boolean; palette?: DefaultBrowserPalette }) {
-  const theme = useTheme();
-  const titleInk = palette?.title ?? theme.label;
-  const bodyInk = palette?.body ?? theme.secondaryLabel;
+export function useDefaultBrowserFlow({ onLater, onDone }: { onLater?: () => void; onDone?: () => void }) {
   const status = useDefaultBrowser((s) => s.status);
-  const { fontScale } = useWindowDimensions();
   useEffect(() => {
     void refreshDefaultBrowser();
     const returns = AppState.addEventListener("change", (next) => {
@@ -21,16 +15,26 @@ export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = 
     });
     return () => returns.remove();
   }, []);
-  if (!status) return null;
-  const copy = defaultBrowserCopy(status);
-  const listsSteps = fontScale >= settingsLayout.accessibilityFontScale;
+  const copy = status ? defaultBrowserCopy(status) : null;
   const ask = async () => {
+    if (!copy) return;
     if (copy.inSettings) onDone?.();
     const after = await askForDefaultBrowser(copy.does);
     if (copy.inSettings) return;
     if (after.unavailable) onLater?.();
     else if (after.status?.isDefault) onDone?.();
   };
+  return { copy, ask };
+}
+
+export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = false }: { onLater?: () => void; onDone?: () => void; headingRef?: (node: ViewInstance | null) => void; inkActions?: boolean }) {
+  const theme = useTheme();
+  const titleInk = theme.label;
+  const bodyInk = theme.secondaryLabel;
+  const { fontScale } = useWindowDimensions();
+  const { copy, ask } = useDefaultBrowserFlow({ onLater, onDone });
+  if (!copy) return null;
+  const listsSteps = fontScale >= settingsLayout.accessibilityFontScale;
   return (
     <View style={styles.column}>
       <View style={styles.words}>
@@ -46,26 +50,26 @@ export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = 
           ))}
         </View>
       ) : copy.steps.length ? (
-        <View style={[styles.card, palette ? { backgroundColor: palette.cardFill, borderWidth: StyleSheet.hairlineWidth, borderColor: palette.cardEdge } : { backgroundColor: theme.groupFill }]}>
+        <View style={[styles.card, { backgroundColor: theme.groupFill }]}>
           {copy.steps.map((step, index) => (
             <View key={step}>
               <View accessible style={styles.step}>
                 <StepIcon index={index} count={copy.steps.length} inSettings={copy.inSettings} />
                 <Text style={[font.body, styles.fill, { color: titleInk }]}>{`${index + 1}. ${step}`}</Text>
               </View>
-              {index < copy.steps.length - 1 ? <View style={[styles.divider, { backgroundColor: palette?.divider ?? theme.separator }]} /> : null}
+              {index < copy.steps.length - 1 ? <View style={[styles.divider, { backgroundColor: theme.separator }]} /> : null}
             </View>
           ))}
         </View>
       ) : null}
       <View style={styles.actions}>
         {copy.action ? (
-          palette?.renderPrimary ? palette.renderPrimary(copy.action, () => void ask()) : inkActions || palette ? <ActionButton title={copy.action} onPress={() => void ask()} variant="filled" tone="ink" size="hero" capsule ink={palette?.primary} /> : <PrimaryButton title={copy.action} onPress={() => void ask()} />
+          inkActions ? <ActionButton title={copy.action} onPress={() => void ask()} variant="filled" tone="ink" size="hero" capsule /> : <PrimaryButton title={copy.action} onPress={() => void ask()} />
         ) : onLater ? (
-          palette?.renderPrimary ? palette.renderPrimary("Continue", onLater) : inkActions || palette ? <ActionButton title="Continue" onPress={onLater} variant="filled" tone="ink" size="hero" capsule ink={palette?.primary} /> : <PrimaryButton title="Continue" onPress={onLater} />
+          inkActions ? <ActionButton title="Continue" onPress={onLater} variant="filled" tone="ink" size="hero" capsule /> : <PrimaryButton title="Continue" onPress={onLater} />
         ) : null}
         {copy.action && onLater ? (
-          <ActionButton title="Maybe Later" onPress={onLater} variant="plain" tone={inkActions ? "ink" : "neutral"} size="regular" ink={palette?.secondary} />
+          <ActionButton title="Maybe Later" onPress={onLater} variant="plain" tone={inkActions ? "ink" : "neutral"} size="regular" />
         ) : null}
       </View>
     </View>

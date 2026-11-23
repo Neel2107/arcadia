@@ -2,7 +2,7 @@ import { Platform, StyleSheet } from "react-native";
 import { act } from "react-test-renderer";
 import { OnboardingView, SYNC_SUBTITLE } from "../components/onboarding/OnboardingView";
 import { SyncScanIllustration } from "../components/onboarding/SyncScanIllustration";
-import { SyncFlight } from "../components/onboarding/SyncFlight";
+import { SyncFlight } from "../components/onboarding/StepPhones";
 import { Symbol } from "../components/ui";
 import { SKETCH_QR_ROWS, sketchQrPath } from "../lib/sketchQr";
 import { useOnboarding } from "../state/onboarding/store";

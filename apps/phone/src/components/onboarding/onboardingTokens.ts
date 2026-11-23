@@ -157,28 +157,68 @@ export const welcomeIntro = {
   reducedFadeMs: 300,
 } as const;
 
+export const phoneStage = {
+  layer: 1,
+  appearMs: 320,
+  appearDelayMs: 120,
+  vanishGraceMs: 160,
+  vanishMs: 220,
+  screenOutMs: 220,
+  screenInMs: 320,
+  reducedOutMs: 150,
+  reducedInMs: 200,
+} as const;
+
+export const phoneScene = {
+  density: 1.35,
+  bar: { height: 34, inset: 14, bottom: 12, glyph: 15, plus: 26, shadow: "0px 4px 14px rgba(0, 0, 0, 0.18)" },
+  finger: { side: 26, ring: 1.5, pressScale: 0.78, fill: "rgba(110,110,118,0.5)", edge: "rgba(255,255,255,0.95)", shadow: "0px 2px 10px rgba(0, 0, 0, 0.35)" },
+  page: { header: 0.27, titleWidth: 0.68, lines: [0.9, 0.78, 0.86, 0.62], line: 5, title: 8, gap: 7, pad: 12 },
+  pageShadow: "-6px 0px 16px rgba(0, 0, 0, 0.22)",
+  looks: ["plum", "blue", "green", "orange"] as const,
+} as const;
+
 export const tipsReel = {
   sceneMs: 3400,
   reducedSceneMs: 3200,
-  stage: { width: 176, height: 344, radius: 34, bezel: 6, screenRadius: 28, island: { width: 46, height: 13, top: 9 } },
+  reducedFrame: 0.9,
   captionGap: space.l,
   captionHeight: 22,
   dotsGap: space.s,
   dot: { width: 22, height: 4, gap: 6, hitSlop: 14 },
-  minScale: 0.62,
-  maxScale: 1,
-  bar: { height: 34, inset: 14, bottom: 12, glyph: 15, plus: 26 },
-  finger: { side: 26, ring: 1.5, pressScale: 0.78 },
-  page: { header: 0.27, titleWidth: 0.68, lines: [0.9, 0.78, 0.86, 0.62], line: 5, title: 8, gap: 7, pad: 12 },
+  minScale: 0.45,
+  maxScale: 0.73,
   tray: { share: 0.6, radius: 20, field: 28, query: "ardia.dev", queryWidth: 47, caret: 12, keyRows: [10, 9, 7], keyHeight: 17, keyGap: 3, rowGap: 5 },
   deck: { widthShare: 0.62, heightShare: 0.58, topShare: 0.15, gap: 10, radius: 16, lift: 0.17 },
   back: { parallax: -0.33, shade: 0.32, edge: 8, dragShare: 0.55 },
   captionInk: brand.cream,
-  fingerFill: "rgba(110,110,118,0.5)",
-  fingerRing: "rgba(255,255,255,0.95)",
-  fingerShadow: "0px 2px 10px rgba(0, 0, 0, 0.35)",
-  pageShadow: "-6px 0px 16px rgba(0, 0, 0, 0.22)",
-  looks: ["plum", "blue", "green", "orange"] as const,
+} as const;
+
+export const openLink = {
+  loopMs: 4600,
+  reducedThreadMs: 1800,
+  reducedPageMs: 2600,
+  reducedFadeMs: 300,
+  minScale: 0.4,
+  maxScale: 0.62,
+  paper: "#FFFFFF",
+  ink: "#111111",
+  muted: "rgba(60,60,67,0.6)",
+  rule: "rgba(60,60,67,0.18)",
+  incoming: "#E9E9EB",
+  outgoing: "#0A84FF",
+  outgoingInk: "#FFFFFF",
+  header: { top: 22, height: 50, avatar: 24, avatarInk: "#FFFFFF", nameSize: 7.5, back: 10, name: "Maya", initial: "M" },
+  thread: { top: 84, inset: 10, gap: 6, radius: 13, padX: 9, padY: 5, size: 8.5, line: 11, maxShare: 0.72 },
+  messages: { asked: "Dinner tonight?", answered: "Yes! Somewhere good?" },
+  card: { width: 118, image: 58, radius: 13, padX: 8, padY: 6, titleSize: 8, titleLine: 10, hostSize: 6.5, tint: "orange", pressScale: 0.96, pressDim: 0.12 },
+  compose: { bottom: 12, inset: 10, height: 22, plus: 20, placeholder: "iMessage", size: 7.5 },
+  page: { image: 0.3, pad: 12, gap: 6, titleSize: 13, titleLine: 16, hostSize: 7, lines: [0.94, 0.88, 0.97, 0.7, 0.92, 0.84, 0.6], line: 5 },
+  link: { title: "The best tapas in Lisbon", host: "timeout.com" },
+  timeline: { fingerIn: [0.1, 0.18], reach: [0.18, 0.36], press: [0.36, 0.46], fingerOut: [0.44, 0.5], open: [0.46, 0.64], close: [0.9, 0.98] },
+  fingerFrom: { x: 0.72, y: 0.82 },
+  parallax: -0.3,
+  shade: 0.28,
 } as const;
 
 export const onboardingCurves = {

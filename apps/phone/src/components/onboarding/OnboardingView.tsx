@@ -12,22 +12,21 @@ import { useMaterialTheme } from "../ui/materialTheme";
 import { materialEasing, materialMotion, materialShape, materialSize, materialType } from "../ui/materialTokens";
 import { CrossfadeText, Divider, ToggleRow } from "../settings/SettingsKit";
 import { SyncConnect } from "../sync/SyncConnect";
-import { DefaultBrowserSteps } from "../settings/DefaultBrowserPage";
+import { DefaultBrowserSteps, useDefaultBrowserFlow } from "../settings/DefaultBrowserPage";
 import { LinkBubble } from "./LinkBubble";
 import { SyncScanIllustration } from "./SyncScanIllustration";
-import { TipsReel } from "./TipsReel";
-import { BlockingDemo } from "./BlockingDemo";
-import { SyncFlight } from "./SyncFlight";
+import { BlockingDemo, OpenLinkDemo, SyncFlight, TipsReel } from "./StepPhones";
+import { PhoneStage } from "./PhoneStage";
 import { WelcomeIntro } from "./WelcomeIntro";
 import { Landscape } from "./Landscape";
 import { BlurStage } from "./BlurStage";
-import { KIT_DEFAULT_BROWSER, KitPrimary, KitSecondary, KitSettingRow, KitSubtitle, PrimarySlotContext, StepOwner, type PrimarySlot, type SlotRect } from "./OnboardingKit";
+import { KitPrimary, KitSecondary, KitSettingRow, KitSubtitle, PrimarySlotContext, StepOwner, type PrimarySlot, type SlotRect } from "./OnboardingKit";
 import { StartBackdrop } from "../search/StartSpaces";
 import { startLogo } from "../search/startLook";
 import { blurStage, brand, onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
 import { PHONE_SHARING_COPY } from "../../lib/telemetryCopy";
 import { copy } from "../../lib/platformCopy";
-import { syncWords } from "../../lib/sharedWords";
+import { actionWords, syncWords } from "../../lib/sharedWords";
 import { openSettingsPage, useSettingsNav } from "../../state/settings/nav";
 import { usePreferences } from "../../state/settings/hooks";
 import type { OnboardingStep } from "../../state/settings/settingsRules";
@@ -38,9 +37,11 @@ import { useSyncConnected } from "../../state/sync/hooks";
 export const SYNC_SUBTITLE = iPhoneOr({ offer: "End-to-end encrypted.", connected: "Connected." }, { offer: "Your Mac’s tabs, right here. End-to-end encrypted.", connected: "Your Mac’s tabs are here, end-to-end encrypted." });
 
 export const STEP_WORDS = iPhoneOr(
-  { blocking: "No ads, no trackers", sync: "Your Mac’s tabs, on your phone", allSet: "All set" },
-  { blocking: "Never see another ad.", sync: "Every tab, anywhere.", allSet: "You’re all set!" },
+  { blocking: "No ads, no trackers", defaultBrowser: "Open links in Ardia", sync: "Your Mac’s tabs, on your phone", allSet: "All set" },
+  { blocking: "Never see another ad.", defaultBrowser: "Open links in Ardia", sync: "Every tab, anywhere.", allSet: "You’re all set!" },
 );
+
+export const DEFAULT_BROWSER_ROUTE = "Settings › Default Browser App › Ardia";
 
 const useIntro = () => onboardingLayout.startBackdrop && useDesign() !== "material" && settingsUIAvailable();
 export const ONBOARDING_LAYERS = { stepsBackdrop: 0, welcomeBackdrop: 1, step: 2 } as const;
@@ -173,6 +174,41 @@ export function OnboardingView() {
   const scrolls = fontScale > onboardingLayout.scrollsAboveFontScale;
   const startLook = onboardingLayout.startBackdrop && !material;
   const intro = startLook && settingsUIAvailable();
+  const stepLayers = steps.map((shown) => {
+    const content = (
+      <StepFocus live={showing && !shown.closing}>
+        {scrolls ? (
+          <ScrollView contentContainerStyle={styles.scrolled} keyboardShouldPersistTaps="handled">
+            <StepContent step={shown.step} />
+          </ScrollView>
+        ) : (
+          <StepContent step={shown.step} />
+        )}
+      </StepFocus>
+    );
+    if (intro)
+      return (
+        <View key={shown.step} testID="onboardingStep" {...closingGate(shown.closing)} style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step }]}>
+          <StepOwner.Provider value={shown.closing ? null : shown.step}>
+            <BlurStage leaving={shown.closing}>
+              <View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>{content}</View>
+            </BlurStage>
+          </StepOwner.Provider>
+        </View>
+      );
+    return (
+      <Animated.View
+        key={shown.step}
+        testID="onboardingStep"
+        entering={material && !reduceMotion ? (forward ? MATERIAL_STEP.inForward : MATERIAL_STEP.inBack) : stepIn(forward ? 1 : -1, reduceMotion)}
+        exiting={material && !reduceMotion ? (forward ? MATERIAL_STEP.outForward : MATERIAL_STEP.outBack) : stepOut(forward ? 1 : -1, reduceMotion)}
+        {...closingGate(shown.closing)}
+        style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step, paddingTop: insets.top, paddingBottom: insets.bottom }]}
+      >
+        {content}
+      </Animated.View>
+    );
+  });
   return (
     <ForcedDark value={intro ? true : null}>
     <PrimarySlotContext.Provider value={intro ? primarySlot : null}>
@@ -189,41 +225,7 @@ export function OnboardingView() {
         {material ? <LookBackdrop softened={!welcome} fadesOut={!welcome} /> : null}
       </Animated.View>
       )}
-      {steps.map((shown) => {
-        const content = (
-          <StepFocus live={showing && !shown.closing}>
-            {scrolls ? (
-              <ScrollView contentContainerStyle={styles.scrolled} keyboardShouldPersistTaps="handled">
-                <StepContent step={shown.step} />
-              </ScrollView>
-            ) : (
-              <StepContent step={shown.step} />
-            )}
-          </StepFocus>
-        );
-        if (intro)
-          return (
-            <View key={shown.step} testID="onboardingStep" {...closingGate(shown.closing)} style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step }]}>
-              <StepOwner.Provider value={shown.closing ? null : shown.step}>
-                <BlurStage leaving={shown.closing}>
-                  <View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>{content}</View>
-                </BlurStage>
-              </StepOwner.Provider>
-            </View>
-          );
-        return (
-          <Animated.View
-            key={shown.step}
-            testID="onboardingStep"
-            entering={material && !reduceMotion ? (forward ? MATERIAL_STEP.inForward : MATERIAL_STEP.inBack) : stepIn(forward ? 1 : -1, reduceMotion)}
-            exiting={material && !reduceMotion ? (forward ? MATERIAL_STEP.outForward : MATERIAL_STEP.outBack) : stepOut(forward ? 1 : -1, reduceMotion)}
-            {...closingGate(shown.closing)}
-            style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step, paddingTop: insets.top, paddingBottom: insets.bottom }]}
-          >
-            {content}
-          </Animated.View>
-        );
-      })}
+      {intro ? <PhoneStage step={step} steps={steps}>{stepLayers}</PhoneStage> : stepLayers}
     </Animated.View>
     </PrimarySlotContext.Provider>
     </ForcedDark>
@@ -305,8 +307,28 @@ function StepContent({ step }: { step: OnboardingStep }) {
 }
 
 function DefaultBrowserStep() {
+  if (useIntro()) return <DefaultBrowserIntro />;
+  return <DefaultBrowserFallback />;
+}
+
+function DefaultBrowserIntro() {
+  const { copy, ask } = useDefaultBrowserFlow({ onLater: advanceOnboarding, onDone: advanceOnboarding });
+  return (
+    <Page title={STEP_WORDS.defaultBrowser} subtitle={DEFAULT_BROWSER_ROUTE} illustration={<OpenLinkDemo />}>
+      {copy?.action ? (
+        <>
+          <Primary title={actionWords.openSettings} onPress={() => void ask()} />
+          <Secondary title="Not Now" onPress={advanceOnboarding} />
+        </>
+      ) : copy ? (
+        <Primary title="Continue" onPress={advanceOnboarding} />
+      ) : null}
+    </Page>
+  );
+}
+
+function DefaultBrowserFallback() {
   const theme = useTheme();
-  const intro = useIntro();
   const startLook = onboardingLayout.startBackdrop && useDesign() !== "material";
   return (
     <View style={styles.fill}>
@@ -314,7 +336,7 @@ function DefaultBrowserStep() {
         <LinkBubble />
       </View>
       <View testID="defaultBrowserSheet" style={startLook ? styles.browserWords : [styles.browserSheet, { backgroundColor: theme.groupFill, boxShadow: shadowCss("floating", theme.dark) }]}>
-        <DefaultBrowserSteps headingRef={useStepHeading()} onLater={advanceOnboarding} onDone={advanceOnboarding} inkActions={startLook} palette={intro ? KIT_DEFAULT_BROWSER : undefined} />
+        <DefaultBrowserSteps headingRef={useStepHeading()} onLater={advanceOnboarding} onDone={advanceOnboarding} inkActions={startLook} />
       </View>
     </View>
   );
@@ -349,7 +371,7 @@ function SyncStep() {
         subtitle={connected ? SYNC_SUBTITLE.connected : SYNC_SUBTITLE.offer}
         illustration={
           onboardingLayout.phoneDemos && !material ? (
-            <SyncFlight connected={connected} />
+            <SyncFlight />
           ) : (
             <View style={styles.sketch}>
               <SyncScanIllustration connected={connected} />

@@ -2,8 +2,9 @@ import { Platform, StyleSheet } from "react-native";
 import * as Reanimated from "react-native-reanimated";
 import { act, type ReactTestInstance } from "react-test-renderer";
 import { archiveTip, OnboardingView, stepIn, stepOut } from "../components/onboarding/OnboardingView";
-import { onboardingCurves, onboardingMotion, tipsReel } from "../components/onboarding/onboardingTokens";
-import { reelScale, REEL_TIPS } from "../components/onboarding/TipsReel";
+import { onboardingCurves, onboardingMotion, phoneFrame, tipsReel } from "../components/onboarding/onboardingTokens";
+import { reelScale } from "../components/onboarding/StepPhones";
+import { REEL_TIPS } from "../components/onboarding/TipsScenes";
 import { presetLook } from "../lib/profileLook";
 import { ToggleRow } from "../components/settings/SettingsKit";
 import { ActionButton, DEFAULT_PROFILE_COLOR, PrimaryButton, PROFILE_PRESETS, rolesFor, Symbol, ToggleRow as SwitchRow } from "../components/ui";
@@ -169,7 +170,7 @@ onIos("the all-set step shows three tips as a looping reel instead of a list: on
   expect(caption()).toBe("Swipe a page to go back.");
   act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
   expect(caption()).toBe("Tap + to search.");
-  expect(hosts(root, "tipsReelFinger")).toHaveLength(1);
+  expect(hosts(root, "sceneFinger")).toHaveLength(1);
   unmount(root);
 });
 
@@ -187,7 +188,7 @@ onIos("a reel dot jumps to its tip, and tapping the phone moves to the next", ()
 onIos("with Reduce Motion the reel draws no finger and still steps through the tips", () => {
   mockMotion.reduced = true;
   const root = showStep("allSet", false);
-  expect(hosts(root, "tipsReelFinger")).toHaveLength(0);
+  expect(hosts(root, "sceneFinger")).toHaveLength(0);
   act(() => jest.advanceTimersByTime(tipsReel.reducedSceneMs));
   expect(textIn(hosts(root, "tipsReelCaption").at(-1)!)).toBe("Flick a tab up to close it.");
   unmount(root);
@@ -196,7 +197,7 @@ onIos("with Reduce Motion the reel draws no finger and still steps through the t
 onIos("the reel's phone shrinks to fit a short screen and never grows past its drawn size", () => {
   expect(reelScale(2000)).toBe(tipsReel.maxScale);
   expect(reelScale(0)).toBe(tipsReel.minScale);
-  const mid = reelScale(tipsReel.stage.height * 0.8 + 100);
+  const mid = reelScale(phoneFrame.height * 0.6 + 100);
   expect(mid).toBeGreaterThan(tipsReel.minScale);
   expect(mid).toBeLessThan(tipsReel.maxScale);
 });

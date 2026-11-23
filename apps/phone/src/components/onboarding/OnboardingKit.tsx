@@ -18,16 +18,13 @@ export const PrimarySlotContext = createContext<PrimarySlot | null>(null);
 
 export const StepOwner = createContext<string | null>(null);
 
-export const KIT_DEFAULT_BROWSER = {
-  title: brand.cream,
-  body: brand.creamMuted,
-  cardFill: brand.glass,
-  cardEdge: brand.glassEdge,
-  divider: brand.glassEdge,
-  primary: KIT_INK.primary,
-  secondary: KIT_INK.secondary,
-  renderPrimary: (title: string, onPress: () => void) => <KitPrimary title={title} onPress={onPress} />,
-};
+export type PhoneScreenKind = "blocking" | "openLink" | "sync" | "tips";
+
+export type PhoneSlotReport = { screen: PhoneScreenKind; rect: SlotRect };
+
+export type PhoneSlotApi = { report: (owner: string, slot: PhoneSlotReport) => void };
+
+export const PhoneSlotContext = createContext<PhoneSlotApi | null>(null);
 
 export function KitPrimary({ title, onPress, testID = "onboardingPrimary" }: { title: string; onPress: () => void; testID?: string }) {
   const slot = useContext(PrimarySlotContext);

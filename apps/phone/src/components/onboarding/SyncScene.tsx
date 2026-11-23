@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
 import { withAlpha } from "../../lib/color";
-import { tileGradient } from "../../lib/favicon";
-import { linearGradientCss } from "../../lib/gradient";
+import { useSyncConnected } from "../../state/sync/hooks";
 import { PROFILE_COLORS, smoothCorners, spring, Symbol, useReduceMotion } from "../ui";
+import type { SlotRect } from "./OnboardingKit";
 import { phoneFrame } from "./onboardingTokens";
-import { PhoneFrame, PHONE_SCREEN } from "./PhoneFrame";
+import { PHONE_SCREEN } from "./PhoneFrame";
+import { scaledFromTopLeft } from "./phoneGeometry";
+import { glide, pulse, settle, span } from "./sceneKit";
 import { syncFlight } from "./syncFlightTokens";
 
 const STAGE = syncFlight.stage;
@@ -23,13 +25,11 @@ const TABS = syncFlight.tabs;
 
 const ROW_WIDTH = MAC.sidebarWidth - 2 * ROW.inset;
 const PAGE_WIDTH = MAC.width - MAC.sidebarWidth;
-const PHONE_WIDTH = phoneFrame.width * PHONE.scale;
-const PHONE_HEIGHT = phoneFrame.height * PHONE.scale;
-const SCREEN_LEFT = PHONE.left + phoneFrame.bezel * PHONE.scale;
-const SCREEN_TOP = PHONE.top + phoneFrame.bezel * PHONE.scale;
 const SLOT_WIDTH = PHONE_SCREEN.width - 2 * LIST.inset;
-const LANDED_SCALE = (LIST.height * PHONE.scale) / ROW.height;
+const PS = PHONE.scale;
 const POP = spring(CHECK.pop.response, CHECK.pop.damping);
+
+export const PHONE_IN_STAGE = { left: PHONE.left, top: PHONE.top, width: phoneFrame.width * PS, height: phoneFrame.height * PS, scale: PS } as const;
 
 const FLOWN_TABS: readonly number[] = LOOP.flights;
 const FILLED_TABS: readonly number[] = [...FLOWN_TABS, ...TABS.map((_, index) => index).filter((index) => !FLOWN_TABS.includes(index))];
@@ -37,63 +37,60 @@ const FILLED_TABS: readonly number[] = [...FLOWN_TABS, ...TABS.map((_, index) =>
 const macRowTop = (row: number) => ROW.top + row * (ROW.height + ROW.gap);
 const phoneSlotTop = (slot: number) => LIST.top + slot * (LIST.height + LIST.gap);
 
-const flightStart = (flight: number) => LOOP.firstAt + flight * LOOP.stagger;
-const flightTimes = (flight: number) => {
-  const lifted = flightStart(flight) + LOOP.lift;
-  const arrived = lifted + LOOP.fly;
-  return { start: flightStart(flight), lifted, arrived, landed: arrived + LOOP.land };
+export const flightTimes = (flight: number) => {
+  const start = LOOP.firstAtMs + flight * LOOP.strideMs;
+  const lifted = start + LOOP.liftMs;
+  const arrived = lifted + LOOP.flyMs;
+  return { start, lifted, arrived, glowGone: arrived + LOOP.glowFadeMs };
 };
 
-const flightPath = (flight: number) => {
-  const row = FLOWN_TABS[flight]!;
+type Box = { x: number; y: number; width: number; height: number; radius: number; pad: number; swatch: number; swatchRadius: number; gap: number; bar: number; barWidth: number };
+
+export const flightEnds = (flight: number): { from: Box; to: Box } => {
+  const tab = TABS[FLOWN_TABS[flight]!]!;
+  const bezel = phoneFrame.bezel;
   return {
-    from: { x: MAC.left + ROW.inset + ROW_WIDTH / 2, y: MAC.top + macRowTop(row) + ROW.height / 2 },
-    to: { x: SCREEN_LEFT + LIST.inset * PHONE.scale + (ROW_WIDTH * LANDED_SCALE) / 2, y: SCREEN_TOP + (phoneSlotTop(flight) + LIST.height / 2) * PHONE.scale },
+    from: { x: MAC.left + ROW.inset, y: MAC.top + macRowTop(FLOWN_TABS[flight]!), width: ROW_WIDTH, height: ROW.height, radius: ROW.radius, pad: ROW.pad, swatch: ROW.swatch, swatchRadius: ROW.swatchRadius, gap: ROW.barGap, bar: ROW.bar, barWidth: tab.bar },
+    to: {
+      x: PHONE.left + (bezel + LIST.inset) * PS,
+      y: PHONE.top + (bezel + phoneSlotTop(flight)) * PS,
+      width: SLOT_WIDTH * PS,
+      height: LIST.height * PS,
+      radius: LIST.radius * PS,
+      pad: LIST.pad * PS,
+      swatch: LIST.swatch * PS,
+      swatchRadius: LIST.swatchRadius * PS,
+      gap: LIST.swatchGap * PS,
+      bar: LIST.bar * PS,
+      barWidth: tab.bar * LIST.barStretch * PS,
+    },
   };
 };
 
 export const flightScale = (width: number, height: number) => Math.max(0, Math.min(syncFlight.maxScale, width / STAGE.width, height / STAGE.height));
 
-const span = (t: number, from: number, to: number) => {
-  "worklet";
-  return Math.min(1, Math.max(0, (t - from) / (to - from)));
+export const stageAround = (phone: SlotRect) => {
+  const scale = phone.width / PHONE_IN_STAGE.width;
+  return { x: phone.x - PHONE.left * scale, y: phone.y - PHONE.top * scale, scale };
 };
 
-const glide = (t: number, from: number, to: number) => {
-  "worklet";
-  return Easing.inOut(Easing.cubic)(span(t, from, to));
-};
+export type SyncFlightState = { clock: SharedValue<number>; glow: SharedValue<number>; looping: boolean; connected: boolean; reduceMotion: boolean };
 
-const settle = (t: number, from: number, to: number) => {
-  "worklet";
-  return Easing.out(Easing.cubic)(span(t, from, to));
-};
+const SyncFlightContext = createContext<SyncFlightState | null>(null);
 
-const pulse = (t: number, from: number, to: number) => {
-  "worklet";
-  const x = span(t, from, to);
-  return x < 0.5 ? x * 2 : (1 - x) * 2;
-};
+export const useSyncFlight = () => useContext(SyncFlightContext);
 
-const checkPop = () => {
-  "worklet";
-  return {
-    initialValues: { opacity: 0, transform: [{ scale: 0 }] },
-    animations: { opacity: withDelay(CHECK.delayMs, withTiming(1, { duration: syncFlight.fadeMs })), transform: [{ scale: withDelay(CHECK.delayMs, withSpring(1, POP)) }] },
-  };
-};
-
-export function SyncFlight({ connected }: { connected: boolean }) {
+export function SyncFlightProvider({ active, children }: { active: boolean; children: ReactNode }) {
   const reduceMotion = useReduceMotion();
-  const [scale, setScale] = useState<number | null>(null);
-  const looping = !connected && !reduceMotion;
+  const connected = useSyncConnected();
+  const looping = active && !connected && !reduceMotion;
   const clock = useSharedValue(0);
   const glow = useSharedValue(0);
 
   useEffect(() => {
     if (!looping) return;
     clock.value = 0;
-    clock.value = withRepeat(withTiming(1, { duration: LOOP.ms, easing: Easing.linear }), -1, false);
+    clock.value = withDelay(LOOP.enterDelayMs, withRepeat(withTiming(LOOP.ms, { duration: LOOP.ms, easing: Easing.linear }), -1, false));
     return () => {
       cancelAnimation(clock);
       clock.value = 0;
@@ -101,36 +98,50 @@ export function SyncFlight({ connected }: { connected: boolean }) {
   }, [looping, clock]);
 
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !active) return;
     glow.value = 0;
     glow.value = withTiming(1, { duration: GLOW.ms, easing: Easing.linear });
     return () => {
       cancelAnimation(glow);
       glow.value = 0;
     };
-  }, [connected, glow]);
+  }, [connected, active, glow]);
 
-  const measure = (event: LayoutChangeEvent) => setScale(flightScale(event.nativeEvent.layout.width, event.nativeEvent.layout.height));
-  const shown = scale ?? 1;
+  const state = useMemo(() => ({ clock, glow, looping, connected, reduceMotion }), [clock, glow, looping, connected, reduceMotion]);
+  return <SyncFlightContext.Provider value={state}>{children}</SyncFlightContext.Provider>;
+}
 
+export function SyncStageBox({ x, y, scale, testID, children }: { x: number; y: number; scale: number; testID?: string; children: ReactNode }) {
   return (
-    <View testID="syncFlight" onLayout={measure} style={[styles.fill, { opacity: scale === null ? 0 : 1 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <View style={{ width: STAGE.width * shown, height: STAGE.height * shown }}>
-        <View testID="syncFlightStage" style={[styles.stage, { transform: [{ scale: shown }] }]}>
-          <MacWindow clock={clock} glow={glow} />
-          <View style={styles.phoneSlot}>
-            <PhoneFrame screenColor={syncFlight.phoneScreen} style={styles.phone}>
-              <PhoneList />
-              {looping ? <LoopSlots clock={clock} /> : <FilledSlots key={connected ? "connected" : "reduced"} count={connected ? TABS.length : FLOWN_TABS.length} reduceMotion={reduceMotion} />}
-            </PhoneFrame>
-          </View>
-          {looping ? FLOWN_TABS.map((_, flight) => <FlightChip key={flight} clock={clock} flight={flight} />) : null}
-          {connected ? (
-            <Animated.View testID="syncFlightCheck" entering={reduceMotion ? FadeIn.duration(syncFlight.reducedFadeMs) : checkPop} exiting={FadeOut.duration(syncFlight.fadeMs)} style={styles.check}>
-              <Symbol name="checkmark" size={CHECK.glyph} color={CHECK.ink} weight="bold" />
-            </Animated.View>
-          ) : null}
+    <View testID={testID} pointerEvents="none" style={[styles.stageBox, { left: x, top: y, transform: scaledFromTopLeft(STAGE.width, STAGE.height, scale) }]}>
+      {children}
+    </View>
+  );
+}
+
+export function SyncMac() {
+  const flight = useSyncFlight();
+  if (!flight) return null;
+  return (
+    <View testID="syncFlightMac" style={styles.mac}>
+      <View style={styles.sidebar}>
+        <View style={styles.lights}>
+          {MAC.trafficLights.map((color) => (
+            <View key={color} style={[styles.light, { backgroundColor: color }]} />
+          ))}
         </View>
+        {TABS.map((spec, row) => (
+          <MacRow key={spec.look} row={row} clock={flight.clock} glow={flight.glow} />
+        ))}
+      </View>
+      <View style={styles.page}>
+        <View style={styles.url} />
+        <View style={[styles.pageTitle, { width: (PAGE_WIDTH - 2 * PAGE.pad) * PAGE.titleShare }]} />
+        {PAGE.paragraphs.map((lines, paragraph) =>
+          lines.map((share, index) => (
+            <View key={`${paragraph}.${index}`} style={[styles.pageLine, { top: PAGE.lineTop + paragraph * (lines.length * (PAGE.lineHeight + PAGE.lineGap) + PAGE.paragraphGap) + index * (PAGE.lineHeight + PAGE.lineGap), width: (PAGE_WIDTH - 2 * PAGE.pad) * share }]} />
+          )),
+        )}
       </View>
     </View>
   );
@@ -146,36 +157,11 @@ function TabFace({ tab }: { tab: number }) {
   );
 }
 
-function MacWindow({ clock, glow }: { clock: SharedValue<number>; glow: SharedValue<number> }) {
-  const hero = PROFILE_COLORS[TABS[0]!.look].swatch;
-  return (
-    <View testID="syncFlightMac" style={styles.mac}>
-      <View style={styles.sidebar}>
-        <View style={styles.lights}>
-          {MAC.trafficLights.map((color) => (
-            <View key={color} style={[styles.light, { backgroundColor: color }]} />
-          ))}
-        </View>
-        {TABS.map((spec, row) => (
-          <MacRow key={spec.look} row={row} clock={clock} glow={glow} />
-        ))}
-      </View>
-      <View style={styles.page}>
-        <View style={styles.url} />
-        <View style={[styles.hero, { experimental_backgroundImage: linearGradientCss(tileGradient(hero), false, 1, 1) }]} />
-        {PAGE.lines.map((share, index) => (
-          <View key={index} style={[styles.pageLine, { top: PAGE.lineTop + index * (PAGE.lineHeight + PAGE.lineGap), width: (PAGE_WIDTH - 2 * PAGE.pad) * share }]} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
 function MacRow({ row, clock, glow }: { row: number; clock: SharedValue<number>; glow: SharedValue<number> }) {
   const flight = FLOWN_TABS.indexOf(row);
   const times = flight >= 0 ? flightTimes(flight) : null;
   const highlight = useAnimatedStyle(() => {
-    const flown = times ? settle(clock.value, times.start, times.lifted) * (1 - span(clock.value, times.landed, times.landed + LOOP.glowFade)) : 0;
+    const flown = times ? settle(clock.value, times.start, times.lifted) * (1 - span(clock.value, times.arrived, times.glowGone)) : 0;
     const swept = pulse(glow.value, row * GLOW.stagger, row * GLOW.stagger + GLOW.width);
     return { opacity: Math.max(flown, swept) };
   });
@@ -188,38 +174,91 @@ function MacRow({ row, clock, glow }: { row: number; clock: SharedValue<number>;
   );
 }
 
-function FlightChip({ clock, flight }: { clock: SharedValue<number>; flight: number }) {
+export function SyncAbovePhone() {
+  const flight = useSyncFlight();
+  if (!flight) return null;
+  return (
+    <>
+      {flight.looping ? FLOWN_TABS.map((_, index) => <FlightRow key={index} clock={flight.clock} flight={index} />) : null}
+      {flight.connected ? (
+        <Animated.View testID="syncFlightCheck" entering={flight.reduceMotion ? FadeIn.duration(syncFlight.reducedFadeMs) : checkPop} exiting={FadeOut.duration(syncFlight.fadeMs)} style={styles.check}>
+          <Symbol name="checkmark" size={CHECK.glyph} color={CHECK.ink} weight="bold" />
+        </Animated.View>
+      ) : null}
+    </>
+  );
+}
+
+const checkPop = () => {
+  "worklet";
+  return {
+    initialValues: { opacity: 0, transform: [{ scale: 0 }] },
+    animations: { opacity: withDelay(CHECK.delayMs, withTiming(1, { duration: syncFlight.fadeMs })), transform: [{ scale: withDelay(CHECK.delayMs, withSpring(1, POP)) }] },
+  };
+};
+
+const mix = (from: number, to: number, progress: number) => {
+  "worklet";
+  return from + (to - from) * progress;
+};
+
+function FlightRow({ clock, flight }: { clock: SharedValue<number>; flight: number }) {
   const times = flightTimes(flight);
-  const { from, to } = flightPath(flight);
-  const motion = useAnimatedStyle(() => {
+  const { from, to } = flightEnds(flight);
+  const swatch = PROFILE_COLORS[TABS[FLOWN_TABS[flight]!]!.look].swatch;
+  const plate = useAnimatedStyle(() => {
     const t = clock.value;
     const lift = settle(t, times.start, times.lifted);
     const travel = glide(t, times.lifted, times.arrived);
-    const land = span(t, times.arrived, times.landed);
-    const x = from.x + (to.x - from.x) * travel;
-    const y = from.y + (to.y - from.y) * travel - CHIP.arc * 4 * travel * (1 - travel) - CHIP.liftRise * lift * (1 - travel);
-    const size = 1 + (CHIP.liftScale - 1) * lift * (1 - travel) + (LANDED_SCALE - 1) * travel;
+    const x = mix(from.x, to.x, travel);
+    const y = mix(from.y, to.y, travel) - CHIP.arc * 4 * travel * (1 - travel) - CHIP.liftRise * lift * (1 - travel);
     return {
-      opacity: t >= times.start && t < times.landed ? 1 - land : 0,
-      transform: [{ translateX: x - ROW_WIDTH / 2 }, { translateY: y - ROW.height / 2 }, { scale: size }],
+      opacity: t >= times.start && t < times.arrived ? lift : 0,
+      width: mix(from.width, to.width, travel),
+      height: mix(from.height, to.height, travel),
+      borderRadius: mix(from.radius, to.radius, travel),
+      transform: [{ translateX: x }, { translateY: y }],
     };
   });
-  const plate = useAnimatedStyle(() => ({ opacity: settle(clock.value, times.start, times.lifted) }));
+  const shadow = useAnimatedStyle(() => {
+    const travel = glide(clock.value, times.lifted, times.arrived);
+    return { opacity: 1 - travel * travel * travel, borderRadius: mix(from.radius, to.radius, travel) };
+  });
+  const tile = useAnimatedStyle(() => {
+    const travel = glide(clock.value, times.lifted, times.arrived);
+    const side = mix(from.swatch, to.swatch, travel);
+    return { left: mix(from.pad, to.pad, travel), width: side, height: side, marginTop: -side / 2, borderRadius: mix(from.swatchRadius, to.swatchRadius, travel) };
+  });
+  const bar = useAnimatedStyle(() => {
+    const travel = glide(clock.value, times.lifted, times.arrived);
+    const height = mix(from.bar, to.bar, travel);
+    return { left: mix(from.pad + from.swatch + from.gap, to.pad + to.swatch + to.gap, travel), width: mix(from.barWidth, to.barWidth, travel), height, marginTop: -height / 2, borderRadius: height / 2 };
+  });
   return (
-    <Animated.View testID="syncFlightChip" pointerEvents="none" style={[styles.chip, motion]}>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.chipPlate, plate]} />
-      <TabFace tab={FLOWN_TABS[flight]!} />
+    <Animated.View testID="syncFlightChip" pointerEvents="none" style={[styles.chip, plate]}>
+      <Animated.View style={[StyleSheet.absoluteFill, styles.chipShadow, shadow]} />
+      <Animated.View style={[styles.chipTile, { backgroundColor: swatch }, tile]} />
+      <Animated.View style={[styles.chipBar, bar]} />
     </Animated.View>
   );
 }
 
-function PhoneList() {
+export function SyncScreen() {
+  const flight = useSyncFlight();
+  if (!flight) return null;
   return (
-    <View style={styles.listHeader}>
-      <Symbol name="laptop" size={LIST.glyph} color={LIST.glyphInk} />
-      <Text allowFontScaling={false} numberOfLines={1} style={styles.listTitle}>
-        {LIST.title}
-      </Text>
+    <View testID="syncScreen" style={[StyleSheet.absoluteFill, { backgroundColor: syncFlight.phoneScreen }]}>
+      <View style={styles.listHeader}>
+        <Symbol name="laptop" size={LIST.glyph} color={LIST.glyphInk} />
+        <Text allowFontScaling={false} numberOfLines={1} style={styles.listTitle}>
+          {LIST.title}
+        </Text>
+      </View>
+      {flight.looping ? (
+        FLOWN_TABS.map((_, slot) => <ArrivingRow key={slot} clock={flight.clock} slot={slot} />)
+      ) : (
+        <FilledRows key={flight.connected ? "connected" : "still"} count={flight.connected ? TABS.length : FLOWN_TABS.length} reduceMotion={flight.reduceMotion} />
+      )}
     </View>
   );
 }
@@ -234,46 +273,25 @@ function PhoneRowFace({ tab }: { tab: number }) {
   );
 }
 
-function LoopSlots({ clock }: { clock: SharedValue<number> }) {
-  return (
-    <>
-      {FLOWN_TABS.map((tab, slot) => (
-        <View key={`placeholder${tab}`} style={[styles.phoneRow, styles.placeholder, { top: phoneSlotTop(slot) }]} />
-      ))}
-      {FLOWN_TABS.map((tab, slot) => (
-        <LoopRow key={tab} clock={clock} slot={slot} />
-      ))}
-    </>
-  );
-}
-
-function LoopRow({ clock, slot }: { clock: SharedValue<number>; slot: number }) {
+function ArrivingRow({ clock, slot }: { clock: SharedValue<number>; slot: number }) {
   const times = flightTimes(slot);
   const style = useAnimatedStyle(() => {
     const t = clock.value;
-    const landing = span(t, times.arrived, times.landed);
-    const shown = settle(t, times.arrived, times.landed) * (1 - span(t, LOOP.resetFrom, LOOP.resetTo));
-    const grow = LOOP.settleFrom + (1 - LOOP.settleFrom) * Easing.out(Easing.back(LOOP.settleOvershoot))(landing);
-    return { opacity: shown, transform: [{ scale: grow }] };
+    return { opacity: (t >= times.arrived ? 1 : 0) * (1 - span(t, LOOP.resetFromMs, LOOP.resetFromMs + LOOP.resetMs)) };
   });
   return (
-    <Animated.View testID="syncFlightPhoneRow" style={[styles.phoneRow, styles.phoneRowFill, { top: phoneSlotTop(slot) }, style]}>
+    <Animated.View testID="syncFlightPhoneRow" style={[styles.phoneRow, { top: phoneSlotTop(slot) }, style]}>
       <PhoneRowFace tab={FLOWN_TABS[slot]!} />
     </Animated.View>
   );
 }
 
-function FilledSlots({ count, reduceMotion }: { count: number; reduceMotion: boolean }) {
+function FilledRows({ count, reduceMotion }: { count: number; reduceMotion: boolean }) {
   const step = reduceMotion ? syncFlight.reducedStaggerMs : syncFlight.filledStaggerMs;
   return (
     <>
       {FILLED_TABS.slice(0, count).map((tab, slot) => (
-        <Animated.View
-          key={tab}
-          testID="syncFlightPhoneRow"
-          entering={FadeIn.duration(reduceMotion ? syncFlight.reducedFadeMs : syncFlight.fadeMs).delay(slot * step)}
-          style={[styles.phoneRow, styles.phoneRowFill, { top: phoneSlotTop(slot) }]}
-        >
+        <Animated.View key={tab} testID="syncFlightPhoneRow" entering={FadeIn.duration(reduceMotion ? syncFlight.reducedFadeMs : syncFlight.fadeMs).delay(slot * step)} style={[styles.phoneRow, { top: phoneSlotTop(slot) }]}>
           <PhoneRowFace tab={tab} />
         </Animated.View>
       ))}
@@ -282,8 +300,7 @@ function FilledSlots({ count, reduceMotion }: { count: number; reduceMotion: boo
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
-  stage: { position: "absolute", width: STAGE.width, height: STAGE.height, left: "50%", top: "50%", marginLeft: -STAGE.width / 2, marginTop: -STAGE.height / 2 },
+  stageBox: { position: "absolute", width: STAGE.width, height: STAGE.height },
   mac: {
     position: "absolute",
     left: MAC.left,
@@ -309,22 +326,20 @@ const styles = StyleSheet.create({
   macBar: { height: ROW.bar, borderRadius: ROW.bar / 2, backgroundColor: ROW.ink },
   page: { flex: 1 },
   url: { position: "absolute", top: PAGE.urlTop, left: (PAGE_WIDTH - PAGE.urlWidth) / 2, width: PAGE.urlWidth, height: PAGE.urlHeight, borderRadius: PAGE.urlHeight / 2, backgroundColor: PAGE.urlFill },
-  hero: { position: "absolute", top: PAGE.heroTop, left: PAGE.pad, right: PAGE.pad, height: PAGE.heroHeight, borderRadius: PAGE.heroRadius, ...smoothCorners },
+  pageTitle: { position: "absolute", top: PAGE.titleTop, left: PAGE.pad, height: PAGE.titleHeight, borderRadius: PAGE.titleHeight / 2, backgroundColor: PAGE.titleInk },
   pageLine: { position: "absolute", left: PAGE.pad, height: PAGE.lineHeight, borderRadius: PAGE.lineHeight / 2, backgroundColor: PAGE.lineInk },
-  phoneSlot: { position: "absolute", left: PHONE.left, top: PHONE.top, width: PHONE_WIDTH, height: PHONE_HEIGHT },
-  phone: { position: "absolute", left: (PHONE_WIDTH - phoneFrame.width) / 2, top: (PHONE_HEIGHT - phoneFrame.height) / 2, transform: [{ scale: PHONE.scale }] },
   listHeader: { position: "absolute", top: LIST.titleTop, left: LIST.titleLeft, right: LIST.titleLeft, flexDirection: "row", alignItems: "center", gap: LIST.glyphGap },
   listTitle: { fontSize: LIST.titleSize, lineHeight: LIST.titleLineHeight, fontWeight: "700", color: LIST.titleInk },
-  phoneRow: { position: "absolute", left: LIST.inset, width: SLOT_WIDTH, height: LIST.height, borderRadius: LIST.radius, ...smoothCorners },
-  placeholder: { backgroundColor: LIST.placeholder },
-  phoneRowFill: { backgroundColor: LIST.fill, flexDirection: "row", alignItems: "center", paddingHorizontal: LIST.pad, gap: LIST.swatchGap },
+  phoneRow: { position: "absolute", left: LIST.inset, width: SLOT_WIDTH, height: LIST.height, borderRadius: LIST.radius, ...smoothCorners, backgroundColor: LIST.fill, flexDirection: "row", alignItems: "center", paddingHorizontal: LIST.pad, gap: LIST.swatchGap },
   phoneSwatch: { width: LIST.swatch, height: LIST.swatch, borderRadius: LIST.swatchRadius, ...smoothCorners },
   phoneBar: { height: LIST.bar, borderRadius: LIST.bar / 2, backgroundColor: LIST.ink },
-  chip: { position: "absolute", left: 0, top: 0, width: ROW_WIDTH, height: ROW.height },
-  chipPlate: { borderRadius: ROW.radius, ...smoothCorners, backgroundColor: CHIP.fill, boxShadow: CHIP.shadow },
+  chip: { position: "absolute", left: 0, top: 0, backgroundColor: LIST.fill, borderCurve: "continuous" },
+  chipShadow: { backgroundColor: LIST.fill, boxShadow: CHIP.shadow, borderCurve: "continuous" },
+  chipTile: { position: "absolute", top: "50%", borderCurve: "continuous" },
+  chipBar: { position: "absolute", top: "50%", backgroundColor: LIST.ink },
   check: {
     position: "absolute",
-    left: PHONE.left + PHONE_WIDTH - CHECK.inset - CHECK.side / 2,
+    left: PHONE.left + PHONE_IN_STAGE.width - CHECK.inset - CHECK.side / 2,
     top: PHONE.top + CHECK.inset - CHECK.side / 2,
     width: CHECK.side,
     height: CHECK.side,

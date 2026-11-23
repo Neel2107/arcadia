@@ -1,63 +1,36 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, { cancelAnimation, Easing, FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 import { withAlpha } from "../../lib/color";
-import { tileGradient } from "../../lib/favicon";
 import { linearGradientCss } from "../../lib/gradient";
-import { ForcedDark, font, PROFILE_COLORS, smoothCorners, space, Symbol, tabsMotion, useReduceMotion, useTheme, type Theme } from "../ui";
-import { phoneFrame, tipsReel } from "./onboardingTokens";
+import { ForcedDark, space, Symbol, tabsMotion, useReduceMotion, useTheme, type Theme } from "../ui";
+import { phoneScene, tipsReel } from "./onboardingTokens";
+import { BottomBar, Finger, glide, PageMock, pulse, SceneCanvas, SCENE, settle, span, type FingerPath } from "./sceneKit";
 
 export const REEL_TIPS = ["Tap + to search.", "Flick a tab up to close it.", "Swipe a page to go back."] as const;
 
-const STAGE = tipsReel.stage;
-const SCREEN_W = STAGE.width - 2 * STAGE.bezel;
-const SCREEN_H = STAGE.height - 2 * STAGE.bezel;
-const BAR = tipsReel.bar;
-const FINGER = tipsReel.finger;
-const CAPTION_BLOCK = tipsReel.captionGap + tipsReel.captionHeight + tipsReel.dotsGap + tipsReel.dot.height;
-const REDUCED_FRAME = 0.9;
+const SCREEN_W = SCENE.width;
+const SCREEN_H = SCENE.height;
+const BAR = phoneScene.bar;
 
-const span = (t: number, from: number, to: number) => {
-  "worklet";
-  return Math.min(1, Math.max(0, (t - from) / (to - from)));
-};
+export type TipsReelState = { scene: number; clock: SharedValue<number>; reduceMotion: boolean; next: () => void; jump: (scene: number) => void };
 
-const glide = (t: number, from: number, to: number) => {
-  "worklet";
-  return Easing.inOut(Easing.cubic)(span(t, from, to));
-};
+const TipsReelContext = createContext<TipsReelState | null>(null);
 
-const settle = (t: number, from: number, to: number) => {
-  "worklet";
-  return Easing.out(Easing.cubic)(span(t, from, to));
-};
+export const useTipsReel = () => useContext(TipsReelContext);
 
-const pulse = (t: number, from: number, to: number) => {
-  "worklet";
-  const x = span(t, from, to);
-  return x < 0.5 ? x * 2 : (1 - x) * 2;
-};
-
-export const reelScale = (height: number) => Math.min(tipsReel.maxScale, Math.max(tipsReel.minScale, (height - CAPTION_BLOCK) / STAGE.height));
-
-export function TipsReel() {
-  return (
-    <ForcedDark value={false}>
-      <TipsReelStage />
-    </ForcedDark>
-  );
-}
-
-function TipsReelStage() {
-  const theme = useTheme();
+export function TipsReelProvider({ active, children }: { active: boolean; children: ReactNode }) {
   const reduceMotion = useReduceMotion();
   const [scene, setScene] = useState(0);
-  const [scale, setScale] = useState<number | null>(null);
-  const clock = useSharedValue(reduceMotion ? REDUCED_FRAME : 0);
+  const clock = useSharedValue(reduceMotion ? tipsReel.reducedFrame : 0);
 
   useEffect(() => {
+    if (!active) {
+      setScene(0);
+      return;
+    }
     if (reduceMotion) {
-      clock.value = REDUCED_FRAME;
+      clock.value = tipsReel.reducedFrame;
     } else {
       clock.value = 0;
       clock.value = withTiming(1, { duration: tipsReel.sceneMs, easing: Easing.linear });
@@ -67,45 +40,39 @@ function TipsReelStage() {
       clearTimeout(timer);
       cancelAnimation(clock);
     };
-  }, [scene, reduceMotion, clock]);
+  }, [active, scene, reduceMotion, clock]);
 
-  const measure = (event: LayoutChangeEvent) => setScale(reelScale(event.nativeEvent.layout.height));
-  const shown = scale ?? 1;
-  const fade = reduceMotion ? tabsMotion.fade : tabsMotion.surfaceFade;
+  const state = useMemo<TipsReelState>(() => ({ scene, clock, reduceMotion, next: () => setScene((now) => (now + 1) % REEL_TIPS.length), jump: setScene }), [scene, clock, reduceMotion]);
+  return <TipsReelContext.Provider value={state}>{children}</TipsReelContext.Provider>;
+}
 
+export function TipsScreen() {
   return (
-    <View testID="tipsReel" onLayout={measure} style={[styles.fill, { opacity: scale === null ? 0 : 1 }]} accessible accessibilityLabel={REEL_TIPS.join(" ")}>
-      <View style={{ width: STAGE.width * shown, height: STAGE.height * shown }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Pressable testID="tipsReelStage" onPress={() => setScene((now) => (now + 1) % REEL_TIPS.length)} style={[styles.stage, { backgroundColor: phoneFrame.bezelColor, boxShadow: phoneFrame.shadow, transform: [{ scale: shown }] }]}>
-          <View style={[styles.screen, { experimental_backgroundImage: linearGradientCss(theme.backdrop, false, 1, 1) }]}>
-            <Animated.View key={scene} entering={FadeIn.duration(fade)} exiting={FadeOut.duration(fade)} style={StyleSheet.absoluteFill}>
-              {scene === 0 ? <SearchScene clock={clock} theme={theme} /> : scene === 1 ? <CloseScene clock={clock} theme={theme} /> : <BackScene clock={clock} theme={theme} />}
-            </Animated.View>
-            {reduceMotion ? null : <Finger clock={clock} scene={scene} />}
-          </View>
-          <View style={styles.island} />
-        </Pressable>
-      </View>
-      <Animated.Text key={`caption${scene}`} testID="tipsReelCaption" entering={FadeIn.duration(fade)} exiting={FadeOut.duration(fade)} style={[font.body, styles.caption, { color: tipsReel.captionInk }]} numberOfLines={1} adjustsFontSizeToFit>
-        {REEL_TIPS[scene]}
-      </Animated.Text>
-      <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {REEL_TIPS.map((tip, index) => (
-          <Pressable key={tip} testID="tipsReelDot" hitSlop={tipsReel.dot.hitSlop} onPress={() => setScene(index)} style={[styles.dot, { backgroundColor: withAlpha(tipsReel.captionInk, 0.3) }]}>
-            {index < scene || (reduceMotion && index === scene) ? <View style={[styles.dotFill, { width: "100%", backgroundColor: tipsReel.captionInk }]} /> : index === scene ? <DotFill clock={clock} color={tipsReel.captionInk} /> : null}
-          </Pressable>
-        ))}
-      </View>
+    <ForcedDark value={false}>
+      <TipsScenes />
+    </ForcedDark>
+  );
+}
+
+function TipsScenes() {
+  const theme = useTheme();
+  const reel = useTipsReel();
+  if (!reel) return null;
+  const { scene, clock, reduceMotion } = reel;
+  const fade = reduceMotion ? tabsMotion.fade : tabsMotion.surfaceFade;
+  return (
+    <View testID="tipsScreen" style={[StyleSheet.absoluteFill, { experimental_backgroundImage: linearGradientCss(theme.backdrop, false, 1, 1) }]}>
+      <SceneCanvas>
+        <Animated.View key={scene} entering={FadeIn.duration(fade)} exiting={FadeOut.duration(fade)} style={StyleSheet.absoluteFill}>
+          {scene === 0 ? <SearchScene clock={clock} theme={theme} /> : scene === 1 ? <CloseScene clock={clock} theme={theme} /> : <BackScene clock={clock} theme={theme} />}
+        </Animated.View>
+        {reduceMotion ? null : <Finger clock={clock} path={FINGER_PATHS[scene]!} />}
+      </SceneCanvas>
     </View>
   );
 }
 
-function DotFill({ clock, color }: { clock: SharedValue<number>; color: string }) {
-  const fill = useAnimatedStyle(() => ({ width: `${clock.value * 100}%` }));
-  return <Animated.View style={[styles.dotFill, { backgroundColor: color }, fill]} />;
-}
-
-const FINGER_PATHS = [
+const FINGER_PATHS: FingerPath[] = [
   (t: number) => {
     "worklet";
     const reach = glide(t, 0.16, 0.36);
@@ -126,50 +93,6 @@ const FINGER_PATHS = [
   },
 ];
 
-function Finger({ clock, scene }: { clock: SharedValue<number>; scene: number }) {
-  const style = useAnimatedStyle(() => {
-    const at = FINGER_PATHS[scene]!(clock.value);
-    return {
-      opacity: at.opacity,
-      transform: [{ translateX: at.x - FINGER.side / 2 }, { translateY: at.y - FINGER.side / 2 }, { scale: 1 - (1 - FINGER.pressScale) * at.press }],
-    };
-  }, [scene]);
-  return <Animated.View testID="tipsReelFinger" pointerEvents="none" style={[styles.finger, style]} />;
-}
-
-function PageMock({ look, theme }: { look: number; theme: Theme }) {
-  const page = tipsReel.page;
-  const swatch = PROFILE_COLORS[tipsReel.looks[look % tipsReel.looks.length]!].swatch;
-  return (
-    <View style={[styles.page, { backgroundColor: theme.groupFill }]}>
-      <View style={{ height: SCREEN_H * page.header, experimental_backgroundImage: linearGradientCss(tileGradient(swatch), false, 1, 1) }} />
-      <View style={styles.pageWords}>
-        <View style={[styles.title, { width: `${page.titleWidth * 100}%`, backgroundColor: withAlpha(theme.label, 0.75) }]} />
-        {page.lines.map((share, index) => (
-          <View key={index} style={[styles.line, { width: `${share * 100}%`, backgroundColor: withAlpha(theme.label, 0.14) }]} />
-        ))}
-        <View style={[styles.figure, { backgroundColor: withAlpha(swatch, 0.22) }]} />
-        {page.lines.slice(0, 2).map((share, index) => (
-          <View key={`tail${index}`} style={[styles.line, { width: `${share * 100}%`, backgroundColor: withAlpha(theme.label, 0.14) }]} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function BottomBar({ theme, children }: { theme: Theme; children?: ReactNode }) {
-  return (
-    <View style={[styles.bar, { backgroundColor: theme.groupFill, borderColor: theme.cardEdge }]}>
-      <Symbol name="squareOnSquare" size={BAR.glyph} color={theme.label} />
-      <View style={[styles.plus, { backgroundColor: theme.plusFill }]}>
-        {children}
-        <Symbol name="plus" size={BAR.glyph} color={theme.label} />
-      </View>
-      <Symbol name="chevronUp" size={BAR.glyph} color={theme.label} />
-    </View>
-  );
-}
-
 function SearchScene({ clock, theme }: { clock: SharedValue<number>; theme: Theme }) {
   const tray = tipsReel.tray;
   const height = SCREEN_H * tray.share;
@@ -183,7 +106,7 @@ function SearchScene({ clock, theme }: { clock: SharedValue<number>; theme: Them
     <View style={styles.fill}>
       <PageMock look={0} theme={theme} />
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: theme.trayDim }, dim]} />
-      <Animated.View style={[styles.barSlot, bar]}>
+      <Animated.View style={[StyleSheet.absoluteFill, bar]}>
         <BottomBar theme={theme}>
           <Animated.View style={[styles.plusFlash, { backgroundColor: theme.spaceAccent }, flash]} />
         </BottomBar>
@@ -271,44 +194,16 @@ function BackScene({ clock, theme }: { clock: SharedValue<number>; theme: Theme 
       <Animated.View style={[StyleSheet.absoluteFill, styles.lifted, top]}>
         <PageMock look={3} theme={theme} />
       </Animated.View>
-      <View style={styles.barSlot}>
-        <BottomBar theme={theme} />
-      </View>
+      <BottomBar theme={theme} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1, alignItems: "center", justifyContent: "center" },
-  stage: {
-    position: "absolute",
-    width: STAGE.width,
-    height: STAGE.height,
-    left: "50%",
-    top: "50%",
-    marginLeft: -STAGE.width / 2,
-    marginTop: -STAGE.height / 2,
-    borderRadius: STAGE.radius,
-    ...smoothCorners,
-    padding: STAGE.bezel,
-  },
-  screen: { flex: 1, borderRadius: STAGE.screenRadius, ...smoothCorners, overflow: "hidden" },
-  island: { position: "absolute", left: (STAGE.width - STAGE.island.width) / 2 - 1, top: STAGE.island.top + STAGE.bezel, width: STAGE.island.width, height: STAGE.island.height, borderRadius: STAGE.island.height / 2, backgroundColor: "#000000" },
-  caption: { marginTop: tipsReel.captionGap, minHeight: tipsReel.captionHeight, textAlign: "center", fontWeight: "600", paddingHorizontal: space.l },
-  dots: { flexDirection: "row", gap: tipsReel.dot.gap, marginTop: tipsReel.dotsGap },
-  dot: { width: tipsReel.dot.width, height: tipsReel.dot.height, borderRadius: tipsReel.dot.height / 2, overflow: "hidden" },
-  dotFill: { height: "100%", borderRadius: tipsReel.dot.height / 2 },
-  finger: { position: "absolute", left: 0, top: 0, width: FINGER.side, height: FINGER.side, borderRadius: FINGER.side / 2, backgroundColor: tipsReel.fingerFill, borderWidth: FINGER.ring, borderColor: tipsReel.fingerRing, boxShadow: tipsReel.fingerShadow },
-  page: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, overflow: "hidden" },
-  pageWords: { padding: tipsReel.page.pad, gap: tipsReel.page.gap },
-  title: { height: tipsReel.page.title, borderRadius: tipsReel.page.title / 2, marginBottom: 2 },
-  line: { height: tipsReel.page.line, borderRadius: tipsReel.page.line / 2 },
-  figure: { height: SCREEN_H * 0.12, borderRadius: 8, marginVertical: 2 },
-  barSlot: { position: "absolute", left: BAR.inset, right: BAR.inset, bottom: BAR.bottom },
-  bar: { height: BAR.height, borderRadius: BAR.height / 2, borderWidth: StyleSheet.hairlineWidth, flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: space.m, boxShadow: "0px 4px 14px rgba(0, 0, 0, 0.18)" },
-  plus: { width: BAR.plus, height: BAR.plus, borderRadius: BAR.plus / 2, alignItems: "center", justifyContent: "center" },
+  line: { height: phoneScene.page.line, borderRadius: phoneScene.page.line / 2 },
   plusFlash: { position: "absolute", width: BAR.plus, height: BAR.plus, borderRadius: BAR.plus / 2 },
-  tray: { position: "absolute", left: 0, right: 0, bottom: 0, borderTopLeftRadius: tipsReel.tray.radius, borderTopRightRadius: tipsReel.tray.radius, ...smoothCorners, padding: space.s, gap: space.s, boxShadow: "0px -4px 18px rgba(0, 0, 0, 0.16)" },
+  tray: { position: "absolute", left: 0, right: 0, bottom: 0, borderTopLeftRadius: tipsReel.tray.radius, borderTopRightRadius: tipsReel.tray.radius, padding: space.s, gap: space.s, boxShadow: "0px -4px 18px rgba(0, 0, 0, 0.16)" },
   field: { height: tipsReel.tray.field, borderRadius: tipsReel.tray.field / 2, flexDirection: "row", alignItems: "center", paddingHorizontal: space.s + 2, gap: space.xs },
   query: { overflow: "hidden" },
   queryText: { fontSize: 11, lineHeight: 14, fontWeight: "500", width: tipsReel.tray.queryWidth },
@@ -319,7 +214,7 @@ const styles = StyleSheet.create({
   keyboard: { flex: 1, borderRadius: 10, padding: space.xs, gap: tipsReel.tray.rowGap, justifyContent: "flex-end" },
   keyRow: { flexDirection: "row", justifyContent: "center", gap: tipsReel.tray.keyGap },
   key: { flex: 1, maxWidth: 12, height: tipsReel.tray.keyHeight, borderRadius: 3 },
-  card: { position: "absolute", left: (SCREEN_W - CARD_W) / 2, top: SCREEN_H * DECK.topShare, width: CARD_W, height: CARD_H, borderRadius: DECK.radius, ...smoothCorners, overflow: "hidden", borderWidth: StyleSheet.hairlineWidth },
+  card: { position: "absolute", left: (SCREEN_W - CARD_W) / 2, top: SCREEN_H * DECK.topShare, width: CARD_W, height: CARD_H, borderRadius: DECK.radius, overflow: "hidden", borderWidth: StyleSheet.hairlineWidth },
   shade: { backgroundColor: "#000000" },
-  lifted: { boxShadow: tipsReel.pageShadow },
+  lifted: { boxShadow: phoneScene.pageShadow },
 });

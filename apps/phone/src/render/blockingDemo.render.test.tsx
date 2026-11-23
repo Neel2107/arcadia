@@ -1,5 +1,7 @@
 import { act } from "react-test-renderer";
-import { BlockingDemo } from "../components/onboarding/BlockingDemo";
+import { BlockingScreen } from "../components/onboarding/BlockingScreen";
+import { BlockingDemo, demoScale } from "../components/onboarding/StepPhones";
+import { phoneFrame } from "../components/onboarding/onboardingTokens";
 import { blockingDemo } from "../components/onboarding/blockingDemoTokens";
 import * as settingsActions from "../state/settings/actions";
 import { useBlocking } from "../state/settings/actions";
@@ -43,6 +45,9 @@ const adsShown = (root: Root) => {
 
 const wait = (ms: number) => act(() => jest.advanceTimersByTime(ms));
 
+const layout = (root: Root, testID: string, width: number, height: number) =>
+  act(() => root.root.findAll((node) => typeof node.type === "string" && node.props.testID === testID)[0]!.props.onLayout({ nativeEvent: { layout: { x: 0, y: 0, width, height } } }));
+
 test("the whole demo is decorative: hidden from VoiceOver and TalkBack, with no switch to reach", () => {
   const root = renderSurface(<BlockingDemo />, { flushTimers: false });
   const demo = root.root.findAll((node) => typeof node.type === "string" && node.props.testID === "blockingDemo");
@@ -52,8 +57,24 @@ test("the whole demo is decorative: hidden from VoiceOver and TalkBack, with no 
   unmount(root);
 });
 
-test("it starts cluttered, blocks the ads after the cluttered hold, shows them again after the clean hold, and keeps looping by itself", () => {
+test("without the shared stage the demo draws its own phone, sized to fit its space, around the article", () => {
   const root = renderSurface(<BlockingDemo />, { flushTimers: false });
+  expect(root.root.findAll((node) => typeof node.type === "string" && node.props.testID === "phoneFrame")).toHaveLength(0);
+  layout(root, "blockingDemo", 300, phoneFrame.height * 0.8);
+  expect(root.root.findAll((node) => typeof node.type === "string" && node.props.testID === "phoneFrame")).toHaveLength(1);
+  expect(adsShown(root)).toBe(true);
+  expect(root.root.findAll((node) => typeof node.type === "string" && node.props.testID === "phoneSlot")).toHaveLength(0);
+  unmount(root);
+});
+
+test("the blocking phone fits its space and never grows past its drawn size or below half", () => {
+  expect(demoScale(2000, 2000)).toBe(blockingDemo.maxScale);
+  expect(demoScale(10, 10)).toBe(blockingDemo.minScale);
+  expect(demoScale(2000, phoneFrame.height * 0.7)).toBeCloseTo(0.7);
+});
+
+test("it starts cluttered, blocks the ads after the cluttered hold, shows them again after the clean hold, and keeps looping by itself", () => {
+  const root = renderSurface(<BlockingScreen />, { flushTimers: false });
   expect(adsShown(root)).toBe(true);
   wait(blockingDemo.clutteredMs - 1);
   expect(adsShown(root)).toBe(true);
@@ -70,7 +91,7 @@ test("it starts cluttered, blocks the ads after the cluttered hold, shows them a
 
 test("looping never writes the blocking settings, and a user's partly-off blocking is left as it was", () => {
   withBlocking(true, false, true);
-  const root = renderSurface(<BlockingDemo />, { flushTimers: false });
+  const root = renderSurface(<BlockingScreen />, { flushTimers: false });
   for (let loop = 0; loop < 3; loop++) wait(blockingDemo.clutteredMs + blockingDemo.cleanMs);
   expect(writes).not.toHaveBeenCalled();
   expect(categories()).toEqual({ ads: true, trackers: false, cookieBanners: true });
@@ -79,7 +100,7 @@ test("looping never writes the blocking settings, and a user's partly-off blocki
 
 test("with Reduce Motion the page cross-fades between cluttered and clean on the same holds instead of collapsing the ads", () => {
   mockMotion.reduced = true;
-  const root = renderSurface(<BlockingDemo />, { flushTimers: false });
+  const root = renderSurface(<BlockingScreen />, { flushTimers: false });
   expect(articles(root, "CollapsingArticle")).toHaveLength(0);
   expect(articles(root, "FadingArticle")).toHaveLength(1);
   expect(adsShown(root)).toBe(true);

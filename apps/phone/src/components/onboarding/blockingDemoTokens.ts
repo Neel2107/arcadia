@@ -1,26 +1,6 @@
 import { Platform } from "react-native";
-import { blockingWords } from "../../lib/sharedWords";
-import { overlayInk, PROFILE_COLORS, space, spring } from "../ui";
-import { toggleLayout } from "../ui/tokens";
+import { PROFILE_COLORS, space, spring } from "../ui";
 import { phoneFrame } from "./onboardingTokens";
-
-const pill = {
-  label: blockingWords.blockAdsAndTrackers,
-  height: 56,
-  width: phoneFrame.width + space.xxl,
-  leading: space.xl,
-  trailing: space.s + space.tight,
-  fill: overlayInk.glass,
-  pressedFill: "rgba(255,255,255,0.28)",
-  edge: "rgba(255,255,255,0.32)",
-  edgeWidth: 1,
-  ink: overlayInk.label,
-  weight: "600",
-  shadow: "0px 10px 30px rgba(0, 0, 0, 0.16)",
-  switchWidth: toggleLayout.width,
-} as const;
-
-const pillGap = space.xl;
 
 export const blockingDemo = {
   clutteredMs: 1500,
@@ -34,9 +14,6 @@ export const blockingDemo = {
   cookieFadeLead: 0.15,
   minScale: 0.5,
   maxScale: 1,
-  content: { width: phoneFrame.width, height: phoneFrame.height },
-  pillGap,
-  pill,
 } as const;
 
 const pageInk = {

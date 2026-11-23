@@ -1,18 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
 import { tileGradient } from "../../lib/favicon";
 import { linearGradientCss } from "../../lib/gradient";
-import type { BlockingCategory, BlockingState } from "../../platform/blocking";
-import { haptics } from "../../state/app/haptics";
-import { setBlockingCategory, useBlocking } from "../../state/settings/actions";
-import { capsule, font, smoothCorners, ToggleTrack, useReduceMotion } from "../ui";
+import { capsule, smoothCorners, useReduceMotion } from "../ui";
 import { blockingDemo, demoPage } from "./blockingDemoTokens";
-import { PhoneFrame, PHONE_SCREEN } from "./PhoneFrame";
+import { PHONE_SCREEN } from "./PhoneFrame";
 
-const BLOCKING_CATEGORIES: readonly BlockingCategory[] = ["ads", "trackers", "cookieBanners"];
-
-const PILL = blockingDemo.pill;
 const INK = demoPage.ink;
 const BANNER = demoPage.banner;
 const INLINE = demoPage.inline;
@@ -22,39 +16,21 @@ const HERO_WIDTH = PHONE_SCREEN.width - 2 * demoPage.pad;
 
 type AdPresence = { banner: SharedValue<number>; inline: SharedValue<number>; cookie: SharedValue<number> };
 
-export const blocksEverything = (state: BlockingState | null) => (state?.blocksAds ?? true) && (state?.blocksTrackers ?? true) && (state?.hidesCookieBanners ?? true);
-
-const blockEverything = (on: boolean) => BLOCKING_CATEGORIES.forEach((category) => setBlockingCategory(category, on));
-
-export const demoScale = (width: number, height: number) => Math.min(blockingDemo.maxScale, Math.max(blockingDemo.minScale, Math.min(width / blockingDemo.content.width, height / blockingDemo.content.height)));
-
 const fraction = (value: number, from: number) => {
   "worklet";
   return Math.min(1, Math.max(0, (value - from) / (1 - from)));
 };
 
-export function BlockingDemo() {
+export function BlockingScreen() {
   const reduceMotion = useReduceMotion();
   const [adsShown, setAdsShown] = useState(true);
-  const [scale, setScale] = useState<number | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => setAdsShown((shown) => !shown), adsShown ? blockingDemo.clutteredMs : blockingDemo.cleanMs);
     return () => clearTimeout(timer);
   }, [adsShown]);
 
-  const measure = (event: LayoutChangeEvent) => setScale(demoScale(event.nativeEvent.layout.width, event.nativeEvent.layout.height));
-  const shown = scale ?? 1;
-
-  return (
-    <View testID="blockingDemo" onLayout={measure} style={[styles.fill, { opacity: scale === null ? 0 : 1 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-      <View style={[styles.fit, { width: blockingDemo.content.width * shown, height: blockingDemo.content.height * shown }]}>
-        <View style={[styles.content, { transform: [{ scale: shown }] }]}>
-          <PhoneFrame>{reduceMotion ? <FadingArticle adsShown={adsShown} /> : <CollapsingArticle adsShown={adsShown} />}</PhoneFrame>
-        </View>
-      </View>
-    </View>
-  );
+  return <View testID="blockingScreen" style={StyleSheet.absoluteFill}>{reduceMotion ? <FadingArticle adsShown={adsShown} /> : <CollapsingArticle adsShown={adsShown} />}</View>;
 }
 
 function CollapsingArticle({ adsShown }: { adsShown: boolean }) {
@@ -256,9 +232,6 @@ function Paragraph({ widths }: { widths: readonly number[] }) {
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
-  fit: { alignItems: "center", justifyContent: "center" },
-  content: { width: blockingDemo.content.width, height: blockingDemo.content.height, alignItems: "center", gap: blockingDemo.pillGap },
   paper: { flex: 1, backgroundColor: INK.paper },
   column: { paddingTop: demoPage.top, paddingHorizontal: demoPage.pad, gap: demoPage.gap },
   collapsing: { overflow: "hidden", justifyContent: "center" },
