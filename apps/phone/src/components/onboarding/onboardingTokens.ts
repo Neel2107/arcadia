@@ -43,6 +43,18 @@ export const onboardingInk = {
   dark: { welcome: "#000000", steps: "#000000", subtitle: "rgba(235,235,245,0.8)" },
 } as const;
 
+export const phoneFrame = {
+  width: 236,
+  height: 470,
+  radius: 40,
+  bezel: 7,
+  bezelColor: "#FFFFFF",
+  screen: "#FFFFFF",
+  statusHeight: 30,
+  statusInk: "#111111",
+  shadow: "0px 24px 60px rgba(0, 0, 0, 0.28)",
+} as const;
+
 export const welcomeIntro = {
   saturation: 0.86,
   neutralSaturation: 0.08,
