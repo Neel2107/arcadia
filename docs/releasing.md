@@ -407,8 +407,9 @@ uploads the two files and refuses a `dist` that lacks either one, dry runs inclu
 CI the build job's `build.tar` carries the whole `Ardia.xcarchive`, dSYMs included, `unpack-build.py` keeps them, the
 sign job packs the pair, checks both exist and its `release` artifact lists them, and the publish job checks them again
 after the download, before it tags; `scripts/symbolicate-crash.test.mjs` fails if that chain loses them. Releases from
-before the app's symbols were uploaded have none: the build artifact that held their archive has expired, so their
-`Ardia + 0x…` frames stay unnamed.
+before the app's symbols were uploaded have none: the build artifact that held their archive has expired. Their
+`Ardia + 0x…` frames can still be named from the shipped binary with `scripts/symbols/name-stripped-build.mjs`
+(`docs/symbolication.md`). The dashboard names every published frame by itself through `scripts/symbolicate-frames.mjs`.
 
 Engines published before the symbols were uploaded have none: the next build
 overwrites `out/`'s dSYMs. To backfill one, rebuild its engine key; if the framework comes back with the published UUID,

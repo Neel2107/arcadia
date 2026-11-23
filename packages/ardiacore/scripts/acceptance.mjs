@@ -5808,7 +5808,7 @@ try {
       red = await webkitTab("/solid?c=ff0000&t=Red", "Red");
       const windowNumber = await engine("tabs.devWindowNumber", { tabId: green.id });
       const lit = (px, channel) => px[channel] >= 180 && px.slice(0, 3).every((v, i) => i === channel || v <= px[channel] * 0.6);
-      const shows = async (id, label, channel) => {
+      const shows = async (id, label, channel, expectedWebKitTabs) => {
         await evalApp(`ac.actions.switchToTab(${q(id)}); return true`);
         await until(`${label} shown`, async () => (await state()).active === id);
         const png = join(scratch, `webkit-hidden-tab-uncovers-${label}.png`);
@@ -5820,12 +5820,20 @@ try {
         }, 8000).catch(() => {
           throw new Error(`${label} isn't on screen: the window shows ${JSON.stringify(seen)} where its page should be`);
         });
+        let visibleWebKitTabs = -1;
+        await until(`${label} leaves ${expectedWebKitTabs} unhidden WebKitTab view(s)`, async () => {
+          const views = JSON.parse(await engine("windows.dev", { window: windowNumber, action: "tabviews" }));
+          visibleWebKitTabs = views.filter((v) => v.class.endsWith(".WebKitTab") || v.class === "WebKitTab").length;
+          return visibleWebKitTabs === expectedWebKitTabs;
+        }, 4000).catch(() => {
+          throw new Error(`${label} left ${visibleWebKitTabs} unhidden WebKitTab view(s), expected ${expectedWebKitTabs}`);
+        });
         return seen;
       };
-      const earlier = await shows(green.id, "the earlier Chromium tab", 1);
-      const webkit = await shows(blue, "the earlier WebKit tab", 2);
-      const later = await shows(red, "the later WebKit tab", 0);
-      const back = await shows(green.id, "the Chromium tab again", 1);
+      const earlier = await shows(green.id, "the earlier Chromium tab", 1, 0);
+      const webkit = await shows(blue, "the earlier WebKit tab", 2, 1);
+      const later = await shows(red, "the later WebKit tab", 0, 1);
+      const back = await shows(green.id, "the Chromium tab again", 1, 0);
       return { earlier, webkit, later, back };
     } finally {
       if (red) await closeTab(red);

@@ -28,6 +28,7 @@ All of them are in `apps/browser/scripts/perf/`.
 | `census.mjs` | render | Per action of each journey (Cmd-T, keystroke, Cmd-L, tab switch, Enter, page load, hover): components rendered, wasted renders, hooks run, store subscriptions notified, selectors evaluated, native view updates, timers scheduled. Its results and fix list: [render-census.md](render-census.md). |
 | `micro-bench.mjs` | Node | Store-side work that grows with a profile (sidebar entries, group names, omnibox) in Node. No app needed. Its `counts` and `instr` cases feed the ratchet. |
 | `suggest-instr.mjs`, `suggest-hermes.mjs`, `bar-actions.json` | Node, Hermes | One command-bar keystroke on the seed profile (typing `github.com/net` and `react native perf`: site check, the bar's 46 actions, suggestions). `micro-bench.mjs suggest-keys` prints ops and time per key (`SUGGEST_BEFORE=1` runs the code as it was before the J2 hill-climb: the frozen spec `packages/core/src/suggest.reference.ts`); `suggest-instr.mjs` the instructions retired per round; `suggest-hermes.mjs` the same keys in the app's Hermes (the app's babel transform, the `hermes` CLI from Pods), per key, run under the perflab lock. `packages/core/src/suggest.property.test.ts` and `fuzzy.property.test.ts` hold the live code to the frozen spec on random profiles and typing sequences. |
+| `session-save-bench.mjs` | Node | One session save on a large session (1500 tabs, pins, folders, closed windows; `--tabs N`, `--runs N`, `--json`): JS time to build `session.json` and hand it to the document store after a title, address or settings change and a dropped pin. Run from `apps/browser` with `node --import ./src/test-loader.mjs scripts/perf/session-save-bench.mjs`. No app needed. |
 | `bookmark-move-bench.mjs` | Node | A Bookmarks page drag of a selection into another folder: CPU time of the store update and of the diff sent to Chrome, and how many ops it sends (`--each` and `--slice`/`--flat` time older code). No app needed. |
 | `ratchet.mjs`, `ratchet.json` | ratchet | Ceilings on counts that can only go down, and the commands that check, lower and rebuild them. |
 | `ratchet-app.js`, `ops.mjs` | ratchet | The `launch` scenario the ratchet adds to js-bench, and the builtin-call counter micro-bench uses. |
@@ -564,11 +565,17 @@ only the wakeup counts mean anything.
 | Wakeups/s, all processes, 20 tabs | 15.0 (10.2–65.5) | 14.8 (9.2–19.0) |
 
 The job: our own JS jobs mark what they run (`state/app/jobActivity.ts`: `sync`, `sessionSave`, `memoryTrim` (its forced
-`gc()`), `omniboxSuggest`, `liveFolders`, `historyApply`, `import`), and a freeze is given the one it overlapped most.
+`gc()`), `omniboxSuggest`, `liveFolders`, `historyApply`, `import`, `siteDataCarry`), and a freeze is given the one it overlapped
+most. A JS-thread freeze can be any of them. A main-thread freeze is given only a job that does its work on the main thread
+(`holdsMainThread`: `sync`, `import`, `siteDataCarry`, whose Chromium cookie reads go through DevTools on the browser's UI
+thread); the JS-only job it merely ran beside (a session save, whose disk write is already on a background queue) is
+`js_activity`. Before #3669 every overlap counted, so a main-thread `activity` of `sessionSave` from 0.2.48 or older is
+mostly a coincidence: the 0.2.48 rise came from the sign-in carry's whole-jar `Network.getAllCookies` reads (#2942), which
+run on the main thread right after the same tab changes that schedule a save.
 
 `app_freeze` (sharing on, and only for a freeze whose consent epoch at its start is still current): `freeze_thread`,
 `freeze_duration` (400ms_1s … over_30s), `freeze_ms`, `input_wait_ms`, `gc_ms`, `gc_count`, `heap_mb_floor`,
-`activity`, `tabs_floor`, `windows`, `sync_on`, `layout`, `action_in_flight` (the journeys' pending new tab, switch,
+`activity`, `js_activity` (main-thread freezes: the JS-only job alongside), `tabs_floor`, `windows`, `sync_on`, `layout`, `action_in_flight` (the journeys' pending new tab, switch,
 navigation or launch), `memory_pressure`, `thermal`, `on_battery`, `uptime`, `signature` (`sig_` and the FNV-1a, in hex, of the top three frames
 from our own images), `samples`, and `freeze_frames`/`freeze_images` in the crash reports' shape. At most 5 a session and
 20 a UTC day, one per signature a day, counted in `freeze-sends.json` (the day, its send count and its signatures; apart from the 20-slot local ring, which wraps). The dashboard's Performance › Freezes card

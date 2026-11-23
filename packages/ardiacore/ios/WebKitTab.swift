@@ -185,6 +185,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func updateHidden() {
+    isHidden = !visible
     webView?.isHidden = !visible
     paintBackdrop()
   }

@@ -790,6 +790,52 @@ pnpm --filter @ardia/linux acceptance -- <extracted>/ardia/bin/ardia
 - **Acceptance suite.** Nine headless scenarios for core features; see [linux-acceptance.md](linux-acceptance.md).
 - **Shared changes.** A change to shared code also needs the Mac checks.
 
+### The Rust sync core in the engine build
+
+`packages/core-rs` builds inside the Chromium tree too, with Chromium's own Rust toolchain, so Chromium links a single
+Rust standard library. Nothing in `ac_linux_*` calls it yet.
+
+- **How it gets in.** `engine/ardiacore-linux/copies.tsv` copies `packages/core-rs` into `//ardia/core_rs`, with the same
+  layout. Those files count toward the Linux engine key only, never the Mac's. `packages/core-rs/BUILD.gn` is the
+  target. A Windows engine can copy the same files in and depend on the same target.
+- **What it builds.**
+  - `ardia_crypto` uses its `boringssl` backend over `//third_party/boringssl:bssl_crypto`. That feature is GN-only,
+    since `bssl-crypto` isn't on crates.io.
+  - `ardia_sync_core` and `ardia_core_rust`, the C ABI, use Chromium's vendored `base64`, `serde`, `serde_json` and
+    `zeroize`.
+  - `source_set("ardia_core")` adds `include/ardia_core.h`. C++ depends on that target.
+- **Keeping it in step.** `cargo test -p ardia-ffi --test chromium_build` fails when a crate source is missing from
+  `BUILD.gn`, or when `copies.tsv` and `BUILD.gn` list different files.
+- **Running it.** Run this on a Linux builder with the series applied. The `//ardia/linux:core_rs_tests` group pulls
+  the targets into the graph. The Rust vector tests read fixtures and the other platforms' wordlists at run time, from
+  the checkout that the GN arg `ardia_core_rs_checkout` names. Without that arg they aren't defined. The first build
+  of the targets took 1,083 steps and 57 s on a warm 16-core Boat VM.
+
+  `AC_REPO` must be the absolute path of an Ardia checkout on the builder at the commit being built. On the Boat
+  builder that's `/home/user/ardia`.
+
+  ```bash
+  export AC_REPO=/home/user/ardia
+  echo "ardia_core_rs_checkout = \"$AC_REPO\"" >> out/Release_GN_linux_x64/args.gn
+  autoninja -C out/Release_GN_linux_x64 ardia/core_rs:tests
+  out/Release_GN_linux_x64/ardia_crypto_known_answers
+  out/Release_GN_linux_x64/ardia_sync_vectors
+  out/Release_GN_linux_x64/ardia_sync_vectors_phrase
+  out/Release_GN_linux_x64/ardia_sync_vectors_password_reads
+  out/Release_GN_linux_x64/ardia_core_rs_unittests --ardia-repo="$AC_REPO" --single-process-tests
+  ```
+
+  - `ardia_crypto_known_answers` runs `crates/ardia-crypto/tests/known_answers.rs` against BoringSSL, including
+    the Ed25519 small-order refusals.
+  - `ardia_sync_vectors*` are cargo's `ardia-sync-vectors` tests on the GN build. Their `FixtureCrypto` wraps the
+    build's backend, which is BoringSSL here, and queues the fixture nonces. Every committed byte reproduces through the
+    normal `seal`.
+  - `ardia_core_rs_unittests` is a gtest. It drives C++ through `ardia_core.h` against `sync-vectors`, the Swift and
+    Kotlin sets, `windows-interop`, `sealed-0.2.32.b64`, `phrase-cases.json` and `password-read-cases.json`. The
+    public ABI has no way to choose a nonce, so this test opens the committed fixed-nonce files instead of resealing
+    them. Passwords are deterministic, so it reseals those and compares every byte.
+  - The tests read fixtures from a checkout, so editing a fixture never moves the engine key.
+
 ### Updates and kill switches
 
 - **Check.** With an engine that serves `ArdiaUpdates.releases`, Settings › General shows Updates. The host reads

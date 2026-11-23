@@ -65,6 +65,7 @@ export function useSuggestions({
   currentUrl,
   scope,
   preventInline,
+  switchToOpenTab,
 }: {
   text: string;
   active: boolean;
@@ -74,6 +75,7 @@ export function useSuggestions({
   currentUrl?: string;
   scope: SearchScope | null;
   preventInline?: boolean;
+  switchToOpenTab?: boolean;
 }): SuggestionResult {
   const allTabs = useTabs((tabs) => tabs);
   const historyOn = useSettings((st) => st.commandBarHistory);
@@ -153,12 +155,13 @@ export function useSuggestions({
       currentUrl,
       scope,
       preventInline,
+      switchToOpenTab,
       bangs,
       providers,
     }));
     barFieldMarks.suggestions(performance.now() - started, text.length);
     return built;
-  }, [active, text, query, source, engine, remoteList, remoteSites, windowId, extensions, shortcuts, menuBar, currentTabId, currentUrl, scope, preventInline, bangs, providers]);
+  }, [active, text, query, source, engine, remoteList, remoteSites, windowId, extensions, shortcuts, menuBar, currentTabId, currentUrl, scope, preventInline, switchToOpenTab, bangs, providers]);
   const siteListed = !scope && remoteSites.some((site) => result.items.some((i) => i.kind === "page" && i.url === site.url && !i.tabId));
   useEffect(() => {
     if (siteListed) noteSiteSuggestionShown();

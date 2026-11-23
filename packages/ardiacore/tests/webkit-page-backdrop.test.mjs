@@ -15,6 +15,7 @@ test("a WebKit tab repaints its backdrop whenever it is shown or hidden, so a hi
   const errorPage = read("../ios/WebKitTab+ErrorPage.swift");
   const updateHidden = tab.match(/private func updateHidden\(\) \{([^}]*)\}/);
   assert.ok(updateHidden, "WebKitTab.updateHidden exists");
+  assert.match(updateHidden[1], /^\s*isHidden = !visible$/m);
   assert.match(updateHidden[1], /webView\?\.isHidden = !visible/);
   assert.match(updateHidden[1], /paintBackdrop\(\)/);
   assert.match(tab, /var visible = true \{ didSet \{ updateHidden\(\)/);
