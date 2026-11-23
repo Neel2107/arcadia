@@ -16,6 +16,9 @@ import { DefaultBrowserSteps } from "../settings/DefaultBrowserPage";
 import { LinkBubble } from "./LinkBubble";
 import { SyncScanIllustration } from "./SyncScanIllustration";
 import { TipsReel } from "./TipsReel";
+import { BlockingScene } from "./BlockingScene";
+import { StartBackdrop } from "../search/StartSpaces";
+import { startLogo } from "../search/startLook";
 import { tileGradient } from "../../lib/favicon";
 import { linearGradientCss } from "../../lib/gradient";
 import { onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
@@ -29,7 +32,7 @@ import { autoArchiveTitle, type AutoArchiveInterval } from "../../state/tabs/tab
 import { setUsageSharing, useUsageSharing } from "../../state/telemetry/telemetry";
 import { useSyncConnected } from "../../state/sync/hooks";
 
-export const SYNC_SUBTITLE = { offer: "Your Mac’s tabs, right here. End-to-end encrypted.", connected: "Your Mac’s tabs are here, end-to-end encrypted." } as const;
+export const SYNC_SUBTITLE = { offer: "Your Mac’s tabs, end-to-end encrypted.", connected: "Your Mac’s tabs are here." } as const;
 export const ONBOARDING_LAYERS = { stepsBackdrop: 0, welcomeBackdrop: 1, step: 2 } as const;
 const smooth = onboardingMotion.connectRise;
 
@@ -140,11 +143,16 @@ export function OnboardingView() {
   const welcome = step === "welcome";
   const ink = theme.dark ? onboardingInk.dark : onboardingInk.light;
   const scrolls = fontScale > onboardingLayout.scrollsAboveFontScale;
+  const startLook = onboardingLayout.startBackdrop && !material;
   return (
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
+      {startLook ? (
+        <StartLookBackdrop />
+      ) : (
       <Animated.View key={welcome ? "welcomeBackdrop" : "stepsBackdrop"} entering={backdropIn(reduceMotion)} exiting={backdropOut(reduceMotion)} style={[StyleSheet.absoluteFill, { zIndex: welcome ? ONBOARDING_LAYERS.welcomeBackdrop : ONBOARDING_LAYERS.stepsBackdrop }, material ? null : { backgroundColor: welcome ? ink.welcome : ink.steps }]}>
         {material ? <LookBackdrop softened={!welcome} fadesOut={!welcome} /> : null}
       </Animated.View>
+      )}
       {steps.map((shown) => (
         <Animated.View
           key={shown.step}
@@ -166,6 +174,17 @@ export function OnboardingView() {
         </Animated.View>
       ))}
     </Animated.View>
+  );
+}
+
+function StartLookBackdrop() {
+  const look = useProfileLook();
+  const theme = useTheme();
+  const { width, height } = useWindowDimensions();
+  return (
+    <View testID="onboardingStartBackdrop" pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <StartBackdrop look={look} width={width} height={height} dark={theme.dark} incognito={false} />
+    </View>
   );
 }
 
@@ -290,7 +309,6 @@ function Primary({ title, onPress }: { title: string; onPress: () => void }) {
 }
 
 const TILT = onboardingMotion.welcomeTilt;
-const HERO = onboardingMotion.heroTilt;
 
 function Welcome() {
   const theme = useTheme();
@@ -300,12 +318,13 @@ function Welcome() {
   useEffect(() => {
     appear.value = reduceMotion ? moveTo(1, onboardingMotion.riseReduced) : withDelay(onboardingMotion.riseDelayMs, moveTo(1, onboardingMotion.rise));
   }, [appear]);
+  const startLook = onboardingLayout.startBackdrop && !material;
   const logo = useAnimatedStyle(
     () => ({
       opacity: Math.min(Math.max(appear.value, 0), 1),
-      transform: [{ rotate: `${reduceMotion ? TILT.reducedDegrees : TILT.fromDegrees + TILT.travelDegrees * appear.value}deg` }, { scale: reduceMotion ? 1 : TILT.fromScale + (1 - TILT.fromScale) * appear.value }],
+      transform: [{ rotate: `${startLook ? 0 : reduceMotion ? TILT.reducedDegrees : TILT.fromDegrees + TILT.travelDegrees * appear.value}deg` }, { scale: reduceMotion ? 1 : TILT.fromScale + (1 - TILT.fromScale) * appear.value }],
     }),
-    [reduceMotion],
+    [reduceMotion, startLook],
   );
   const words = useAnimatedStyle(
     () => ({ opacity: Math.min(Math.max(appear.value, 0), 1), transform: [{ translateY: reduceMotion ? 0 : (1 - appear.value) * TILT.wordsRise }] }),
@@ -315,14 +334,14 @@ function Welcome() {
   return (
     <View style={[styles.fill, { gap: onboardingLayout.welcomeGap }]}>
       <View style={styles.fill} />
-      <Animated.View testID="welcomeIcon" style={[styles.logo, logo]}>
-        <AppIcon side={appIconLayout.welcome} scalesWithText={false} />
+      <Animated.View testID="welcomeIcon" style={[startLook ? styles.startLogo : styles.logo, logo]}>
+        {startLook ? <AppIcon side={startLogo.iconSide} shadow scalesWithText={false} /> : <AppIcon side={appIconLayout.welcome} scalesWithText={false} />}
       </Animated.View>
       <Animated.View testID="welcomeWords" style={[styles.welcomeWords, words]}>
         <Text ref={useStepHeading()} accessibilityRole="header" style={material ? [materialType.displaySmall, styles.centeredText, { color: theme.label }] : [onboardingLayout.welcomeTitle, styles.heavy, { color: theme.label }]}>
           Meet your new favorite browser
         </Text>
-        <Text style={[material ? materialType.bodyLarge : onboardingLayout.welcomeSubtitle, styles.centered, { color: material ? theme.secondaryLabel : (theme.dark ? onboardingInk.dark : onboardingInk.light).subtitle }]}>Get what you want twice as fast.</Text>
+        {onboardingLayout.welcomeSubtitle || material ? <Text style={[material ? materialType.bodyLarge : onboardingLayout.welcomeSubtitleSize, styles.centered, { color: material ? theme.secondaryLabel : (theme.dark ? onboardingInk.dark : onboardingInk.light).subtitle }]}>Get what you want twice as fast.</Text> : null}
       </Animated.View>
       <View style={styles.fill} />
       <Animated.View testID="onboardingActions" style={[styles.actions, { paddingTop: onboardingLayout.welcomeActionsTop }, start]}>
@@ -332,7 +351,7 @@ function Welcome() {
   );
 }
 
-function Page({ title, subtitle, illustration, sitsLow, hero, children }: { title: ReactNode; subtitle: string; illustration: ReactNode; sitsLow?: boolean; hero?: SymbolName; children: ReactNode }) {
+function Page({ title, subtitle, illustration, sitsLow, children }: { title: ReactNode; subtitle?: string; illustration: ReactNode; sitsLow?: boolean; children: ReactNode }) {
   const theme = useTheme();
   const heading = useStepHeading();
   const material = useDesign() === "material";
@@ -340,14 +359,13 @@ function Page({ title, subtitle, illustration, sitsLow, hero, children }: { titl
   return (
     <View style={styles.fill}>
       <View testID="onboardingIllustration" style={[styles.illustration, { justifyContent: sitsLow && material ? "flex-end" : "center" }]}>
-        {hero && !material ? <HeroTile symbol={hero} /> : null}
         {illustration}
       </View>
       <View testID="onboardingWords" style={styles.words}>
         <Text ref={heading} accessibilityRole="header" style={material ? [materialType.headlineMedium, styles.centeredText, { color: theme.label }] : [onboardingLayout.title, styles.heavy, { color: theme.label }]}>
           {title}
         </Text>
-        <CrossfadeText testID="onboardingSubtitle" text={subtitle} style={[material ? materialType.bodyLarge : font.body, styles.centered, { color: subtitleInk }]} />
+        {subtitle ? <CrossfadeText testID="onboardingSubtitle" text={subtitle} style={[material ? materialType.bodyLarge : font.body, styles.centered, { color: subtitleInk }]} /> : null}
       </View>
       <View testID="onboardingActions" style={[styles.actions, { paddingTop: onboardingLayout.actionsTop }]}>
         {children}
@@ -364,29 +382,6 @@ function Emphasis({ children }: { children: string }) {
     <Text testID="onboardingEmphasis" style={{ color: material ? theme.spaceAccentInk : emphasisInkFor(look, theme.dark) }}>
       {children}
     </Text>
-  );
-}
-
-function HeroTile({ symbol }: { symbol: SymbolName }) {
-  const theme = useTheme();
-  const reduceMotion = useReduceMotion();
-  const appear = useSharedValue(reduceMotion ? 1 : 0);
-  useEffect(() => {
-    if (!reduceMotion) appear.value = withDelay(onboardingMotion.riseDelayMs, withSpring(1, onboardingMotion.heroPop));
-  }, [appear, reduceMotion]);
-  const pop = useAnimatedStyle(() => ({
-    opacity: Math.min(1, appear.value * 2),
-    transform: [{ scale: HERO.fromScale + (1 - HERO.fromScale) * appear.value }, { rotate: `${HERO.fromDegrees * (1 - appear.value)}deg` }],
-  }));
-  return (
-    <Animated.View
-      testID="onboardingHero"
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={[styles.hero, { experimental_backgroundImage: linearGradientCss(tileGradient(theme.spaceAccent), false, 1, 1), boxShadow: accentGlowCss(theme.spaceAccent) }, pop]}
-    >
-      <Symbol name={symbol} size={onboardingLayout.heroGlyph} color={theme.onSpaceAccent} />
-    </Animated.View>
   );
 }
 
@@ -421,6 +416,7 @@ const BLOCKING_ROWS = [
 ] as const;
 
 function Blocking() {
+  const material = useDesign() === "material";
   const state = useBlocking((s) => s.state);
   const values = { ads: state?.blocksAds ?? true, trackers: state?.blocksTrackers ?? true, cookieBanners: state?.hidesCookieBanners ?? true };
   return (
@@ -430,10 +426,11 @@ function Blocking() {
           Never see another <Emphasis>ad</Emphasis>.
         </>
       }
-      subtitle="Trackers and cookie banners too."
       sitsLow
-      hero="handRaised"
       illustration={
+        onboardingLayout.blockingScene && !material ? (
+          <BlockingScene />
+        ) : (
         <OnboardingCard>
           {BLOCKING_ROWS.map((row, index) => {
             const divider = index < BLOCKING_ROWS.length - 1;
@@ -445,6 +442,7 @@ function Blocking() {
             );
           })}
         </OnboardingCard>
+        )
       }
     >
       <Primary title="Continue" onPress={advanceOnboarding} />
@@ -465,7 +463,6 @@ function AllSet() {
   return (
     <Page
       title="You’re all set!"
-      subtitle="Happy browsing."
       sitsLow
       illustration={
         onboardingLayout.tipIcons ? (
@@ -496,9 +493,13 @@ function SharingChoice() {
   return (
     <View style={styles.sharing}>
       <View style={[styles.sharingCard, { backgroundColor: theme.groupFill }]}>
-        <ToggleRow title={PHONE_SHARING_COPY.toggle} icon="checkmarkShield" tint={settingsTint.neutral} value={sharing} onChange={(on) => setUsageSharing(on, "onboarding")} />
+        {onboardingLayout.plainSharing ? (
+          <SwitchRow label={PHONE_SHARING_COPY.toggle} value={sharing} onChange={(on) => setUsageSharing(on, "onboarding")} press={copy().menuRowTogglesSwitch ? "row" : "knob"} />
+        ) : (
+          <ToggleRow title={PHONE_SHARING_COPY.toggle} icon="checkmarkShield" tint={settingsTint.neutral} value={sharing} onChange={(on) => setUsageSharing(on, "onboarding")} />
+        )}
       </View>
-      <Text style={[font.footnote, styles.centered, { color: theme.dark ? onboardingInk.dark.subtitle : onboardingInk.light.subtitle }]}>{PHONE_SHARING_COPY.onboardingNote}</Text>
+      {onboardingLayout.plainSharing ? null : <Text style={[font.footnote, styles.centered, { color: theme.dark ? onboardingInk.dark.subtitle : onboardingInk.light.subtitle }]}>{PHONE_SHARING_COPY.onboardingNote}</Text>}
     </View>
   );
 }
@@ -517,6 +518,7 @@ const styles = StyleSheet.create({
     ...smoothCorners,
     boxShadow: appIconLayout.welcomeShadow,
   },
+  startLogo: { alignSelf: "center", marginBottom: onboardingLayout.welcomeIconBottom },
   hero: { alignSelf: "center", width: onboardingLayout.heroTile, height: onboardingLayout.heroTile, borderRadius: onboardingLayout.heroRadius, ...smoothCorners, alignItems: "center", justifyContent: "center", marginBottom: onboardingLayout.heroGap },
   sketch: { alignSelf: "center", transform: [{ scale: onboardingLayout.sketchScale }] },
   welcomeWords: { paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },

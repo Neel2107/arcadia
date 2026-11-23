@@ -1,5 +1,5 @@
 import { Easing } from "react-native-reanimated";
-import { departBezier, easeOutBezier, font, iPhoneOr, motionAliases, shape, space, spring, tabsMotion } from "../ui";
+import { departBezier, easeOutBezier, font, iPhoneOr, motionAliases, shape, space, tabsMotion } from "../ui";
 import type { Motion } from "../ui/motion";
 
 type Curve = readonly [number, number, number, number];
@@ -9,7 +9,7 @@ type TextSize = { fontSize: number; lineHeight: number };
 export const onboardingLayout = {
   title: iPhoneOr<TextSize>(font.title, font.largeTitle),
   welcomeTitle: iPhoneOr<TextSize>(font.title, font.hero),
-  welcomeSubtitle: iPhoneOr<TextSize>(font.body, font.title3),
+  welcomeSubtitleSize: iPhoneOr<TextSize>(font.body, font.title3),
   welcomeIconBottom: iPhoneOr(space.xxl, 0),
   heroTile: 104,
   heroGlyph: 50,
@@ -31,6 +31,10 @@ export const onboardingLayout = {
   cardRadius: shape.card,
   sketchScale: iPhoneOr(1.22, 1),
   rowIcons: iPhoneOr(false, true),
+  startBackdrop: iPhoneOr(true, false),
+  blockingScene: iPhoneOr(true, false),
+  plainSharing: iPhoneOr(true, false),
+  welcomeSubtitle: iPhoneOr(false, true),
   tipIcons: iPhoneOr(false, true),
   tipGlyph: 20,
   tipGlyphSlot: 28,
@@ -41,6 +45,21 @@ export const onboardingLayout = {
 export const onboardingInk = {
   light: { welcome: "#FFFFFF", steps: "#F2F2F7", subtitle: "rgba(60,60,67,0.88)" },
   dark: { welcome: "#000000", steps: "#000000", subtitle: "rgba(235,235,245,0.8)" },
+} as const;
+
+export const blockingScene = {
+  loopMs: 5600,
+  card: { width: 244, height: 312, radius: 24, pad: 14 },
+  minScale: 0.7,
+  maxScale: 1.15,
+  gap: 9,
+  banner: 52,
+  inline: 58,
+  cookie: 54,
+  badge: 30,
+  lines: [0.94, 0.82, 0.9],
+  strikes: { banner: 0.14, inline: 0.32, cookies: 0.5 },
+  cookieFill: { light: "#FFFFFF", dark: "#2C2C2E" },
 } as const;
 
 export const tipsReel = {
@@ -83,7 +102,5 @@ export const onboardingMotion = {
   rise: timing(360, onboardingCurves.rise),
   riseReduced: timing(300, onboardingCurves.easeOut),
   connectRise: tabsMotion.sheetRise,
-  heroPop: spring(0.5, 0.62),
-  heroTilt: { fromScale: 0.6, fromDegrees: -14 },
   welcomeTilt: { fromDegrees: -18, travelDegrees: 12, reducedDegrees: -6, fromScale: 0.7, wordsRise: 16 },
 } as const;
