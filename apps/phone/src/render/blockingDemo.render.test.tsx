@@ -1,15 +1,12 @@
-import { act, type ReactTestInstance } from "react-test-renderer";
+import { act } from "react-test-renderer";
 import { BlockingDemo } from "../components/onboarding/BlockingDemo";
 import { blockingDemo } from "../components/onboarding/blockingDemoTokens";
-import type { BlockingCategory } from "../platform/blocking";
 import * as settingsActions from "../state/settings/actions";
 import { useBlocking } from "../state/settings/actions";
 import { renderSurface, unmount } from "../../test/render/harness";
 
 const mockMotion = { reduced: false };
 jest.mock("../state/app/systemLook", () => ({ ...jest.requireActual("../state/app/systemLook"), useReduceMotion: () => mockMotion.reduced }));
-
-const FIELD: Record<BlockingCategory, "blocksAds" | "blocksTrackers" | "hidesCookieBanners"> = { ads: "blocksAds", trackers: "blocksTrackers", cookieBanners: "hidesCookieBanners" };
 
 const withBlocking = (ads: boolean, trackers: boolean, cookieBanners: boolean) =>
   useBlocking.setState({ busy: false, state: { isEnabled: true, blocksAds: ads, blocksTrackers: trackers, hidesCookieBanners: cookieBanners, exemptHosts: [], lists: [] } as never });
@@ -19,18 +16,13 @@ const categories = () => {
   return { ads: state.blocksAds, trackers: state.blocksTrackers, cookieBanners: state.hidesCookieBanners };
 };
 
-let writes: [BlockingCategory, boolean][] = [];
+let writes: jest.SpyInstance;
 
 beforeEach(() => {
   jest.useFakeTimers();
   mockMotion.reduced = false;
-  writes = [];
   withBlocking(true, true, true);
-  jest.spyOn(settingsActions, "setBlockingCategory").mockImplementation((category, on) => {
-    writes.push([category, on]);
-    const state = useBlocking.getState().state!;
-    useBlocking.setState({ state: { ...state, [FIELD[category]]: on } });
-  });
+  writes = jest.spyOn(settingsActions, "setBlockingCategory").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -41,92 +33,60 @@ afterEach(() => {
 
 type Root = ReturnType<typeof renderSurface>;
 
-const blockingSwitch = (root: Root): ReactTestInstance => {
-  const found = root.root.findAll((node) => typeof node.type === "string" && node.props.accessibilityRole === "switch");
-  expect(found).toHaveLength(1);
-  return found[0]!;
+const articles = (root: Root, name: "CollapsingArticle" | "FadingArticle") => root.root.findAll((node) => (node.type as { name?: string })?.name === name);
+
+const adsShown = (root: Root) => {
+  const article = [...articles(root, "CollapsingArticle"), ...articles(root, "FadingArticle")];
+  expect(article).toHaveLength(1);
+  return article[0]!.props.adsShown as boolean;
 };
 
-const isOn = (root: Root) => blockingSwitch(root).props.accessibilityState.checked as boolean;
+const wait = (ms: number) => act(() => jest.advanceTimersByTime(ms));
 
-const flip = (root: Root) => {
-  const pressable = root.root.findAll((node) => node.props.accessibilityRole === "switch" && typeof node.props.onPress === "function")[0]!;
-  act(() => pressable.props.onPress());
-};
-
-test("the switch is a screen-reader switch labelled Block Ads and Trackers, and the phone mock stays hidden", () => {
+test("the whole demo is decorative: hidden from VoiceOver and TalkBack, with no switch to reach", () => {
   const root = renderSurface(<BlockingDemo />, { flushTimers: false });
-  expect(blockingSwitch(root).props.accessibilityLabel).toBe("Block Ads and Trackers");
-  const phone = root.root.findAll((node) => typeof node.type === "string" && node.props.testID === "phoneFrame")[0]!;
-  expect(phone.props.accessibilityElementsHidden).toBe(true);
-  expect(phone.props.importantForAccessibility).toBe("no-hide-descendants");
+  const demo = root.root.findAll((node) => typeof node.type === "string" && node.props.testID === "blockingDemo");
+  expect(demo).toHaveLength(1);
+  expect(demo[0]!.props).toMatchObject({ accessibilityElementsHidden: true, importantForAccessibility: "no-hide-descendants" });
+  expect(root.root.findAll((node) => typeof node.type === "string" && node.props.accessibilityRole === "switch")).toHaveLength(0);
   unmount(root);
 });
 
-test("it shows the page with the switch off first, then turns blocking on by itself after the preview, writing all three categories", () => {
+test("it starts cluttered, blocks the ads after the cluttered hold, shows them again after the clean hold, and keeps looping by itself", () => {
   const root = renderSurface(<BlockingDemo />, { flushTimers: false });
-  expect(isOn(root)).toBe(false);
-  act(() => jest.advanceTimersByTime(blockingDemo.previewMs - 1));
-  expect(isOn(root)).toBe(false);
-  expect(writes).toEqual([]);
-  act(() => jest.advanceTimersByTime(1));
-  expect(isOn(root)).toBe(true);
-  expect(writes).toEqual([
-    ["ads", true],
-    ["trackers", true],
-    ["cookieBanners", true],
-  ]);
-  expect(categories()).toEqual({ ads: true, trackers: true, cookieBanners: true });
+  expect(adsShown(root)).toBe(true);
+  wait(blockingDemo.clutteredMs - 1);
+  expect(adsShown(root)).toBe(true);
+  wait(1);
+  expect(adsShown(root)).toBe(false);
+  wait(blockingDemo.cleanMs - 1);
+  expect(adsShown(root)).toBe(false);
+  wait(1);
+  expect(adsShown(root)).toBe(true);
+  wait(blockingDemo.clutteredMs);
+  expect(adsShown(root)).toBe(false);
   unmount(root);
 });
 
-test("turning the switch off turns all three categories off, and on again turns them all back on", () => {
-  const root = renderSurface(<BlockingDemo />, { flushTimers: false });
-  act(() => jest.advanceTimersByTime(blockingDemo.previewMs));
-  flip(root);
-  expect(isOn(root)).toBe(false);
-  expect(categories()).toEqual({ ads: false, trackers: false, cookieBanners: false });
-  flip(root);
-  expect(isOn(root)).toBe(true);
-  expect(categories()).toEqual({ ads: true, trackers: true, cookieBanners: true });
-  unmount(root);
-});
-
-test("a tap during the preview is the user's choice and the auto flip never fires", () => {
-  const root = renderSurface(<BlockingDemo />, { flushTimers: false });
-  flip(root);
-  expect(isOn(root)).toBe(true);
-  writes = [];
-  flip(root);
-  act(() => jest.advanceTimersByTime(blockingDemo.previewMs * 2));
-  expect(isOn(root)).toBe(false);
-  expect(writes.every(([, on]) => !on)).toBe(true);
-  expect(categories()).toEqual({ ads: false, trackers: false, cookieBanners: false });
-  unmount(root);
-});
-
-test("blocking already partly off is kept: no auto flip, and the switch reads off", () => {
+test("looping never writes the blocking settings, and a user's partly-off blocking is left as it was", () => {
   withBlocking(true, false, true);
   const root = renderSurface(<BlockingDemo />, { flushTimers: false });
-  act(() => jest.advanceTimersByTime(blockingDemo.previewMs * 2));
-  expect(isOn(root)).toBe(false);
-  expect(writes).toEqual([]);
+  for (let loop = 0; loop < 3; loop++) wait(blockingDemo.clutteredMs + blockingDemo.cleanMs);
+  expect(writes).not.toHaveBeenCalled();
   expect(categories()).toEqual({ ads: true, trackers: false, cookieBanners: true });
-  flip(root);
-  expect(categories()).toEqual({ ads: true, trackers: true, cookieBanners: true });
   unmount(root);
 });
 
-test("with Reduce Motion there is no auto flip, but the switch still sets all three", () => {
+test("with Reduce Motion the page cross-fades between cluttered and clean on the same holds instead of collapsing the ads", () => {
   mockMotion.reduced = true;
   const root = renderSurface(<BlockingDemo />, { flushTimers: false });
-  expect(isOn(root)).toBe(true);
-  act(() => jest.advanceTimersByTime(blockingDemo.previewMs * 2));
-  expect(writes).toEqual([]);
-  flip(root);
-  expect(isOn(root)).toBe(false);
-  expect(categories()).toEqual({ ads: false, trackers: false, cookieBanners: false });
-  flip(root);
-  expect(categories()).toEqual({ ads: true, trackers: true, cookieBanners: true });
+  expect(articles(root, "CollapsingArticle")).toHaveLength(0);
+  expect(articles(root, "FadingArticle")).toHaveLength(1);
+  expect(adsShown(root)).toBe(true);
+  wait(blockingDemo.clutteredMs);
+  expect(adsShown(root)).toBe(false);
+  wait(blockingDemo.cleanMs);
+  expect(adsShown(root)).toBe(true);
+  expect(writes).not.toHaveBeenCalled();
   unmount(root);
 });

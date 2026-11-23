@@ -244,14 +244,10 @@ onAndroid("the all-set step keeps Compose's tips with their icons", () => {
   unmount(root);
 });
 
-test("the steps follow welcome, the colour step on iPhone, blocking, sync and all set (with the default-browser step before sync where offered), and Start Browsing finishes", async () => {
+test("the steps follow welcome, blocking, sync and all set (with the default-browser step before sync where offered), and Start Browsing finishes", async () => {
   useOnboarding.setState({ showing: true, step: "welcome", forward: true });
   const root = renderSurface(<OnboardingView />);
   await pressButton(root, "Get Started");
-  if (iPhone) {
-    expect(useOnboarding.getState()).toMatchObject({ step: "color", forward: true });
-    await pressButton(root, "Continue");
-  }
   expect(useOnboarding.getState()).toMatchObject({ step: "blocking", forward: true });
   await pressButton(root, "Continue");
   expect(["sync", "defaultBrowser"]).toContain(useOnboarding.getState().step);

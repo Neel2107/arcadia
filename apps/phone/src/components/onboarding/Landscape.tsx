@@ -19,8 +19,8 @@ const skyCss = (hour: Hour) => {
   return `linear-gradient(180deg, ${top} 0%, ${mid} ${landscape.skyStops[0]}%, ${low} ${landscape.skyStops[1]}%)`;
 };
 
-function Layer({ hour, at, index, children }: { hour: SharedValue<number>; at: number; index: number; children: React.ReactNode }) {
-  const shown = useAnimatedStyle(() => ({ opacity: index === 0 ? 1 : Math.min(1, Math.max(0, hour.value - (at - 1))) }), [at, index]);
+function Layer({ clock, at, index, children }: { clock: SharedValue<number>; at: number; index: number; children: React.ReactNode }) {
+  const shown = useAnimatedStyle(() => ({ opacity: index === 0 ? 1 : Math.min(1, Math.max(0, clock.value - (at - 1))) }), [at, index]);
   return <Animated.View style={[StyleSheet.absoluteFill, shown]}>{children}</Animated.View>;
 }
 
@@ -50,7 +50,7 @@ export function Landscape({ step }: { step: OnboardingStep }) {
   return (
     <View testID="onboardingLandscape" pointerEvents="none" style={StyleSheet.absoluteFill} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {HOUR_KEYS.map((key, index) => (
-        <Layer key={`sky-${key}`} hour={hour} at={index} index={index}>
+        <Layer key={`sky-${key}`} clock={hour} at={index} index={index}>
           <View style={[StyleSheet.absoluteFill, { experimental_backgroundImage: skyCss(key) }]} />
         </Layer>
       ))}
@@ -59,7 +59,7 @@ export function Landscape({ step }: { step: OnboardingStep }) {
         <Image source={SUN} style={{ width: sunSide, height: sunSide }} resizeMode="contain" />
       </Animated.View>
       {HOUR_KEYS.map((key, index) => (
-        <Layer key={`hills-${key}`} hour={hour} at={index} index={index}>
+        <Layer key={`hills-${key}`} clock={hour} at={index} index={index}>
           <Svg width={width} height={height} viewBox={`0 0 ${landscape.view.width} ${landscape.view.height}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
             <Path d={landscape.hills.back} fill={HOURS[key].hills.back} />
             <Path d={landscape.hills.front} fill={HOURS[key].hills.front} />
