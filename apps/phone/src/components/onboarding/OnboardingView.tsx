@@ -4,7 +4,7 @@ import Animated, { Easing, FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { advanceOnboarding, finishOnboarding, useOnboarding } from "../../state/onboarding/hooks";
 import { refreshSettings, setBlockingCategory, useBlocking } from "../../state/settings/actions";
-import { emphasisInkFor, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
+import { emphasisInkFor, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
 import type { Motion } from "../ui/motion";
 import { useDesign } from "../ui";
 import { useMaterialRipple } from "../ui/MaterialSurfaces";
@@ -17,6 +17,7 @@ import { LinkBubble } from "./LinkBubble";
 import { SyncScanIllustration } from "./SyncScanIllustration";
 import { TipsReel } from "./TipsReel";
 import { BlockingScene } from "./BlockingScene";
+import { WelcomeIntro, WelcomeMesh } from "./WelcomeIntro";
 import { StartBackdrop } from "../search/StartSpaces";
 import { startGradient, startLogo } from "../search/startLook";
 import { onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
@@ -142,10 +143,18 @@ export function OnboardingView() {
   const ink = theme.dark ? onboardingInk.dark : onboardingInk.light;
   const scrolls = fontScale > onboardingLayout.scrollsAboveFontScale;
   const startLook = onboardingLayout.startBackdrop && !material;
+  const intro = startLook && settingsUIAvailable();
   return (
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
       {startLook ? (
-        <StartLookBackdrop />
+        <>
+          <StartLookBackdrop />
+          {welcome && intro ? (
+            <Animated.View key="welcomeMesh" exiting={backdropOut(reduceMotion)} style={StyleSheet.absoluteFill}>
+              <WelcomeMesh />
+            </Animated.View>
+          ) : null}
+        </>
       ) : (
       <Animated.View key={welcome ? "welcomeBackdrop" : "stepsBackdrop"} entering={backdropIn(reduceMotion)} exiting={backdropOut(reduceMotion)} style={[StyleSheet.absoluteFill, { zIndex: welcome ? ONBOARDING_LAYERS.welcomeBackdrop : ONBOARDING_LAYERS.stepsBackdrop }, material ? null : { backgroundColor: welcome ? ink.welcome : ink.steps }]}>
         {material ? <LookBackdrop softened={!welcome} fadesOut={!welcome} /> : null}
@@ -311,6 +320,13 @@ function Primary({ title, onPress }: { title: string; onPress: () => void }) {
 const TILT = onboardingMotion.welcomeTilt;
 
 function Welcome() {
+  const material = useDesign() === "material";
+  const heading = useStepHeading();
+  if (onboardingLayout.startBackdrop && !material && settingsUIAvailable()) return <WelcomeIntro onStart={advanceOnboarding} headingRef={heading} />;
+  return <WelcomeFallback />;
+}
+
+function WelcomeFallback() {
   const theme = useTheme();
   const material = useDesign() === "material";
   const reduceMotion = useReduceMotion();

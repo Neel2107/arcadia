@@ -43,6 +43,43 @@ export const onboardingInk = {
   dark: { welcome: "#000000", steps: "#000000", subtitle: "rgba(235,235,245,0.8)" },
 } as const;
 
+export const welcomeIntro = {
+  saturation: 0.86,
+  neutralSaturation: 0.08,
+  baseLightness: 0.3,
+  blobs: [
+    { hueShift: 0, lightness: 0.5, from: { x: -130, y: -250 }, to: { x: -50, y: -190 }, side: 440, fade: 1, driftS: 7 },
+    { hueShift: 0.3, lightness: 0.56, from: { x: 170, y: 60 }, to: { x: 90, y: 150 }, side: 420, fade: 0.95, driftS: 8.5 },
+    { hueShift: -0.05, lightness: 0.64, from: { x: -110, y: 300 }, to: { x: -170, y: 220 }, side: 380, fade: 0.8, driftS: 9.5 },
+    { hueShift: 0.14, lightness: 0.42, from: { x: 170, y: -330 }, to: { x: 110, y: -260 }, side: 360, fade: 0.9, driftS: 6.5 },
+  ],
+  blobBlur: 70,
+  bloomFrom: 0.35,
+  bloomS: 1.1,
+  bloomDelayS: 0.45,
+  bloomStaggerS: 0.08,
+  driftDelayMs: 1600,
+  driftRepeats: 10000,
+  iconSide: 76,
+  iconTopShare: 0.12,
+  launchScale: 2.7,
+  holdMs: 420,
+  flight: { response: 0.75, damping: 0.72 },
+  wobbleDegrees: -10,
+  titleSize: 38,
+  titleBlur: 26,
+  titleFromScale: 1.3,
+  titleS: 0.95,
+  titleDelayS: 0.6,
+  blurRoom: 28,
+  wordsBottom: space.xl - 28,
+  actionDelayMs: 1350,
+  actionRise: 14,
+  actionsInset: space.xl + space.xs,
+  actionsBottom: space.m,
+  reducedFadeMs: 300,
+} as const;
+
 export const blockingScene = {
   loopMs: 6200,
   card: { width: 244, height: 312, radius: 24, pad: 14 },
