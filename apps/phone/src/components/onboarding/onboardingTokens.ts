@@ -98,7 +98,7 @@ export const meadow = {
   fadeInMs: 300,
   reducedFadeMs: 200,
   coverSlackMs: 120,
-  scrim: "linear-gradient(180deg, rgba(10, 16, 13, 0) 0%, rgba(10, 16, 13, 0.04) 38%, rgba(10, 16, 13, 0.5) 64%, rgba(10, 16, 13, 0.8) 100%)",
+  scrim: "linear-gradient(180deg, rgba(10, 16, 13, 0) 0%, rgba(10, 16, 13, 0.04) 38%, rgba(10, 16, 13, 0.5) 58%, rgba(10, 16, 13, 0.8) 100%)",
   statusFade: "linear-gradient(180deg, rgba(10, 16, 13, 0.4) 0%, rgba(10, 16, 13, 0.4) 4%, rgba(10, 16, 13, 0.06) 13%, rgba(10, 16, 13, 0) 20%)",
   dawnWash: "linear-gradient(180deg, #919ABB 0%, #B8A7BD 38%, #F4B08A 66%, #6E7A52 74%, #2C3D2A 100%)",
   travelMs: 700,

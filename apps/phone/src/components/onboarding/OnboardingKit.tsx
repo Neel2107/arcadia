@@ -31,8 +31,10 @@ export function KitPrimary({ title, onPress, testID = "onboardingPrimary" }: { t
   const slot = useContext(PrimarySlotContext);
   const owner = useContext(StepOwner);
   const frame = useRef<ViewInstance>(null);
-  if (!slot || !owner) return <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primary} />;
-  const measure = () => frame.current?.measureInWindow((x, y, width, height) => slot.report(owner, { x, y, width, height }, title));
+  if (!slot) return <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primary} />;
+  const measure = () => {
+    if (owner) frame.current?.measureInWindow((x, y, width, height) => slot.report(owner, { x, y, width, height }, title));
+  };
   return (
     <View ref={frame} collapsable={false} onLayout={measure}>
       <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.carriedLabel} />

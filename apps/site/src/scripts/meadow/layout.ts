@@ -46,7 +46,7 @@ const STACKED_HILL_SCALE = 0.7;
 const STACKED_FOV = degrees(72);
 const STACKED_RISE = 1.9;
 
-const CALM_SUN_RAIL: [number, number] = [degrees(-15), degrees(-11)];
+const CALM_SUN_RAIL: [number, number] = [degrees(-13), degrees(-10)];
 const CALM_SUN_SCALE = 0.72;
 
 export function framingFor(aspect: number, clear = 0, horizon = 0, calm = false): Framing {
