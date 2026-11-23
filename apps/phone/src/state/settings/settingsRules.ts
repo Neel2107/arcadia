@@ -191,25 +191,28 @@ export function filterListAddress(text: string): { url: string } | { message: st
   return { url: trimmed };
 }
 
-export type OnboardingStep = "welcome" | "blocking" | "defaultBrowser" | "sync" | "allSet";
+export type OnboardingStep = "welcome" | "color" | "blocking" | "defaultBrowser" | "sync" | "allSet";
 
-export const ONBOARDING_STEPS: readonly OnboardingStep[] = ["welcome", "blocking", "defaultBrowser", "sync", "allSet"];
+export const ONBOARDING_STEPS: readonly OnboardingStep[] = ["welcome", "color", "blocking", "defaultBrowser", "sync", "allSet"];
 
-export const restoredOnboardingStep = (raw: string | null, offersSync = true): OnboardingStep => {
+export const restoredOnboardingStep = (raw: string | null, offersSync = true, offersColor = false): OnboardingStep => {
   const step = (ONBOARDING_STEPS as readonly string[]).includes(raw ?? "") ? (raw as OnboardingStep) : "welcome";
+  if (step === "color" && !offersColor) return "blocking";
   return step === "sync" && !offersSync ? "allSet" : step;
 };
 
-const shownSteps = (offersDefaultBrowser: boolean, offersSync = true) => ONBOARDING_STEPS.filter((step) => (step !== "defaultBrowser" || offersDefaultBrowser) && (step !== "sync" || offersSync));
+const shownSteps = (offersDefaultBrowser: boolean, offersSync = true, offersColor = false) =>
+  ONBOARDING_STEPS.filter((step) => (step !== "defaultBrowser" || offersDefaultBrowser) && (step !== "sync" || offersSync) && (step !== "color" || offersColor));
 
-export const nextStep = (step: OnboardingStep, offersDefaultBrowser = false, offersSync = true): OnboardingStep | null => {
-  const steps = shownSteps(offersDefaultBrowser, offersSync);
+export const nextStep = (step: OnboardingStep, offersDefaultBrowser = false, offersSync = true, offersColor = false): OnboardingStep | null => {
+  const steps = shownSteps(offersDefaultBrowser, offersSync, offersColor);
   const at = steps.indexOf(step);
-  return at < 0 ? (shownSteps(true).slice(shownSteps(true).indexOf(step) + 1).find((s) => steps.includes(s)) ?? null) : (steps[at + 1] ?? null);
+  const every = shownSteps(true, true, true);
+  return at < 0 ? (every.slice(every.indexOf(step) + 1).find((s) => steps.includes(s)) ?? null) : (steps[at + 1] ?? null);
 };
 
-export const previousStep = (step: OnboardingStep, offersDefaultBrowser = false, offersSync = true): OnboardingStep | null => {
-  const steps = shownSteps(offersDefaultBrowser, offersSync);
+export const previousStep = (step: OnboardingStep, offersDefaultBrowser = false, offersSync = true, offersColor = false): OnboardingStep | null => {
+  const steps = shownSteps(offersDefaultBrowser, offersSync, offersColor);
   const at = steps.indexOf(step);
   return at <= 0 ? null : (steps[at - 1] ?? null);
 };

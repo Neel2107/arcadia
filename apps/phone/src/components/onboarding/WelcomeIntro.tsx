@@ -9,7 +9,7 @@ import type { ProfileLook } from "../../lib/profileLook";
 import { ActionButton, AppIcon, spring, useProfileLook, useReduceMotion } from "../ui";
 import { welcomeIntro } from "./onboardingTokens";
 
-export const WELCOME_TITLE = "Meet your new favorite browser";
+export const WELCOME_TITLE = "Welcome to Ardia";
 
 type Blob = { color: string; from: { x: number; y: number }; to: { x: number; y: number }; side: number; fade: number; driftS: number };
 

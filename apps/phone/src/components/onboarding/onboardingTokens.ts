@@ -43,6 +43,28 @@ export const onboardingInk = {
   dark: { welcome: "#000000", steps: "#000000", subtitle: "rgba(235,235,245,0.8)" },
 } as const;
 
+export const blurTitle = {
+  size: 30,
+  ink: "#FFFFFF",
+  maxWidth: 340,
+  room: 24,
+  blur: 22,
+  fromScale: 1.25,
+  durationS: 0.85,
+  delayS: 0.12,
+  reducedS: 0.3,
+} as const;
+
+export const colorStep = {
+  swatch: 58,
+  gap: 22,
+  ring: 3,
+  ringGap: 4,
+  perRow: 3,
+  check: 22,
+  pressScale: 0.9,
+} as const;
+
 export const phoneFrame = {
   width: 236,
   height: 470,

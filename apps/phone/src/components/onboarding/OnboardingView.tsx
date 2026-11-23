@@ -4,7 +4,7 @@ import Animated, { Easing, FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { advanceOnboarding, finishOnboarding, useOnboarding } from "../../state/onboarding/hooks";
 import { refreshSettings, setBlockingCategory, useBlocking } from "../../state/settings/actions";
-import { emphasisInkFor, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
+import { ForcedDark, iPhoneOr, overlayInk, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
 import type { Motion } from "../ui/motion";
 import { useDesign } from "../ui";
 import { useMaterialRipple } from "../ui/MaterialSurfaces";
@@ -18,8 +18,10 @@ import { SyncScanIllustration } from "./SyncScanIllustration";
 import { TipsReel } from "./TipsReel";
 import { BlockingScene } from "./BlockingScene";
 import { WelcomeIntro, WelcomeMesh } from "./WelcomeIntro";
+import { BlurTitle } from "./BlurTitle";
+import { ColorChoices } from "./ColorChoices";
 import { StartBackdrop } from "../search/StartSpaces";
-import { startGradient, startLogo } from "../search/startLook";
+import { startLogo } from "../search/startLook";
 import { onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
 import { PHONE_SHARING_COPY } from "../../lib/telemetryCopy";
 import { copy } from "../../lib/platformCopy";
@@ -31,7 +33,14 @@ import { autoArchiveTitle, type AutoArchiveInterval } from "../../state/tabs/tab
 import { setUsageSharing, useUsageSharing } from "../../state/telemetry/telemetry";
 import { useSyncConnected } from "../../state/sync/hooks";
 
-export const SYNC_SUBTITLE = { offer: "Your Mac’s tabs, end-to-end encrypted.", connected: "Your Mac’s tabs are here." } as const;
+export const SYNC_SUBTITLE = iPhoneOr({ offer: "End-to-end encrypted.", connected: "Connected." }, { offer: "Your Mac’s tabs, right here. End-to-end encrypted.", connected: "Your Mac’s tabs are here, end-to-end encrypted." });
+
+export const STEP_WORDS = iPhoneOr(
+  { color: "Pick a color", blocking: "No ads, no trackers", sync: "Your Mac’s tabs, on your phone", allSet: "All set" },
+  { color: "Pick a color", blocking: "Never see another ad.", sync: "Every tab, anywhere.", allSet: "You’re all set!" },
+);
+
+const useIntro = () => onboardingLayout.startBackdrop && useDesign() !== "material" && settingsUIAvailable();
 export const ONBOARDING_LAYERS = { stepsBackdrop: 0, welcomeBackdrop: 1, step: 2 } as const;
 const smooth = onboardingMotion.connectRise;
 
@@ -145,16 +154,12 @@ export function OnboardingView() {
   const startLook = onboardingLayout.startBackdrop && !material;
   const intro = startLook && settingsUIAvailable();
   return (
+    <ForcedDark value={intro}>
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
-      {startLook ? (
-        <>
-          <StartLookBackdrop />
-          {welcome && intro ? (
-            <Animated.View key="welcomeMesh" exiting={backdropOut(reduceMotion)} style={StyleSheet.absoluteFill}>
-              <WelcomeMesh />
-            </Animated.View>
-          ) : null}
-        </>
+      {intro ? (
+        <WelcomeMesh />
+      ) : startLook ? (
+        <StartLookBackdrop />
       ) : (
       <Animated.View key={welcome ? "welcomeBackdrop" : "stepsBackdrop"} entering={backdropIn(reduceMotion)} exiting={backdropOut(reduceMotion)} style={[StyleSheet.absoluteFill, { zIndex: welcome ? ONBOARDING_LAYERS.welcomeBackdrop : ONBOARDING_LAYERS.stepsBackdrop }, material ? null : { backgroundColor: welcome ? ink.welcome : ink.steps }]}>
         {material ? <LookBackdrop softened={!welcome} fadesOut={!welcome} /> : null}
@@ -181,6 +186,7 @@ export function OnboardingView() {
         </Animated.View>
       ))}
     </Animated.View>
+    </ForcedDark>
   );
 }
 
@@ -215,10 +221,19 @@ const useStepHeading = () => useContext(StepHeading)?.attach;
 
 function StepContent({ step }: { step: OnboardingStep }) {
   if (step === "welcome") return <Welcome />;
+  if (step === "color") return <ColorStep />;
   if (step === "blocking") return <Blocking />;
   if (step === "sync") return <SyncStep />;
   if (step === "defaultBrowser") return <DefaultBrowserStep />;
   return <AllSet />;
+}
+
+function ColorStep() {
+  return (
+    <Page title={STEP_WORDS.color} illustration={<ColorChoices />}>
+      <Primary title="Continue" onPress={advanceOnboarding} />
+    </Page>
+  );
 }
 
 function DefaultBrowserStep() {
@@ -260,11 +275,7 @@ function SyncStep() {
   return (
     <>
       <Page
-        title={
-          <>
-            Every tab, <Emphasis>anywhere</Emphasis>.
-          </>
-        }
+        title={STEP_WORDS.sync}
         subtitle={connected ? SYNC_SUBTITLE.connected : SYNC_SUBTITLE.offer}
         illustration={
           <View style={styles.sketch}>
@@ -367,7 +378,7 @@ function WelcomeFallback() {
   );
 }
 
-function Page({ title, subtitle, illustration, sitsLow, children }: { title: ReactNode; subtitle?: string; illustration: ReactNode; sitsLow?: boolean; children: ReactNode }) {
+function Page({ title, subtitle, illustration, sitsLow, children }: { title: string; subtitle?: string; illustration: ReactNode; sitsLow?: boolean; children: ReactNode }) {
   const theme = useTheme();
   const heading = useStepHeading();
   const material = useDesign() === "material";
@@ -378,26 +389,19 @@ function Page({ title, subtitle, illustration, sitsLow, children }: { title: Rea
         {illustration}
       </View>
       <View testID="onboardingWords" style={styles.words}>
-        <Text ref={heading} accessibilityRole="header" style={material ? [materialType.headlineMedium, styles.centeredText, { color: theme.label }] : [onboardingLayout.title, styles.heavy, { color: theme.label }]}>
-          {title}
-        </Text>
+        {useIntro() ? (
+          <BlurTitle text={title} headingRef={heading} />
+        ) : (
+          <Text ref={heading} accessibilityRole="header" style={material ? [materialType.headlineMedium, styles.centeredText, { color: theme.label }] : [onboardingLayout.title, styles.heavy, { color: theme.label }]}>
+            {title}
+          </Text>
+        )}
         {subtitle ? <CrossfadeText testID="onboardingSubtitle" text={subtitle} style={[material ? materialType.bodyLarge : font.body, styles.centered, { color: subtitleInk }]} /> : null}
       </View>
       <View testID="onboardingActions" style={[styles.actions, { paddingTop: onboardingLayout.actionsTop }]}>
         {children}
       </View>
     </View>
-  );
-}
-
-function Emphasis({ children }: { children: string }) {
-  const theme = useTheme();
-  const look = useProfileLook();
-  const material = useDesign() === "material";
-  return (
-    <Text testID="onboardingEmphasis" style={{ color: material ? theme.spaceAccentInk : onboardingLayout.startBackdrop ? emphasisInkFor(look, theme.dark, startGradient(look, theme.dark, false)) : emphasisInkFor(look, theme.dark) }}>
-      {children}
-    </Text>
   );
 }
 
@@ -437,11 +441,7 @@ function Blocking() {
   const values = { ads: state?.blocksAds ?? true, trackers: state?.blocksTrackers ?? true, cookieBanners: state?.hidesCookieBanners ?? true };
   return (
     <Page
-      title={
-        <>
-          Never see another <Emphasis>ad</Emphasis>.
-        </>
-      }
+      title={STEP_WORDS.blocking}
       sitsLow
       illustration={
         onboardingLayout.blockingScene && !material ? (
@@ -478,7 +478,7 @@ function AllSet() {
   const TIPS = tipsFor(usePreferences((p) => p.autoArchiveInterval));
   return (
     <Page
-      title="You’re all set!"
+      title={STEP_WORDS.allSet}
       sitsLow
       illustration={
         onboardingLayout.tipIcons ? (
@@ -508,7 +508,7 @@ function SharingChoice() {
   const sharing = useUsageSharing((s) => s.sharing);
   return (
     <View style={styles.sharing}>
-      <View style={[styles.sharingCard, { backgroundColor: theme.groupFill }]}>
+      <View style={[styles.sharingCard, { backgroundColor: useIntro() ? overlayInk.glass : theme.groupFill }]}>
         {onboardingLayout.plainSharing ? (
           <SwitchRow label={PHONE_SHARING_COPY.toggle} value={sharing} onChange={(on) => setUsageSharing(on, "onboarding")} press={copy().menuRowTogglesSwitch ? "row" : "knob"} />
         ) : (

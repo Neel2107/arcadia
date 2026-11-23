@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { create } from "zustand";
 import { haptics } from "../app/haptics";
 import { presentSearch } from "../search/store";
@@ -24,14 +25,16 @@ useOnboarding.subscribe((state, previous) => {
 
 export function showOnboarding() {
   closeSettings();
-  useOnboarding.setState({ showing: true, step: restoredOnboardingStep(restoredValue(STEP_KEY), syncOffered()), forward: true, fromSettings: false });
+  useOnboarding.setState({ showing: true, step: restoredOnboardingStep(restoredValue(STEP_KEY), syncOffered(), offersColorStep()), forward: true, fromSettings: false });
   void refreshDefaultBrowser();
 }
 
 const offers = () => offersDefaultBrowser(defaultBrowserStatus());
 
+export const offersColorStep = () => Platform.OS === "ios";
+
 export function advanceOnboarding() {
-  const next = nextStep(useOnboarding.getState().step, offers(), syncOffered());
+  const next = nextStep(useOnboarding.getState().step, offers(), syncOffered(), offersColorStep());
   if (!next) {
     finishOnboarding();
     return;
@@ -43,7 +46,7 @@ export function advanceOnboarding() {
 export function onboardingBack(): boolean {
   const { showing, step } = useOnboarding.getState();
   if (!showing) return false;
-  const previous = previousStep(step, offers(), syncOffered());
+  const previous = previousStep(step, offers(), syncOffered(), offersColorStep());
   if (previous) useOnboarding.setState({ step: previous, forward: false });
   else if (useOnboarding.getState().fromSettings) {
     useOnboarding.setState({ showing: false, fromSettings: false });
