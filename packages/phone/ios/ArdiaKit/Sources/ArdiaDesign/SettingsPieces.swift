@@ -47,7 +47,7 @@ public struct SettingsHero<Accessory: View>: View {
 
 public struct SettingsHeroContent<Accessory: View>: View {
   var title: LocalizedStringKey
-  var subtitle: Text
+  var subtitle: Text?
   var systemImage: String
   var tint: Color
   var accessory: Accessory
