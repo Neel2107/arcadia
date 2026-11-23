@@ -39,10 +39,10 @@ export function spaceAccentFor(look: ProfileLook, dark: boolean): SpaceAccent {
   return { spaceAccent: fill, spaceAccentInk: ink, spaceAccentGlyph: glyph, onSpaceAccent: onFill, spaceAccentWash: withAlpha(look.tint, dark ? accentWashAlpha.dark : accentWashAlpha.light) };
 }
 
-export function emphasisInkFor(look: ProfileLook, dark: boolean): string {
-  if (look.isNeutral) return spaceAccentFor(look, dark).spaceAccentInk;
+export function emphasisInkFor(look: ProfileLook, dark: boolean, backdrops: readonly string[] = accentBackdrops(look, dark)): string {
+  if (look.isNeutral) return legibleAgainst(spaceAccentFor(look, dark).spaceAccentInk, backdrops, dark ? accentInkBase.lighten : accentInkBase.darken);
   const [r, g, b] = parseColor(look.swatch);
   const [hue, saturation] = rgbToHsl(r / 255, g / 255, b / 255);
   const vivid = toHex(hslToRgb(hue, Math.max(saturation, dark ? emphasisTone.darkSaturation : emphasisTone.lightSaturation), dark ? emphasisTone.darkLightness : emphasisTone.lightLightness).map((channel) => channel * 255));
-  return legibleAgainst(vivid, accentBackdrops(look, dark), dark ? accentInkBase.lighten : accentInkBase.darken);
+  return legibleAgainst(vivid, backdrops, dark ? accentInkBase.lighten : accentInkBase.darken);
 }

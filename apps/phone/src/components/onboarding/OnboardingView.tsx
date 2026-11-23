@@ -18,7 +18,7 @@ import { SyncScanIllustration } from "./SyncScanIllustration";
 import { TipsReel } from "./TipsReel";
 import { BlockingScene } from "./BlockingScene";
 import { StartBackdrop } from "../search/StartSpaces";
-import { startLogo } from "../search/startLook";
+import { startGradient, startLogo } from "../search/startLook";
 import { tileGradient } from "../../lib/favicon";
 import { linearGradientCss } from "../../lib/gradient";
 import { onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
@@ -293,7 +293,7 @@ function Secondary({ title, onPress }: { title: string; onPress: () => void }) {
         <Text style={[materialType.labelLarge, { color: scheme.primary }]}>{title}</Text>
       </Pressable>
     );
-  return <ActionButton title={title} onPress={onPress} variant="plain" tone="accent" size="regular" />;
+  return <ActionButton title={title} onPress={onPress} variant="plain" tone={onboardingLayout.startBackdrop ? "ink" : "accent"} size="regular" />;
 }
 
 function Primary({ title, onPress }: { title: string; onPress: () => void }) {
@@ -305,6 +305,7 @@ function Primary({ title, onPress }: { title: string; onPress: () => void }) {
         <Text style={[materialType.titleMedium, styles.centeredText, { color: scheme.onPrimary }]}>{title}</Text>
       </Pressable>
     );
+  if (onboardingLayout.startBackdrop) return <ActionButton testID="onboardingPrimary" title={title} onPress={onPress} variant="filled" tone="ink" size="hero" capsule />;
   return <PrimaryButton title={title} onPress={onPress} />;
 }
 
@@ -379,7 +380,7 @@ function Emphasis({ children }: { children: string }) {
   const look = useProfileLook();
   const material = useDesign() === "material";
   return (
-    <Text testID="onboardingEmphasis" style={{ color: material ? theme.spaceAccentInk : emphasisInkFor(look, theme.dark) }}>
+    <Text testID="onboardingEmphasis" style={{ color: material ? theme.spaceAccentInk : onboardingLayout.startBackdrop ? emphasisInkFor(look, theme.dark, startGradient(look, theme.dark, false)) : emphasisInkFor(look, theme.dark) }}>
       {children}
     </Text>
   );
