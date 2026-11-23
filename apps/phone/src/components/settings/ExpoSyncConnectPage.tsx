@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Modal, StyleSheet, View } from "react-native";
 import { Button, Form, HStack, Label, RNHostView, Section, Text, Toolbar, ToolbarItem, VStack, ZStack } from "@expo/ui/swift-ui";
 import { settingsUI } from "@ardia/phone-native";
-import { accessibilityAddTraits, animation, Animation, disabled, font, foregroundStyle, frame, interactiveDismissDisabled, listRowBackground, listRowInsets, multilineTextAlignment, padding, tint } from "@expo/ui/swift-ui/modifiers";
+import { accessibilityAddTraits, animation, Animation, disabled, font, foregroundStyle, frame, interactiveDismissDisabled, listRowBackground, listRowInsets, multilineTextAlignment, padding, preferredColorScheme, scrollContentBackground, tint } from "@expo/ui/swift-ui/modifiers";
 import { connectionWords, dismissWords, syncWords } from "../../lib/sharedWords";
 import type { ConnectResult } from "../../platform/sync";
 import { haptics } from "../../state/app/haptics";
@@ -15,10 +15,13 @@ import { chooseFolderTitle, connectMessage, MAC_HINT } from "../../state/sync/sy
 import { legibleInk, modifierList, navigationBarBackButtonHidden, settingsPage, useReduceMotion, useTheme } from "../ui";
 import { SyncScan } from "../sync/SyncScan";
 import { ExpoSettingsAction } from "./ExpoSettingsParts";
+import { brand } from "../onboarding/onboardingTokens";
 
 const SECONDARY = { type: "hierarchical", style: "secondary" } as const;
 const noSubscription = () => () => undefined;
 const FILL = 10000;
+
+const ONBOARDING_ACTION = { fill: brand.paper, ink: brand.ink, capsule: true } as const;
 
 export const CONNECT_WORDS = {
   scanTitle: "Scan the code on your Mac",
@@ -124,10 +127,11 @@ export function ExpoSyncConnectPage() {
   const subtitle = problem ?? (choosesFolder ? CONNECT_WORDS.folderHint : MAC_HINT);
   const pickFolder = () => (session ? void session.pickFolder(phrase).then(finished) : void connect());
   const folderTitle = session ? (picked.folder ? "Choose Another Folder…" : "Choose Folder…") : chooseFolderTitle(lastResult);
-  const accent = theme.spaceAccentInk;
+  const accent = isRoot ? brand.cream : theme.spaceAccentInk;
+  const look = isRoot ? ONBOARDING_ACTION : undefined;
 
   const page = (
-    <Form modifiers={modifierList(settingsPage(syncWords.connect), tint(accent), interactiveDismissDisabled(busy), isRoot ? null : navigationBarBackButtonHidden(busy))}>
+    <Form modifiers={modifierList(settingsPage(syncWords.connect), tint(accent), isRoot ? preferredColorScheme("dark") : null, isRoot ? scrollContentBackground("hidden") : null, interactiveDismissDisabled(busy), isRoot ? null : navigationBarBackButtonHidden(busy))}>
       <Section modifiers={[listRowBackground("clear"), listRowInsets({ top: CONNECT_LAYOUT.top, leading: CONNECT_LAYOUT.inset, bottom: 0, trailing: CONNECT_LAYOUT.inset })]}>
         <VStack spacing={CONNECT_LAYOUT.wordsGap} modifiers={[frame({ maxWidth: FILL }), animation(Animation.smooth({ duration: CONNECT_LAYOUT.swapS }), choosesFolder)]}>
           <Text modifiers={[font({ textStyle: "title2", weight: "bold" }), multilineTextAlignment("center"), accessibilityAddTraits(["isHeader"]), frame({ maxWidth: FILL })]}>{title}</Text>
@@ -143,11 +147,11 @@ export function ExpoSyncConnectPage() {
       <Section modifiers={[listRowBackground("clear"), listRowInsets({ top: CONNECT_LAYOUT.actionsTop, leading: CONNECT_LAYOUT.inset, bottom: 0, trailing: CONNECT_LAYOUT.inset })]}>
         <VStack spacing={CONNECT_LAYOUT.actionsGap}>
           {choosesFolder ? (
-            <ExpoSettingsAction title={folderTitle} size="full" busy={busy} busyValue={connectionWords.connecting} onPress={pickFolder} />
+            <ExpoSettingsAction title={folderTitle} size="full" look={look} busy={busy} busyValue={connectionWords.connecting} onPress={pickFolder} />
           ) : scans ? (
-            <ExpoSettingsAction title={syncWords.scanCode} size="full" isDisabled={busy} focusRequest={scannerFocus.scanCode} onPress={openScanner} />
+            <ExpoSettingsAction title={syncWords.scanCode} size="full" look={look} isDisabled={busy} focusRequest={scannerFocus.scanCode} onPress={openScanner} />
           ) : (
-            <ExpoSettingsAction title={syncWords.enterRecoveryPhrase} size="full" isDisabled={busy} onPress={() => pushSettings({ page: "syncWords" })} />
+            <ExpoSettingsAction title={syncWords.enterRecoveryPhrase} size="full" look={look} isDisabled={busy} onPress={() => pushSettings({ page: "syncWords" })} />
           )}
           {!choosesFolder && scans ? <Button label={syncWords.enterRecoveryPhrase} onPress={() => pushSettings({ page: "syncWords" })} modifiers={[font({ textStyle: "subheadline", weight: "medium" }), disabled(busy)]} /> : null}
         </VStack>

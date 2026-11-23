@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { BottomSheet, Host, NavigationDestination, NavigationStack, RNHostView, VStack } from "@expo/ui/swift-ui";
-import { ignoreSafeArea, navigationBarTitleDisplayMode, navigationTitle, presentationDetents } from "@expo/ui/swift-ui/modifiers";
+import { ignoreSafeArea, navigationBarTitleDisplayMode, navigationTitle, presentationBackground, presentationDetents } from "@expo/ui/swift-ui/modifiers";
 import { refreshSettings } from "../../state/settings/actions";
 import { useSettingsNav } from "../../state/settings/hooks";
 import { closeSettings, followSettingsPath, settingsPath, settingsRouteFromKey, type SettingsRoute } from "../../state/settings/nav";
@@ -113,7 +113,7 @@ function SettingsNavigation() {
   const path = settingsPath(shownStack);
   const detents = connectDetents(shownStack, useWindowDimensions().fontScale);
   return (
-    <NavigationStack path={path} onPathChange={followSettingsPath} modifiers={modifierList(profileLook({ ...nativeLookColors(look, dark), usesGlass: glass }), detents)}>
+    <NavigationStack path={path} onPathChange={followSettingsPath} modifiers={modifierList(profileLook({ ...nativeLookColors(look, dark), usesGlass: glass }), detents, connectBackground(shownStack))}>
       <StackRoot route={(open ? stack : kept.current)[0]} />
       {path.map((key) => (
         <NavigationDestination key={key} value={key}>
@@ -124,13 +124,15 @@ function SettingsNavigation() {
   );
 }
 
-const CONNECT_SHEET = { height: 360, largeAboveFontScale: 1.2 } as const;
+const CONNECT_SHEET = { height: 360, largeAboveFontScale: 1.2, background: "rgba(22, 30, 25, 0.94)" } as const;
 
 export function connectDetents(stack: readonly SettingsRoute[], fontScale: number) {
   if (stack[0]?.page !== "syncConnect" || fontScale > CONNECT_SHEET.largeAboveFontScale) return null;
   const fitted = { height: CONNECT_SHEET.height };
   return presentationDetents([fitted, "large"], { selection: stack.length > 1 ? "large" : fitted });
 }
+
+export const connectBackground = (stack: readonly SettingsRoute[]) => (stack[0]?.page === "syncConnect" ? presentationBackground(CONNECT_SHEET.background) : null);
 
 const BRINGS_OWN_DISMISS = new Set<SettingsRoute["page"]>(["syncConnect"]);
 
