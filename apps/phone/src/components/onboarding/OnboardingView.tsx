@@ -4,7 +4,7 @@ import Animated, { Easing, FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { advanceOnboarding, finishOnboarding, useOnboarding } from "../../state/onboarding/hooks";
 import { refreshSettings, setBlockingCategory, useBlocking } from "../../state/settings/actions";
-import { ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
+import { accentGlowCss, emphasisInkFor, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
 import type { Motion } from "../ui/motion";
 import { useDesign } from "../ui";
 import { useMaterialRipple } from "../ui/MaterialSurfaces";
@@ -15,6 +15,9 @@ import { SyncConnect } from "../sync/SyncConnect";
 import { DefaultBrowserSteps } from "../settings/DefaultBrowserPage";
 import { LinkBubble } from "./LinkBubble";
 import { SyncScanIllustration } from "./SyncScanIllustration";
+import { TipsReel } from "./TipsReel";
+import { tileGradient } from "../../lib/favicon";
+import { linearGradientCss } from "../../lib/gradient";
 import { onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
 import { PHONE_SHARING_COPY } from "../../lib/telemetryCopy";
 import { copy } from "../../lib/platformCopy";
@@ -207,7 +210,6 @@ function DefaultBrowserStep() {
 }
 
 function SyncStep() {
-  const theme = useTheme();
   const connected = useSyncConnected();
   const [connecting, setConnecting] = useState(false);
   const reduceMotion = useReduceMotion();
@@ -233,7 +235,7 @@ function SyncStep() {
       <Page
         title={
           <>
-            Every tab, <Text style={{ color: theme.spaceAccentInk }}>anywhere</Text>.
+            Every tab, <Emphasis>anywhere</Emphasis>.
           </>
         }
         subtitle={connected ? SYNC_SUBTITLE.connected : SYNC_SUBTITLE.offer}
@@ -288,6 +290,7 @@ function Primary({ title, onPress }: { title: string; onPress: () => void }) {
 }
 
 const TILT = onboardingMotion.welcomeTilt;
+const HERO = onboardingMotion.heroTilt;
 
 function Welcome() {
   const theme = useTheme();
@@ -353,12 +356,37 @@ function Page({ title, subtitle, illustration, sitsLow, hero, children }: { titl
   );
 }
 
+function Emphasis({ children }: { children: string }) {
+  const theme = useTheme();
+  const look = useProfileLook();
+  const material = useDesign() === "material";
+  return (
+    <Text testID="onboardingEmphasis" style={{ color: material ? theme.spaceAccentInk : emphasisInkFor(look, theme.dark) }}>
+      {children}
+    </Text>
+  );
+}
+
 function HeroTile({ symbol }: { symbol: SymbolName }) {
   const theme = useTheme();
+  const reduceMotion = useReduceMotion();
+  const appear = useSharedValue(reduceMotion ? 1 : 0);
+  useEffect(() => {
+    if (!reduceMotion) appear.value = withDelay(onboardingMotion.riseDelayMs, withSpring(1, onboardingMotion.heroPop));
+  }, [appear, reduceMotion]);
+  const pop = useAnimatedStyle(() => ({
+    opacity: Math.min(1, appear.value * 2),
+    transform: [{ scale: HERO.fromScale + (1 - HERO.fromScale) * appear.value }, { rotate: `${HERO.fromDegrees * (1 - appear.value)}deg` }],
+  }));
   return (
-    <View testID="onboardingHero" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[styles.hero, { backgroundColor: theme.spaceAccentWash }]}>
-      <Symbol name={symbol} size={onboardingLayout.heroGlyph} color={theme.spaceAccentGlyph} />
-    </View>
+    <Animated.View
+      testID="onboardingHero"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[styles.hero, { experimental_backgroundImage: linearGradientCss(tileGradient(theme.spaceAccent), false, 1, 1), boxShadow: accentGlowCss(theme.spaceAccent) }, pop]}
+    >
+      <Symbol name={symbol} size={onboardingLayout.heroGlyph} color={theme.onSpaceAccent} />
+    </Animated.View>
   );
 }
 
@@ -393,14 +421,13 @@ const BLOCKING_ROWS = [
 ] as const;
 
 function Blocking() {
-  const theme = useTheme();
   const state = useBlocking((s) => s.state);
   const values = { ads: state?.blocksAds ?? true, trackers: state?.blocksTrackers ?? true, cookieBanners: state?.hidesCookieBanners ?? true };
   return (
     <Page
       title={
         <>
-          Never see another <Text style={{ color: theme.spaceAccentInk }}>ad</Text>.
+          Never see another <Emphasis>ad</Emphasis>.
         </>
       }
       subtitle="Trackers and cookie banners too."
@@ -453,16 +480,7 @@ function AllSet() {
             ))}
           </Animated.View>
         ) : (
-          <OnboardingCard>
-            {TIPS.map((tip, index) => (
-              <View key={tip.text}>
-                <View style={styles.plainTip}>
-                  <Text style={[font.body, { color: theme.label }]}>{tip.text}</Text>
-                </View>
-                {index < TIPS.length - 1 ? <Divider inset={onboardingLayout.rowInset} /> : null}
-              </View>
-            ))}
-          </OnboardingCard>
+          <TipsReel />
         )
       }
     >
@@ -513,7 +531,6 @@ const styles = StyleSheet.create({
   illustration: { flex: 1, paddingHorizontal: onboardingLayout.illustrationInset },
   card: { borderRadius: radius.card, ...smoothCorners, paddingVertical: space.xs },
   plainCard: { borderRadius: onboardingLayout.cardRadius, borderCurve: "continuous", paddingVertical: onboardingLayout.cardInset },
-  plainTip: { minHeight: onboardingLayout.rowHeight, justifyContent: "center", paddingHorizontal: onboardingLayout.rowInset },
   art: { alignItems: "center", justifyContent: "center", paddingHorizontal: space.huge },
   browserSheet: {
     borderTopLeftRadius: onboardingArt.sheetRadius,

@@ -11,7 +11,7 @@ export { EmptyState, LoadingState, NoResultsState } from "./ListStates";
 export { iconRoles, type IconRole } from "./iconRoles";
 export { BarPlusGlyph, TextSizeGlyph } from "./BarGlyphs";
 export { sfName } from "./sfSymbolNames";
-export { contrastBetween, legibleAgainst } from "./accentRoles";
+export { contrastBetween, emphasisInkFor, legibleAgainst } from "./accentRoles";
 export { ArdiaLogo } from "./ArdiaLogo";
 export { Backdrop } from "./Backdrop";
 export { barCenterFromBottom, barHeight, deckCenterFromBottom } from "./barGeometry";

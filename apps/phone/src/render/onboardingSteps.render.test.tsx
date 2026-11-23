@@ -2,9 +2,11 @@ import { Platform, StyleSheet } from "react-native";
 import * as Reanimated from "react-native-reanimated";
 import { act, type ReactTestInstance } from "react-test-renderer";
 import { archiveTip, OnboardingView, stepIn, stepOut } from "../components/onboarding/OnboardingView";
-import { onboardingCurves, onboardingLayout, onboardingMotion } from "../components/onboarding/onboardingTokens";
+import { onboardingCurves, onboardingLayout, onboardingMotion, tipsReel } from "../components/onboarding/onboardingTokens";
+import { reelScale, REEL_TIPS } from "../components/onboarding/TipsReel";
+import { presetLook } from "../lib/profileLook";
 import { ToggleRow } from "../components/settings/SettingsKit";
-import { ActionButton, PrimaryButton, shadowCss, Symbol, ToggleRow as SwitchRow } from "../components/ui";
+import { ActionButton, DEFAULT_PROFILE_COLOR, emphasisInkFor, PrimaryButton, PROFILE_PRESETS, shadowCss, spaceAccentFor, Symbol, ToggleRow as SwitchRow } from "../components/ui";
 import { setPreference } from "../state/settings/store";
 import { selectCopy } from "../lib/platformCopy";
 import { advanceOnboarding, useOnboarding } from "../state/onboarding/store";
@@ -44,9 +46,9 @@ const styleOf = (root: Root, testID: string) => StyleSheet.flatten(hosts(root, t
 
 const header = (root: Root) => root.root.findAll((node) => typeof node.type === "string" && node.props.accessibilityRole === "header")[0]!;
 
-const showStep = (step: OnboardingStep) => {
+const showStep = (step: OnboardingStep, flushTimers = true) => {
   useOnboarding.setState({ showing: true, step, forward: true });
-  return renderSurface(<OnboardingView />);
+  return renderSurface(<OnboardingView />, { flushTimers });
 };
 
 const buttonStyle = (root: Root, title: string) => StyleSheet.flatten(root.root.findAll((node) => typeof node.type === "string" && node.props.accessibilityRole === "button" && textIn(node) === title)[0]!.props.style);
@@ -141,13 +143,61 @@ onAndroid("the blocking step keeps Compose's rows with their icon tiles", () => 
   unmount(root);
 });
 
-onIos("the all-set step's tips are plain rows: body text, 56 points tall, 16 in, no icons, on the same card", () => {
-  const root = showStep("allSet");
-  const card = hosts(root, "onboardingCard")[0]!;
-  for (const tip of ["Tap + to search.", "Flick a tab up to close it.", "Swipe a page to go back.", "Old tabs archive after 1 day."]) expect(textIn(card)).toContain(tip);
-  expect(card.findAll((node) => node.type === Symbol)).toHaveLength(0);
-  const tip = card.findAll((node) => typeof node.type === "string" && textIn(node) === "Tap + to search." && StyleSheet.flatten(node.props.style)?.minHeight !== undefined)[0]!;
-  expect(StyleSheet.flatten(tip.props.style)).toMatchObject({ minHeight: 56, paddingHorizontal: 16 });
+onIos("the all-set step shows three tips as a looping reel instead of a list: one caption at a time, each held for a scene, all three read to screen readers", () => {
+  const root = showStep("allSet", false);
+  const reel = hosts(root, "tipsReel")[0]!;
+  expect(reel.props.accessibilityLabel).toBe(REEL_TIPS.join(" "));
+  expect(REEL_TIPS).toHaveLength(3);
+  expect(hosts(root, "onboardingCard")).toHaveLength(0);
+  expect(textOf(root)).not.toContain("archive");
+  const caption = () => textIn(hosts(root, "tipsReelCaption").at(-1)!);
+  expect(caption()).toBe("Tap + to search.");
+  act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
+  expect(caption()).toBe("Flick a tab up to close it.");
+  act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
+  expect(caption()).toBe("Swipe a page to go back.");
+  act(() => jest.advanceTimersByTime(tipsReel.sceneMs));
+  expect(caption()).toBe("Tap + to search.");
+  expect(hosts(root, "tipsReelFinger")).toHaveLength(1);
+  unmount(root);
+});
+
+onIos("a reel dot jumps to its tip, and tapping the phone moves to the next", () => {
+  const root = showStep("allSet", false);
+  const caption = () => textIn(hosts(root, "tipsReelCaption").at(-1)!);
+  const pressable = (testID: string) => root.root.findAll((node) => node.props.testID === testID && typeof node.props.onPress === "function");
+  act(() => pressable("tipsReelDot")[2]!.props.onPress());
+  expect(caption()).toBe("Swipe a page to go back.");
+  act(() => pressable("tipsReelStage")[0]!.props.onPress());
+  expect(caption()).toBe("Tap + to search.");
+  unmount(root);
+});
+
+onIos("with Reduce Motion the reel draws no finger and still steps through the tips", () => {
+  mockMotion.reduced = true;
+  const root = showStep("allSet", false);
+  expect(hosts(root, "tipsReelFinger")).toHaveLength(0);
+  act(() => jest.advanceTimersByTime(tipsReel.reducedSceneMs));
+  expect(textIn(hosts(root, "tipsReelCaption").at(-1)!)).toBe("Flick a tab up to close it.");
+  unmount(root);
+});
+
+onIos("the reel's phone shrinks to fit a short screen and never grows past its drawn size", () => {
+  expect(reelScale(2000)).toBe(tipsReel.maxScale);
+  expect(reelScale(0)).toBe(tipsReel.minScale);
+  const mid = reelScale(tipsReel.stage.height * 0.8 + 100);
+  expect(mid).toBeGreaterThan(tipsReel.minScale);
+  expect(mid).toBeLessThan(tipsReel.maxScale);
+});
+
+onIos("the emphasized title words use the vivid emphasis ink, and the hero tile is the accent fill with on-accent ink", () => {
+  const root = showStep("blocking");
+  const look = presetLook(PROFILE_PRESETS.find((preset) => preset.key === DEFAULT_PROFILE_COLOR)!);
+  expect(StyleSheet.flatten(hosts(root, "onboardingEmphasis")[0]!.props.style).color).toBe(emphasisInkFor(look, false));
+  const theme = spaceAccentFor(look, false);
+  const hero = hosts(root, "onboardingHero")[0]!;
+  expect(StyleSheet.flatten(hero.props.style).boxShadow).toBeDefined();
+  expect(hero.findAll((node) => node.type === Symbol)[0]!.props.color).toBe(theme.onSpaceAccent);
   unmount(root);
 });
 
@@ -270,6 +320,9 @@ test("the archive tip reads the same Archive Tabs preference Settings shows, and
   expect(archiveTip("week")).toBe("Old tabs archive after 7 days.");
   expect(archiveTip("twelveHours")).toBe("Old tabs archive after 12 hours.");
   expect(archiveTip("never")).not.toMatch(/\d|day|hour/);
+});
+
+onAndroid("Android's all-set tips name the Archive Tabs interval", () => {
   setPreference("autoArchiveInterval", "week");
   const root = showStep("allSet");
   expect(textOf(root)).toContain("Old tabs archive after 7 days.");
