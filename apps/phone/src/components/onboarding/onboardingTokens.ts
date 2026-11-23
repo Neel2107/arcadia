@@ -48,7 +48,7 @@ export const onboardingInk = {
 } as const;
 
 export const blockingScene = {
-  loopMs: 5600,
+  loopMs: 6200,
   card: { width: 244, height: 312, radius: 24, pad: 14 },
   minScale: 0.7,
   maxScale: 1.15,
@@ -56,9 +56,9 @@ export const blockingScene = {
   banner: 52,
   inline: 58,
   cookie: 54,
-  badge: 30,
+  badge: 34,
   lines: [0.94, 0.82, 0.9],
-  strikes: { banner: 0.14, inline: 0.32, cookies: 0.5 },
+  strikes: { banner: 0.2, inline: 0.36, cookies: 0.52 },
   cookieFill: { light: "#FFFFFF", dark: "#2C2C2E" },
 } as const;
 
