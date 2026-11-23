@@ -40,8 +40,8 @@ test("scaling from the top-left corner keeps the scaled frame's corner where the
 });
 
 test("a phone fits its space between its smallest and largest scale", () => {
-  const range = { minScale: 0.4, maxScale: 0.62 };
-  expect(fitPhoneScale(5000, 5000, range)).toBe(0.62);
+  const range = { minScale: 0.4, maxScale: 0.78 };
+  expect(fitPhoneScale(5000, 5000, range)).toBe(0.78);
   expect(fitPhoneScale(10, 10, range)).toBe(0.4);
   expect(fitPhoneScale(5000, phoneFrame.height * 0.5, range)).toBeCloseTo(0.5);
   expect(openLinkScale(5000, 5000)).toBe(openLink.maxScale);
