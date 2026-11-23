@@ -1,10 +1,11 @@
 import { Platform } from "react-native";
+import { blockingWords } from "../../lib/sharedWords";
 import { overlayInk, PROFILE_COLORS, space, spring } from "../ui";
 import { toggleLayout } from "../ui/tokens";
 import { phoneFrame } from "./onboardingTokens";
 
 const pill = {
-  label: "Block Ads and Trackers",
+  label: blockingWords.blockAdsAndTrackers,
   height: 56,
   width: phoneFrame.width + space.xxl,
   leading: space.xl,

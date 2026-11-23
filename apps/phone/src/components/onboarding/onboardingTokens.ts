@@ -134,7 +134,7 @@ export const tipsReel = {
   deck: { widthShare: 0.62, heightShare: 0.58, topShare: 0.15, gap: 10, radius: 16, lift: 0.17 },
   back: { parallax: -0.33, shade: 0.32, edge: 8, dragShare: 0.55 },
   captionInk: "#FFFFFF",
-  fingerFill: "rgba(255,255,255,0.55)",
+  fingerFill: "rgba(110,110,118,0.5)",
   fingerRing: "rgba(255,255,255,0.95)",
   fingerShadow: "0px 2px 10px rgba(0, 0, 0, 0.35)",
   pageShadow: "-6px 0px 16px rgba(0, 0, 0, 0.22)",
