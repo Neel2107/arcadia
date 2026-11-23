@@ -65,8 +65,9 @@ struct SettingsHeroContentView: ExpoSwiftUI.View {
   @ObservedObject var props: SettingsHeroContentProps
   @Environment(\.profileLook) private var look
 
-  private var subtitle: Text {
-    props.subtitleIsWarning ? Text(props.subtitle).foregroundStyle(.ardiaInk(.orange)) : Text(props.subtitle)
+  private var subtitle: Text? {
+    if props.subtitle.isEmpty { return nil }
+    return props.subtitleIsWarning ? Text(props.subtitle).foregroundStyle(.ardiaInk(.orange)) : Text(props.subtitle)
   }
 
   var body: some View {
@@ -95,7 +96,7 @@ struct SetupStepRowView: ExpoSwiftUI.View {
   }
 
   var body: some View {
-    SetupStepRow(props.number, title: Text(props.title), detail: Text(props.detail), progress: progress) {
+    SetupStepRow(props.number, title: Text(props.title), detail: props.detail.isEmpty ? nil : Text(props.detail), progress: progress) {
       AnyView(Children())
     }
   }

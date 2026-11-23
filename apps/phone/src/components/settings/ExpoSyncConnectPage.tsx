@@ -4,7 +4,6 @@ import { Button, Form, HStack, Label, RNHostView, Section, Spacer, Text, Toolbar
 import { settingsUI } from "@ardia/phone-native";
 import { disabled, font, foregroundStyle, interactiveDismissDisabled, tint } from "@expo/ui/swift-ui/modifiers";
 import { connectionWords, dismissWords, syncWords } from "../../lib/sharedWords";
-import { copy } from "../../lib/platformCopy";
 import type { ConnectResult } from "../../platform/sync";
 import { haptics } from "../../state/app/haptics";
 import { closeSettings, popSettings, pushSettings, useSettingsNav } from "../../state/settings/nav";
@@ -123,8 +122,8 @@ export function ExpoSyncConnectPage() {
 
   const page = (
     <Form modifiers={modifierList(settingsPage(syncWords.connect), tint(PlatformColor("systemBlue")), settingsChrome(), interactiveDismissDisabled(busy), isRoot ? null : navigationBarBackButtonHidden(busy))}>
-      <ExpoHero title={syncWords.connect} subtitle="Two steps, and your Mac’s tabs are here." systemImage="macbook.and.iphone" tint="sync" />
-      <Section title="Two Steps" footer={<Text>{copy().phraseStays}</Text>}>
+      <ExpoHero title={syncWords.connect} subtitle="" systemImage="macbook.and.iphone" tint="sync" />
+      <Section>
         <ExpoStep number={1} title="Show the code on your Mac" detail={MAC_HINT} progress={hasPhrase ? "done" : "current"}>
           {hasPhrase ? (
             <HStack spacing={8}>
@@ -135,11 +134,15 @@ export function ExpoSyncConnectPage() {
           ) : (
             <PhraseButtons stacked={!buttonsFit}>
               {scans ? <ExpoSettingsAction title={syncWords.scanCode} systemImage="qrcode.viewfinder" size="compact" isDisabled={busy} focusRequest={scannerFocus.scanCode} onPress={openScanner} /> : null}
-              <ExpoSettingsAction title={syncWords.enterRecoveryPhrase} systemImage="character.cursor.ibeam" size="compact" emphasis={scans ? "secondary" : "primary"} isDisabled={busy} onPress={() => pushSettings({ page: "syncWords" })} />
+              {scans ? (
+                <Button label={syncWords.enterRecoveryPhrase} onPress={() => pushSettings({ page: "syncWords" })} modifiers={[font({ textStyle: "subheadline" }), disabled(busy)]} />
+              ) : (
+                <ExpoSettingsAction title={syncWords.enterRecoveryPhrase} systemImage="character.cursor.ibeam" size="compact" emphasis="primary" isDisabled={busy} onPress={() => pushSettings({ page: "syncWords" })} />
+              )}
             </PhraseButtons>
           )}
         </ExpoStep>
-        <ExpoStep number={2} title="Choose the Ardia Sync folder" detail={copy().chooseFolderDetail} progress={hasPhrase ? "current" : "upcoming"}>
+        <ExpoStep number={2} title="Choose the Ardia Sync folder" detail="" progress={hasPhrase ? "current" : "upcoming"}>
           <VStack alignment="leading" spacing={8}>
             {session && picked.folder && !picked.connecting ? <Label title={picked.folder.name} systemImage="folder.fill" modifiers={[font({ textStyle: "subheadline", weight: "medium" }), foregroundStyle(SECONDARY)]} /> : null}
             {session ? (

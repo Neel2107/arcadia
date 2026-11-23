@@ -16,7 +16,8 @@ import { DefaultBrowserSteps } from "../settings/DefaultBrowserPage";
 import { LinkBubble } from "./LinkBubble";
 import { SyncScanIllustration } from "./SyncScanIllustration";
 import { TipsReel } from "./TipsReel";
-import { BlockingScene } from "./BlockingScene";
+import { BlockingDemo } from "./BlockingDemo";
+import { SyncFlight } from "./SyncFlight";
 import { WelcomeIntro, WelcomeMesh } from "./WelcomeIntro";
 import { BlurTitle } from "./BlurTitle";
 import { ColorChoices } from "./ColorChoices";
@@ -252,6 +253,7 @@ function DefaultBrowserStep() {
 }
 
 function SyncStep() {
+  const material = useDesign() === "material";
   const connected = useSyncConnected();
   const [connecting, setConnecting] = useState(false);
   const reduceMotion = useReduceMotion();
@@ -278,9 +280,13 @@ function SyncStep() {
         title={STEP_WORDS.sync}
         subtitle={connected ? SYNC_SUBTITLE.connected : SYNC_SUBTITLE.offer}
         illustration={
-          <View style={styles.sketch}>
-            <SyncScanIllustration connected={connected} />
-          </View>
+          onboardingLayout.phoneDemos && !material ? (
+            <SyncFlight connected={connected} />
+          ) : (
+            <View style={styles.sketch}>
+              <SyncScanIllustration connected={connected} />
+            </View>
+          )
         }
       >
         {connected ? (
@@ -444,8 +450,8 @@ function Blocking() {
       title={STEP_WORDS.blocking}
       sitsLow
       illustration={
-        onboardingLayout.blockingScene && !material ? (
-          <BlockingScene />
+        onboardingLayout.phoneDemos && !material ? (
+          <BlockingDemo />
         ) : (
         <OnboardingCard>
           {BLOCKING_ROWS.map((row, index) => {

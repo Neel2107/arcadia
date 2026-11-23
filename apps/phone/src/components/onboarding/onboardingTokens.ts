@@ -28,7 +28,7 @@ export const onboardingLayout = {
   sketchScale: iPhoneOr(1.22, 1),
   rowIcons: iPhoneOr(false, true),
   startBackdrop: iPhoneOr(true, false),
-  blockingScene: iPhoneOr(true, false),
+  phoneDemos: iPhoneOr(true, false),
   plainSharing: iPhoneOr(true, false),
   welcomeSubtitle: iPhoneOr(false, true),
   tipIcons: iPhoneOr(false, true),
@@ -115,21 +115,6 @@ export const welcomeIntro = {
   actionsInset: space.xl + space.xs,
   actionsBottom: space.m,
   reducedFadeMs: 300,
-} as const;
-
-export const blockingScene = {
-  loopMs: 6200,
-  card: { width: 244, height: 312, radius: 24, pad: 14 },
-  minScale: 0.7,
-  maxScale: 1.15,
-  gap: 9,
-  banner: 52,
-  inline: 58,
-  cookie: 54,
-  badge: 34,
-  lines: [0.94, 0.82, 0.9],
-  strikes: { banner: 0.2, inline: 0.36, cookies: 0.52 },
-  cookieFill: { light: "#FFFFFF", dark: "#2C2C2E" },
 } as const;
 
 export const tipsReel = {
