@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { BottomSheet, Host, NavigationDestination, NavigationStack, RNHostView, VStack } from "@expo/ui/swift-ui";
-import { ignoreSafeArea, navigationBarTitleDisplayMode, navigationTitle } from "@expo/ui/swift-ui/modifiers";
+import { ignoreSafeArea, navigationBarTitleDisplayMode, navigationTitle, presentationDetents } from "@expo/ui/swift-ui/modifiers";
 import { refreshSettings } from "../../state/settings/actions";
 import { useSettingsNav } from "../../state/settings/hooks";
 import { closeSettings, followSettingsPath, settingsPath, settingsRouteFromKey, type SettingsRoute } from "../../state/settings/nav";
@@ -109,9 +109,11 @@ function SettingsNavigation() {
   const glass = useNativeChromeUsesGlass();
   const kept = useRef(stack);
   if (open && stack.length) kept.current = stack;
-  const path = settingsPath(open ? stack : kept.current);
+  const shownStack = open ? stack : kept.current;
+  const path = settingsPath(shownStack);
+  const detents = connectDetents(shownStack, useWindowDimensions().fontScale);
   return (
-    <NavigationStack path={path} onPathChange={followSettingsPath} modifiers={modifierList(profileLook({ ...nativeLookColors(look, dark), usesGlass: glass }))}>
+    <NavigationStack path={path} onPathChange={followSettingsPath} modifiers={modifierList(profileLook({ ...nativeLookColors(look, dark), usesGlass: glass }), detents)}>
       <StackRoot route={(open ? stack : kept.current)[0]} />
       {path.map((key) => (
         <NavigationDestination key={key} value={key}>
@@ -120,6 +122,14 @@ function SettingsNavigation() {
       ))}
     </NavigationStack>
   );
+}
+
+const CONNECT_SHEET = { height: 360, largeAboveFontScale: 1.2 } as const;
+
+export function connectDetents(stack: readonly SettingsRoute[], fontScale: number) {
+  if (stack[0]?.page !== "syncConnect" || fontScale > CONNECT_SHEET.largeAboveFontScale) return null;
+  const fitted = { height: CONNECT_SHEET.height };
+  return presentationDetents([fitted, "large"], { selection: stack.length > 1 ? "large" : fitted });
 }
 
 const BRINGS_OWN_DISMISS = new Set<SettingsRoute["page"]>(["syncConnect"]);
