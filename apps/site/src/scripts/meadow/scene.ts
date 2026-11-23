@@ -28,6 +28,7 @@ export interface MeadowOptions {
   canvas: HTMLCanvasElement;
   hero: HTMLElement;
   reducedMotion: boolean;
+  calm?: boolean;
   onFirstFrame: () => void;
   opening?: [from: number, to: number];
 }
@@ -180,6 +181,7 @@ function pickTier(): Tier {
 
 export function createMeadow(options: MeadowOptions): Meadow | null {
   const { canvas, hero, reducedMotion } = options;
+  const calm = options.calm === true;
   const gl = canvas.getContext("webgl2", {
     antialias: false,
     alpha: false,
@@ -234,7 +236,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
   let brushUploaded = false;
   let smearUploaded = false;
   let needsRender = true;
-  let framing: Framing = framingFor(1.6);
+  let framing: Framing = framingFor(1.6, 0, 0, calm);
   const veil = { left: 0, top: 0, right: 0, bottom: 0 };
   const titleVeil = { left: 0, top: 0, right: 0, bottom: 0 };
   let titleMist = 0;
@@ -265,7 +267,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
   let globalDragStyled = false;
   let savedRootCursor = "";
   let savedRootUserSelect = "";
-  const mobs = new Mobs(reducedMotion);
+  const mobs = new Mobs(reducedMotion || calm);
   let mobBatch: ProgramBatch<DeferredProgramName> | null = null;
   let mobGpu: MobGpu | null = null;
   let particleProgram: Program | null = null;
@@ -538,7 +540,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
       canvas.height = height;
-      framing = framingFor(width / height, stack.clear, stack.horizon);
+      framing = framingFor(width / height, stack.clear, stack.horizon, calm);
       particles.resize(cssWidth, cssHeight);
       needsRender = true;
     }
@@ -1235,6 +1237,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
       .vec2("uMoonPx", moonPoint ? moonPoint.x * dpr : -9999, moonPoint ? (cssHeight - moonPoint.y) * dpr : -9999)
       .float("uSunRadiusPx", bodies.radius * dpr)
       .float("uRelief", RELIEF_PER_CSS_PX)
+      .float("uCalm", calm ? 1 : 0)
       .float("uReveal", revealAt)
       .int("uCellShape", 4)
       .int("uCellStroke", 5)
@@ -1243,7 +1246,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
       .ivec2("uCellCount", cells?.columns ?? 0, cells?.rows ?? 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-    if (!reducedMotion && paintReveal >= 0.8 && particleProgram) {
+    if (!reducedMotion && !calm && paintReveal >= 0.8 && particleProgram) {
       const count = particles.fill(dpr, light.night, fireflyShade);
       if (count > 0) {
         gl.enable(gl.BLEND);
@@ -1640,7 +1643,7 @@ export function createMeadow(options: MeadowOptions): Meadow | null {
     const next = { clear: clearEdge / heroHeight, horizon: (firstScreen * STACKED_HORIZON_SCREEN) / heroHeight };
     if (Math.abs(next.clear - stack.clear) < 0.002 && Math.abs(next.horizon - stack.horizon) < 0.002) return;
     stack = next;
-    framing = framingFor(canvas.width / Math.max(1, canvas.height), stack.clear, stack.horizon);
+    framing = framingFor(canvas.width / Math.max(1, canvas.height), stack.clear, stack.horizon, calm);
   };
   let visibilityObserver: IntersectionObserver | null = null;
   let coveredTop = -1;

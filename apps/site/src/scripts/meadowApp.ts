@@ -51,6 +51,7 @@ function boot(hero: HTMLElement) {
     canvas,
     hero,
     reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+    calm: location.hash.includes("calm"),
     opening: opensAtNight ? [DUSK, NIGHT] : [SUNRISE_FROM, SUNRISE_TO],
     onFirstFrame() {
       onceOnScreen(() => {

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { meadowIsNative, PhoneMeadow, type MeadowHour } from "@ardia/phone-native";
+
+type StepHour = MeadowHour | "sunrise";
 import type { OnboardingStep } from "../../state/settings/settingsRules";
 import { useReduceMotion } from "../ui";
 import { Landscape } from "./Landscape";
@@ -9,7 +11,7 @@ import { meadow } from "./onboardingTokens";
 
 type MeadowState = "loading" | "ready" | "failed";
 
-export const meadowHourOf = (step: OnboardingStep): MeadowHour => meadow.stepHours[step];
+export const meadowHourOf = (step: OnboardingStep): StepHour => meadow.stepHours[step];
 
 export function MeadowBackdrop({ step }: { step: OnboardingStep }) {
   const reduceMotion = useReduceMotion();

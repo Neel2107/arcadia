@@ -913,6 +913,7 @@ uniform vec2 uSunPx;
 uniform vec2 uMoonPx;
 uniform float uSunRadiusPx;
 uniform float uRelief;
+uniform float uCalm;
 uniform float uReveal;
 in vec2 vUv;
 out vec4 outColor;
@@ -985,9 +986,10 @@ void main() {
     float lip = exp(-pow((bestLocal.x - 0.8) / lipWidth, 2.0)) * (1.0 - across * 0.7) * 0.12 / lipWidth;
     float banks = smoothstep(0.6, 0.86, across) * (1.0 - smoothstep(0.86, 1.0, across)) * smoothstep(0.6, 1.4, 0.14 * bestSize.y);
     float gain = bestRegion < 0.25 ? 0.78 : bestRegion < 0.75 ? 1.0 : 0.7;
-    height = (0.4 * body + 0.3 * bristles * body + 0.34 * lip + 0.2 * banks + bestOrder * 0.16) * gain;
+    float calmSky = uCalm * (1.0 - step(0.25, bestRegion));
+    height = (0.4 * body + 0.3 * bristles * body + 0.34 * lip + 0.2 * banks + bestOrder * 0.16) * gain * mix(1.0, 0.4, calmSky);
     vec3 dab = texture(uPaint, bestCenter / uResolution).rgb * (0.96 + bestSeed * 0.08);
-    color = mix(base, dab, 0.55) * (1.0 - 0.05 * bestLocal.x);
+    color = mix(base, dab, mix(0.55, 0.25, calmSky)) * (1.0 - 0.05 * bestLocal.x);
   }
   vec2 weave = sin(pixel / uDpr * vec2(1.05, 1.15));
   float grain = weave.x * weave.y * 0.5 + valueNoise(pixel / uDpr * 0.7) * 0.5 * (1.0 - smoothstep(0.35, 0.7, 0.7 / uDpr));

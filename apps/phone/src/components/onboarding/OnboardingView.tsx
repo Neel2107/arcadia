@@ -23,7 +23,7 @@ import { BlurStage } from "./BlurStage";
 import { KitPrimary, KitSecondary, KitSettingRow, KitSubtitle, PrimarySlotContext, StepOwner, type PrimarySlot, type SlotRect } from "./OnboardingKit";
 import { StartBackdrop } from "../search/StartSpaces";
 import { startLogo } from "../search/startLook";
-import { blurStage, brand, onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
+import { blurStage, brand, textHalo, onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
 import { PHONE_SHARING_COPY } from "../../lib/telemetryCopy";
 import { copy } from "../../lib/platformCopy";
 import { actionWords, syncWords } from "../../lib/sharedWords";
@@ -639,7 +639,7 @@ const styles = StyleSheet.create({
   words: { paddingTop: onboardingLayout.wordsTop, paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   heavy: { fontWeight: "700", textAlign: "center" },
   capsule: { position: "absolute", left: 0, top: 0, zIndex: 1, backgroundColor: brand.paper, borderCurve: "continuous" },
-  kitTitle: { ...onboardingLayout.title, fontWeight: "700", textAlign: "center", color: brand.cream },
+  kitTitle: { ...onboardingLayout.title, fontWeight: "700", textAlign: "center", color: brand.cream, ...textHalo },
   centered: { textAlign: "center" },
   actions: { paddingHorizontal: onboardingLayout.actionsInset, paddingBottom: onboardingLayout.actionsBottom, gap: onboardingLayout.actionsGap },
   materialPrimary: { minHeight: 56, borderRadius: materialShape.full, overflow: "hidden", alignItems: "center", justifyContent: "center", paddingHorizontal: 24 },

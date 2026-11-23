@@ -45,7 +45,9 @@ const STACKED_HILL_SCALE = 0.7;
 const STACKED_FOV = degrees(72);
 const STACKED_RISE = 1.9;
 
-export function framingFor(aspect: number, clear = 0, horizon = 0): Framing {
+const CALM_SUN_REACH = 0.62;
+
+export function framingFor(aspect: number, clear = 0, horizon = 0, calm = false): Framing {
   const wide = smooth(0.55, 1.45, aspect);
   if (aspect >= 0.9 || clear < 0.3 || clear > 0.85) {
     const verticalFov = degrees(62 + (40 - 62) * wide);
@@ -59,7 +61,7 @@ export function framingFor(aspect: number, clear = 0, horizon = 0): Framing {
       yaw: 0,
       sunPeak,
       sunCeiling: sunPeak,
-      sunSweep: 1,
+      sunSweep: calm && aspect < 0.9 ? Math.min(1, Math.atan(CALM_SUN_REACH * tanHalf * aspect) / degrees(24.5)) : 1,
       sunRadius: SUN_RADIUS,
       hillScale: 1,
       moonRise: Math.atan(0.86 * across),

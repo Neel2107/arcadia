@@ -44,7 +44,7 @@ final class PhoneMeadowView: ExpoView {
     web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
     addSubview(web)
     webView = web
-    let opening = URL(string: "#day", relativeTo: page.html)?.absoluteURL ?? page.html
+    let opening = URL(string: "#calm", relativeTo: page.html)?.absoluteURL ?? page.html
     web.loadFileURL(opening, allowingReadAccessTo: page.folder)
   }
 

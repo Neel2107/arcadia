@@ -4,7 +4,7 @@ import Animated, { FadeIn, FadeOut, useAnimatedStyle, type SharedValue } from "r
 import { withAlpha } from "../../lib/color";
 import { font, space, tabsMotion } from "../ui";
 import { blockingDemo } from "./blockingDemoTokens";
-import { openLink, phoneFrame, tipsReel } from "./onboardingTokens";
+import { openLink, phoneFrame, textHalo, tipsReel } from "./onboardingTokens";
 import { PhoneSlot, usePhoneStaged } from "./PhoneStage";
 import { fitPhoneScale } from "./phoneGeometry";
 import { flightScale, PHONE_IN_STAGE, SyncAbovePhone, SyncFlightProvider, SyncMac, SyncStageBox, useSyncFlight } from "./SyncScene";
@@ -125,7 +125,7 @@ function DotFill({ clock }: { clock: SharedValue<number> }) {
 const styles = StyleSheet.create({
   fill: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center" },
   syncPhone: { position: "absolute" },
-  caption: { marginTop: tipsReel.captionGap, minHeight: tipsReel.captionHeight, textAlign: "center", fontWeight: "600", paddingHorizontal: space.l, color: tipsReel.captionInk },
+  caption: { marginTop: tipsReel.captionGap, minHeight: tipsReel.captionHeight, textAlign: "center", fontWeight: "600", paddingHorizontal: space.l, color: tipsReel.captionInk, ...textHalo },
   dots: { flexDirection: "row", gap: tipsReel.dot.gap, marginTop: tipsReel.dotsGap },
   dot: { width: tipsReel.dot.width, height: tipsReel.dot.height, borderRadius: tipsReel.dot.height / 2, overflow: "hidden", backgroundColor: withAlpha(tipsReel.captionInk, 0.3) },
   dotFill: { height: "100%", borderRadius: tipsReel.dot.height / 2, backgroundColor: tipsReel.captionInk },

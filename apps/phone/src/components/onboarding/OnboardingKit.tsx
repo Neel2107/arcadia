@@ -2,7 +2,7 @@ import { createContext, useContext, useRef } from "react";
 import { Pressable, StyleSheet, Text, View, type ViewInstance } from "react-native";
 import { ActionButton, font, smoothCorners, space, Toggle, type ActionInk } from "../ui";
 import { CrossfadeText } from "../settings/SettingsKit";
-import { brand } from "./onboardingTokens";
+import { brand, textHalo } from "./onboardingTokens";
 
 export const KIT_INK = {
   primary: { fill: brand.paper, label: brand.ink, edge: "transparent" },
@@ -59,7 +59,7 @@ export function KitSettingRow({ label, value, onChange, testID }: { label: strin
 }
 
 const styles = StyleSheet.create({
-  subtitle: { textAlign: "center", color: brand.creamMuted },
+  subtitle: { textAlign: "center", color: brand.creamMuted, ...textHalo },
   row: {
     minHeight: 56,
     borderRadius: 28,

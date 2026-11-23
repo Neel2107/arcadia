@@ -47,6 +47,8 @@ export type Hour = "dawn" | "morning" | "noon" | "golden" | "dusk";
 
 type HourLook = { sky: { top: string; mid: string; low: string }; hills: { back: string; front: string } };
 
+export const textHalo = { textShadowColor: "rgba(6, 10, 8, 0.55)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 14 } as const;
+
 export const brand = {
   paper: "#FAF2DF",
   ink: "#16130F",
@@ -92,11 +94,11 @@ export const landscape = {
 } as const;
 
 export const meadow = {
-  stepHours: { welcome: "morning", blocking: "morning", defaultBrowser: "golden", sync: "golden", allSet: "dusk" },
-  fadeInMs: 700,
+  stepHours: { welcome: "sunrise", blocking: "morning", defaultBrowser: "golden", sync: "golden", allSet: "dusk" },
+  fadeInMs: 300,
   reducedFadeMs: 200,
   coverSlackMs: 120,
-  scrim: "linear-gradient(180deg, rgba(14, 22, 18, 0) 0%, rgba(14, 22, 18, 0) 48%, rgba(14, 22, 18, 0.42) 72%, rgba(14, 22, 18, 0.72) 100%)",
+  scrim: "linear-gradient(180deg, rgba(10, 16, 13, 0.34) 0%, rgba(10, 16, 13, 0.06) 13%, rgba(10, 16, 13, 0.06) 38%, rgba(10, 16, 13, 0.5) 60%, rgba(10, 16, 13, 0.84) 100%)",
 } as const;
 
 export const blurStage = {
