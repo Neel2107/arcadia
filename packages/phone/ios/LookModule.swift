@@ -26,6 +26,12 @@ public final class LookModule: Module {
       DispatchQueue.main.async { MainActor.assumeIsolated { LookHost.probe() } }
     }
 
+    View(PhoneMeadowView.self) {
+      ViewName("PhoneMeadow")
+      Events("onMeadow")
+      Prop("hour") { (view: PhoneMeadowView, value: String?) in view.hour = value }
+    }
+
     View(DeckBackdropView.self) {
       ViewName("DeckBackdrop")
       Prop("color") { (view: DeckBackdropView, value: String?) in view.colors.color = value }

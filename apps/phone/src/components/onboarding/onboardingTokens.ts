@@ -91,6 +91,14 @@ export const landscape = {
   oilOpacity: 0.55,
 } as const;
 
+export const meadow = {
+  stepHours: { welcome: "morning", blocking: "morning", defaultBrowser: "golden", sync: "golden", allSet: "dusk" },
+  fadeInMs: 700,
+  reducedFadeMs: 200,
+  coverSlackMs: 120,
+  scrim: "linear-gradient(180deg, rgba(14, 22, 18, 0) 0%, rgba(14, 22, 18, 0) 48%, rgba(14, 22, 18, 0.42) 72%, rgba(14, 22, 18, 0.72) 100%)",
+} as const;
+
 export const blurStage = {
   radius: 26,
   inS: 0.55,

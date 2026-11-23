@@ -61,7 +61,14 @@ function boot(hero: HTMLElement) {
     },
   });
   if (!meadow) return post({ state: "failed" });
-  Object.assign(window, { meadowNight: (night: boolean) => meadow.travelTo(night ? NIGHT : SUNRISE_TO) });
+  const hours: Record<string, number> = { dawn: SUNRISE_FROM, morning: SUNRISE_TO, golden: CYCLE_STOPS[1], dusk: DUSK, night: NIGHT };
+  Object.assign(window, {
+    meadowNight: (night: boolean) => meadow.travelTo(night ? NIGHT : SUNRISE_TO),
+    meadowHour: (hour: string) => {
+      const cycle = hours[hour];
+      if (cycle !== undefined) meadow.travelTo(cycle);
+    },
+  });
 }
 
 const hero = document.querySelector<HTMLElement>("[data-meadow]");

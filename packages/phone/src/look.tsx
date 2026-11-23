@@ -119,6 +119,14 @@ export const glassIsNative = () => hasNativeGlass;
 
 export const DeckBackdrop = look<DeckBackdropProps>("DeckBackdrop");
 
+export type MeadowHour = "dawn" | "morning" | "golden" | "dusk" | "night";
+
+export type PhoneMeadowProps = ViewProps & { hour: MeadowHour; onMeadow?: (event: { nativeEvent: { state: "ready" | "failed" } }) => void };
+
+export const PhoneMeadow = look<PhoneMeadowProps>("PhoneMeadow");
+
+export const meadowIsNative = () => hasNativeLook;
+
 export const ProfileBackdrop = look<ProfileBackdropProps>("ProfileBackdrop");
 
 export const FilmGrain = look<FilmGrainProps>("FilmGrain");

@@ -18,7 +18,7 @@ import { SyncScanIllustration } from "./SyncScanIllustration";
 import { BlockingDemo, OpenLinkDemo, SyncFlight, TipsReel } from "./StepPhones";
 import { PhoneStage } from "./PhoneStage";
 import { WelcomeIntro } from "./WelcomeIntro";
-import { Landscape } from "./Landscape";
+import { MeadowBackdrop } from "./MeadowBackdrop";
 import { BlurStage } from "./BlurStage";
 import { KitPrimary, KitSecondary, KitSettingRow, KitSubtitle, PrimarySlotContext, StepOwner, type PrimarySlot, type SlotRect } from "./OnboardingKit";
 import { StartBackdrop } from "../search/StartSpaces";
@@ -215,7 +215,7 @@ export function OnboardingView() {
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
       {intro ? (
         <>
-          <Landscape step={step} />
+          <MeadowBackdrop step={step} />
           <PrimaryCapsule rect={primaryRect} firstDelayMs={step === "welcome" ? onboardingMotion.capsuleFirstDelayMs : 0} />
         </>
       ) : startLook ? (
