@@ -4,8 +4,8 @@ import Animated, { cancelAnimation, Easing, FadeIn, FadeOut, useAnimatedStyle, u
 import { withAlpha } from "../../lib/color";
 import { tileGradient } from "../../lib/favicon";
 import { linearGradientCss } from "../../lib/gradient";
-import { font, PROFILE_COLORS, smoothCorners, space, Symbol, tabsMotion, useReduceMotion, useTheme, type Theme } from "../ui";
-import { tipsReel } from "./onboardingTokens";
+import { ForcedDark, font, PROFILE_COLORS, smoothCorners, space, Symbol, tabsMotion, useReduceMotion, useTheme, type Theme } from "../ui";
+import { phoneFrame, tipsReel } from "./onboardingTokens";
 
 export const REEL_TIPS = ["Tap + to search.", "Flick a tab up to close it.", "Swipe a page to go back."] as const;
 
@@ -41,6 +41,14 @@ const pulse = (t: number, from: number, to: number) => {
 export const reelScale = (height: number) => Math.min(tipsReel.maxScale, Math.max(tipsReel.minScale, (height - CAPTION_BLOCK) / STAGE.height));
 
 export function TipsReel() {
+  return (
+    <ForcedDark value={false}>
+      <TipsReelStage />
+    </ForcedDark>
+  );
+}
+
+function TipsReelStage() {
   const theme = useTheme();
   const reduceMotion = useReduceMotion();
   const [scene, setScene] = useState(0);
@@ -68,7 +76,7 @@ export function TipsReel() {
   return (
     <View testID="tipsReel" onLayout={measure} style={[styles.fill, { opacity: scale === null ? 0 : 1 }]} accessible accessibilityLabel={REEL_TIPS.join(" ")}>
       <View style={{ width: STAGE.width * shown, height: STAGE.height * shown }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        <Pressable testID="tipsReelStage" onPress={() => setScene((now) => (now + 1) % REEL_TIPS.length)} style={[styles.stage, { backgroundColor: theme.dark ? tipsReel.phoneBody.dark : tipsReel.phoneBody.light, borderColor: theme.cardEdge, transform: [{ scale: shown }] }]}>
+        <Pressable testID="tipsReelStage" onPress={() => setScene((now) => (now + 1) % REEL_TIPS.length)} style={[styles.stage, { backgroundColor: phoneFrame.bezelColor, boxShadow: phoneFrame.shadow, transform: [{ scale: shown }] }]}>
           <View style={[styles.screen, { experimental_backgroundImage: linearGradientCss(theme.backdrop, false, 1, 1) }]}>
             <Animated.View key={scene} entering={FadeIn.duration(fade)} exiting={FadeOut.duration(fade)} style={StyleSheet.absoluteFill}>
               {scene === 0 ? <SearchScene clock={clock} theme={theme} /> : scene === 1 ? <CloseScene clock={clock} theme={theme} /> : <BackScene clock={clock} theme={theme} />}
@@ -78,13 +86,13 @@ export function TipsReel() {
           <View style={styles.island} />
         </Pressable>
       </View>
-      <Animated.Text key={`caption${scene}`} testID="tipsReelCaption" entering={FadeIn.duration(fade)} exiting={FadeOut.duration(fade)} style={[font.body, styles.caption, { color: theme.label }]} numberOfLines={1} adjustsFontSizeToFit>
+      <Animated.Text key={`caption${scene}`} testID="tipsReelCaption" entering={FadeIn.duration(fade)} exiting={FadeOut.duration(fade)} style={[font.body, styles.caption, { color: tipsReel.captionInk }]} numberOfLines={1} adjustsFontSizeToFit>
         {REEL_TIPS[scene]}
       </Animated.Text>
       <View style={styles.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {REEL_TIPS.map((tip, index) => (
-          <Pressable key={tip} testID="tipsReelDot" hitSlop={tipsReel.dot.hitSlop} onPress={() => setScene(index)} style={[styles.dot, { backgroundColor: withAlpha(theme.label, 0.16) }]}>
-            {index < scene || (reduceMotion && index === scene) ? <View style={[styles.dotFill, { width: "100%", backgroundColor: theme.label }]} /> : index === scene ? <DotFill clock={clock} color={theme.label} /> : null}
+          <Pressable key={tip} testID="tipsReelDot" hitSlop={tipsReel.dot.hitSlop} onPress={() => setScene(index)} style={[styles.dot, { backgroundColor: withAlpha(tipsReel.captionInk, 0.3) }]}>
+            {index < scene || (reduceMotion && index === scene) ? <View style={[styles.dotFill, { width: "100%", backgroundColor: tipsReel.captionInk }]} /> : index === scene ? <DotFill clock={clock} color={tipsReel.captionInk} /> : null}
           </Pressable>
         ))}
       </View>
@@ -282,8 +290,7 @@ const styles = StyleSheet.create({
     marginTop: -STAGE.height / 2,
     borderRadius: STAGE.radius,
     ...smoothCorners,
-    borderWidth: 1,
-    padding: STAGE.bezel - 1,
+    padding: STAGE.bezel,
   },
   screen: { flex: 1, borderRadius: STAGE.screenRadius, ...smoothCorners, overflow: "hidden" },
   island: { position: "absolute", left: (STAGE.width - STAGE.island.width) / 2 - 1, top: STAGE.island.top + STAGE.bezel, width: STAGE.island.width, height: STAGE.island.height, borderRadius: STAGE.island.height / 2, backgroundColor: "#000000" },

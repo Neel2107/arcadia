@@ -133,7 +133,7 @@ export const tipsReel = {
   tray: { share: 0.6, radius: 20, field: 28, query: "ardia.dev", queryWidth: 47, caret: 12, keyRows: [10, 9, 7], keyHeight: 17, keyGap: 3, rowGap: 5 },
   deck: { widthShare: 0.62, heightShare: 0.58, topShare: 0.15, gap: 10, radius: 16, lift: 0.17 },
   back: { parallax: -0.33, shade: 0.32, edge: 8, dragShare: 0.55 },
-  phoneBody: { light: "#1C1C1E", dark: "#2C2C2E" },
+  captionInk: "#FFFFFF",
   fingerFill: "rgba(255,255,255,0.55)",
   fingerRing: "rgba(255,255,255,0.95)",
   fingerShadow: "0px 2px 10px rgba(0, 0, 0, 0.35)",
