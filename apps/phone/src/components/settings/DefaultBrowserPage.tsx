@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { AppState, Platform, StyleSheet, Text, useWindowDimensions, View, type ViewInstance } from "react-native";
 import { askForDefaultBrowser, refreshDefaultBrowser, useDefaultBrowser } from "../../state/settings/defaultBrowser";
 import { popSettings } from "../../state/settings/nav";
@@ -6,7 +6,7 @@ import { defaultBrowserCopy } from "../../state/settings/settingsRules";
 import { ActionButton, AppIcon, font, ink, PrimaryButton, radius, settingsLayout, settingsTint, space, spacesLayout, Symbol, useTheme, smoothCorners, type ActionInk } from "../ui";
 import { SettingsPage } from "./SettingsKit";
 
-export type DefaultBrowserPalette = { title: string; body: string; cardFill: string; cardEdge: string; divider: string; primary: ActionInk; secondary: ActionInk };
+export type DefaultBrowserPalette = { title: string; body: string; cardFill: string; cardEdge: string; divider: string; primary: ActionInk; secondary: ActionInk; renderPrimary?: (title: string, onPress: () => void) => ReactNode };
 
 export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = false, palette }: { onLater?: () => void; onDone?: () => void; headingRef?: (node: ViewInstance | null) => void; inkActions?: boolean; palette?: DefaultBrowserPalette }) {
   const theme = useTheme();
@@ -60,9 +60,9 @@ export function DefaultBrowserSteps({ onLater, onDone, headingRef, inkActions = 
       ) : null}
       <View style={styles.actions}>
         {copy.action ? (
-          inkActions || palette ? <ActionButton title={copy.action} onPress={() => void ask()} variant="filled" tone="ink" size="hero" capsule ink={palette?.primary} /> : <PrimaryButton title={copy.action} onPress={() => void ask()} />
+          palette?.renderPrimary ? palette.renderPrimary(copy.action, () => void ask()) : inkActions || palette ? <ActionButton title={copy.action} onPress={() => void ask()} variant="filled" tone="ink" size="hero" capsule ink={palette?.primary} /> : <PrimaryButton title={copy.action} onPress={() => void ask()} />
         ) : onLater ? (
-          inkActions || palette ? <ActionButton title="Continue" onPress={onLater} variant="filled" tone="ink" size="hero" capsule ink={palette?.primary} /> : <PrimaryButton title="Continue" onPress={onLater} />
+          palette?.renderPrimary ? palette.renderPrimary("Continue", onLater) : inkActions || palette ? <ActionButton title="Continue" onPress={onLater} variant="filled" tone="ink" size="hero" capsule ink={palette?.primary} /> : <PrimaryButton title="Continue" onPress={onLater} />
         ) : null}
         {copy.action && onLater ? (
           <ActionButton title="Maybe Later" onPress={onLater} variant="plain" tone={inkActions ? "ink" : "neutral"} size="regular" ink={palette?.secondary} />

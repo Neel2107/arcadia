@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text } from "react-native";
+import { createContext, useContext, useRef } from "react";
+import { Pressable, StyleSheet, Text, View, type ViewInstance } from "react-native";
 import { ActionButton, font, smoothCorners, space, Toggle, type ActionInk } from "../ui";
 import { CrossfadeText } from "../settings/SettingsKit";
 import { brand } from "./onboardingTokens";
@@ -6,7 +7,16 @@ import { brand } from "./onboardingTokens";
 export const KIT_INK = {
   primary: { fill: brand.paper, label: brand.ink, edge: "transparent" },
   secondary: { fill: "transparent", label: brand.cream, edge: "transparent" },
+  primaryLabel: { fill: "transparent", label: brand.ink, edge: "transparent" },
 } as const satisfies Record<string, ActionInk>;
+
+export type SlotRect = { x: number; y: number; width: number; height: number };
+
+export type PrimarySlot = { report: (owner: string, rect: SlotRect) => void };
+
+export const PrimarySlotContext = createContext<PrimarySlot | null>(null);
+
+export const StepOwner = createContext<string | null>(null);
 
 export const KIT_DEFAULT_BROWSER = {
   title: brand.cream,
@@ -16,10 +26,20 @@ export const KIT_DEFAULT_BROWSER = {
   divider: brand.glassEdge,
   primary: KIT_INK.primary,
   secondary: KIT_INK.secondary,
-} as const;
+  renderPrimary: (title: string, onPress: () => void) => <KitPrimary title={title} onPress={onPress} />,
+};
 
 export function KitPrimary({ title, onPress, testID = "onboardingPrimary" }: { title: string; onPress: () => void; testID?: string }) {
-  return <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primary} />;
+  const slot = useContext(PrimarySlotContext);
+  const owner = useContext(StepOwner);
+  const frame = useRef<ViewInstance>(null);
+  if (!slot || !owner) return <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primary} />;
+  const measure = () => frame.current?.measureInWindow((x, y, width, height) => slot.report(owner, { x, y, width, height }));
+  return (
+    <View ref={frame} collapsable={false} onLayout={measure}>
+      <ActionButton testID={testID} title={title} onPress={onPress} variant="filled" size="hero" capsule ink={KIT_INK.primaryLabel} />
+    </View>
+  );
 }
 
 export function KitSecondary({ title, onPress }: { title: string; onPress: () => void }) {

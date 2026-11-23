@@ -1,10 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type ViewInstance } from "react-native";
-import Animated, { Easing, FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft, FadeOutRight, useAnimatedStyle, useSharedValue, withDelay, withSpring } from "react-native-reanimated";
+import Animated, { Easing, FadeIn, FadeInLeft, FadeInRight, FadeOut, FadeOutLeft, FadeOutRight, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { advanceOnboarding, finishOnboarding, useOnboarding } from "../../state/onboarding/hooks";
 import { refreshSettings, setBlockingCategory, useBlocking } from "../../state/settings/actions";
-import { ForcedDark, iPhoneOr, overlayInk, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
+import { ForcedDark, iPhoneOr, overlayInk, spring, settingsUIAvailable, useProfileLook, ActionButton, AppIcon, appIconLayout, closingGate, focusForScreenReader, LookBackdrop, ModalOverlay, moveTo, onboardingArt, font, PrimaryButton, radius, settingsTint, shadowCss, smoothCorners, space, Symbol, tabsMotion, ToggleRow as SwitchRow, useTheme, type SymbolName, useReduceMotion } from "../ui";
 import type { Motion } from "../ui/motion";
 import { useDesign } from "../ui";
 import { useMaterialRipple } from "../ui/MaterialSurfaces";
@@ -21,7 +21,7 @@ import { SyncFlight } from "./SyncFlight";
 import { WelcomeIntro } from "./WelcomeIntro";
 import { Landscape } from "./Landscape";
 import { BlurStage } from "./BlurStage";
-import { KIT_DEFAULT_BROWSER, KitPrimary, KitSecondary, KitSettingRow, KitSubtitle } from "./OnboardingKit";
+import { KIT_DEFAULT_BROWSER, KitPrimary, KitSecondary, KitSettingRow, KitSubtitle, PrimarySlotContext, StepOwner, type PrimarySlot, type SlotRect } from "./OnboardingKit";
 import { StartBackdrop } from "../search/StartSpaces";
 import { startLogo } from "../search/startLook";
 import { blurStage, brand, onboardingInk, onboardingLayout, onboardingMotion } from "./onboardingTokens";
@@ -150,6 +150,18 @@ export function OnboardingView() {
   const material = useDesign() === "material";
   const introMode = onboardingLayout.startBackdrop && !material && settingsUIAvailable();
   const steps = useDepartingSteps(step, introMode ? blurStage.holdMs : 0);
+  const liveStep = useRef(step);
+  liveStep.current = step;
+  const [primaryRect, setPrimaryRect] = useState<SlotRect | null>(null);
+  const primarySlot = useMemo<PrimarySlot>(
+    () => ({
+      report: (owner, rect) => {
+        if (owner !== liveStep.current) return;
+        setPrimaryRect((now) => (now && now.x === rect.x && now.y === rect.y && now.width === rect.width && now.height === rect.height ? now : rect));
+      },
+    }),
+    [],
+  );
   const mounted = useLingering(showing);
   useEffect(() => {
     if (showing) void refreshSettings();
@@ -163,9 +175,13 @@ export function OnboardingView() {
   const intro = startLook && settingsUIAvailable();
   return (
     <ForcedDark value={intro ? true : null}>
+    <PrimarySlotContext.Provider value={intro ? primarySlot : null}>
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
       {intro ? (
-        <Landscape step={step} />
+        <>
+          <Landscape step={step} />
+          <PrimaryCapsule rect={primaryRect} firstDelayMs={step === "welcome" ? onboardingMotion.capsuleFirstDelayMs : 0} />
+        </>
       ) : startLook ? (
         <StartLookBackdrop />
       ) : (
@@ -188,9 +204,11 @@ export function OnboardingView() {
         if (intro)
           return (
             <View key={shown.step} testID="onboardingStep" {...closingGate(shown.closing)} style={[StyleSheet.absoluteFill, { zIndex: ONBOARDING_LAYERS.step }]}>
-              <BlurStage leaving={shown.closing}>
-                <View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>{content}</View>
-              </BlurStage>
+              <StepOwner.Provider value={shown.closing ? null : shown.step}>
+                <BlurStage leaving={shown.closing}>
+                  <View style={[styles.fill, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>{content}</View>
+                </BlurStage>
+              </StepOwner.Provider>
             </View>
           );
         return (
@@ -207,8 +225,46 @@ export function OnboardingView() {
         );
       })}
     </Animated.View>
+    </PrimarySlotContext.Provider>
     </ForcedDark>
   );
+}
+
+const capsuleMove = spring(0.5, 0.86);
+
+function PrimaryCapsule({ rect, firstDelayMs }: { rect: SlotRect | null; firstDelayMs: number }) {
+  const reduceMotion = useReduceMotion();
+  const x = useSharedValue(0);
+  const y = useSharedValue(0);
+  const width = useSharedValue(0);
+  const height = useSharedValue(0);
+  const shown = useSharedValue(0);
+  const placed = useRef(false);
+  useEffect(() => {
+    if (!rect) return;
+    if (!placed.current) {
+      placed.current = true;
+      x.value = rect.x;
+      y.value = rect.y;
+      width.value = rect.width;
+      height.value = rect.height;
+      shown.value = withDelay(reduceMotion ? 0 : firstDelayMs, withTiming(1, { duration: onboardingMotion.capsuleFadeMs }));
+      return;
+    }
+    const to = (target: number) => (reduceMotion ? withTiming(target, { duration: onboardingMotion.capsuleFadeMs }) : withSpring(target, capsuleMove));
+    x.value = to(rect.x);
+    y.value = to(rect.y);
+    width.value = to(rect.width);
+    height.value = to(rect.height);
+  }, [rect, firstDelayMs, reduceMotion, x, y, width, height, shown]);
+  const style = useAnimatedStyle(() => ({
+    opacity: shown.value,
+    width: width.value,
+    height: height.value,
+    borderRadius: height.value / 2,
+    transform: [{ translateX: x.value }, { translateY: y.value }],
+  }));
+  return <Animated.View testID="onboardingPrimaryCapsule" pointerEvents="none" style={[styles.capsule, style]} />;
 }
 
 function StartLookBackdrop() {
@@ -560,6 +616,7 @@ const styles = StyleSheet.create({
   welcomeWords: { paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   words: { paddingTop: onboardingLayout.wordsTop, paddingHorizontal: onboardingLayout.wordsInset, gap: onboardingLayout.wordsGap, alignItems: "center" },
   heavy: { fontWeight: "700", textAlign: "center" },
+  capsule: { position: "absolute", left: 0, top: 0, zIndex: 1, backgroundColor: brand.paper, borderCurve: "continuous" },
   kitTitle: { ...onboardingLayout.title, fontWeight: "700", textAlign: "center", color: brand.cream },
   centered: { textAlign: "center" },
   actions: { paddingHorizontal: onboardingLayout.actionsInset, paddingBottom: onboardingLayout.actionsBottom, gap: onboardingLayout.actionsGap },

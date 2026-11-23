@@ -151,7 +151,7 @@ export const welcomeIntro = {
   blurRoom: 28,
   wordsBottom: space.xl - 28,
   actionDelayMs: 1250,
-  actionRise: 14,
+  actionRise: 0,
   actionsInset: space.xl + space.xs,
   actionsBottom: space.m,
   reducedFadeMs: 300,
@@ -191,6 +191,8 @@ const timing = (duration: number, curve: Curve): Motion => ({ timing: { duration
 
 export const onboardingMotion = {
   stepTravel: 72,
+  capsuleFirstDelayMs: 1350,
+  capsuleFadeMs: 280,
   riseDelayMs: 50,
   step: motionAliases.onboardingStep,
   stepReduced: motionAliases.onboardingStepReduced,
