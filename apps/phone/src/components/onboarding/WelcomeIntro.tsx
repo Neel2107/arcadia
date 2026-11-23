@@ -3,7 +3,7 @@ import { StyleSheet, useWindowDimensions, View, type ViewInstance } from "react-
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ellipse, Host, Rectangle, Text as SwiftText, ZStack } from "@expo/ui/swift-ui";
-import { accessibilityHidden, animation, Animation, blur, font, foregroundStyle, frame, multilineTextAlignment, offset, opacity, padding, scaleEffect } from "@expo/ui/swift-ui/modifiers";
+import { accessibilityHidden, animation, Animation, blur, font, foregroundStyle, frame, multilineTextAlignment, offset, onAppear, opacity, padding, scaleEffect } from "@expo/ui/swift-ui/modifiers";
 import { hslToRgb, parseColor, rgbToHsl, toHex } from "../../lib/color";
 import type { ProfileLook } from "../../lib/profileLook";
 import { ActionButton, AppIcon, spring, useProfileLook, useReduceMotion } from "../ui";
@@ -32,24 +32,32 @@ export function introPalette(look: ProfileLook): { base: string; blobs: Blob[] }
   };
 }
 
-function useStarted(delayMs = 0) {
+function useAfterAppear(delayMs = 0): [boolean, () => void] {
+  const [appeared, setAppeared] = useState(false);
   const [started, setStarted] = useState(false);
   useEffect(() => {
+    if (!appeared) return;
     const timer = setTimeout(() => setStarted(true), delayMs);
     return () => clearTimeout(timer);
-  }, [delayMs]);
-  return started;
+  }, [appeared, delayMs]);
+  return [started, () => setAppeared(true)];
 }
 
-export function WelcomeMesh() {
+export function WelcomeMesh({ onShown }: { onShown?: () => void }) {
   const look = useProfileLook();
   const reduceMotion = useReduceMotion();
   const palette = introPalette(look);
-  const bloomed = useStarted();
-  const drifting = useStarted(welcomeIntro.driftDelayMs);
+  const [bloomed, appeared] = useAfterAppear(welcomeIntro.appearSettleMs);
+  const [drifting, appearedForDrift] = useAfterAppear(welcomeIntro.driftDelayMs);
+  const shown = () => {
+    appeared();
+    appearedForDrift();
+    onShown?.();
+  };
   return (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: palette.base }]}>
     <Host testID="welcomeMesh" ignoreSafeArea="all" style={StyleSheet.absoluteFill} colorScheme="dark">
-      <ZStack modifiers={[accessibilityHidden(true)]}>
+      <ZStack modifiers={[accessibilityHidden(true), onAppear(shown)]}>
         <Rectangle modifiers={[foregroundStyle(palette.base)]} />
         {palette.blobs.map((blob, index) => (
           <Ellipse
@@ -68,6 +76,7 @@ export function WelcomeMesh() {
         ))}
       </ZStack>
     </Host>
+    </View>
   );
 }
 
@@ -75,7 +84,7 @@ export function WelcomeIntro({ onStart, headingRef }: { onStart: () => void; hea
   const reduceMotion = useReduceMotion();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const revealed = useStarted();
+  const [revealed, titleAppeared] = useAfterAppear(welcomeIntro.appearSettleMs);
   const flight = useSharedValue(reduceMotion ? 1 : 0);
   const shown = useSharedValue(reduceMotion ? 0 : 1);
   const action = useSharedValue(0);
@@ -83,14 +92,16 @@ export function WelcomeIntro({ onStart, headingRef }: { onStart: () => void; hea
   const fromCenter = height / 2 - insets.top - (iconTop + welcomeIntro.iconSide / 2);
 
   useEffect(() => {
+    if (!revealed) return;
     if (reduceMotion) {
       shown.value = withTiming(1, { duration: welcomeIntro.reducedFadeMs });
       action.value = withDelay(welcomeIntro.reducedFadeMs, withTiming(1, { duration: welcomeIntro.reducedFadeMs }));
       return;
     }
     flight.value = withDelay(welcomeIntro.holdMs, withSpring(1, spring(welcomeIntro.flight.response, welcomeIntro.flight.damping)));
+    shown.value = 1;
     action.value = withDelay(welcomeIntro.actionDelayMs, withSpring(1, spring(0.5, 0.9)));
-  }, [reduceMotion, flight, shown, action]);
+  }, [revealed, reduceMotion, flight, shown, action]);
 
   const icon = useAnimatedStyle(() => {
     const travel = 1 - flight.value;
@@ -119,12 +130,14 @@ export function WelcomeIntro({ onStart, headingRef }: { onStart: () => void; hea
               font({ size: welcomeIntro.titleSize, weight: "bold", design: "rounded" }),
               foregroundStyle("#FFFFFF"),
               multilineTextAlignment("center"),
+              frame({ maxWidth: welcomeIntro.titleMaxWidth }),
               padding({ all: welcomeIntro.blurRoom }),
               blur(sharp ? 0 : welcomeIntro.titleBlur),
               scaleEffect(sharp ? 1 : welcomeIntro.titleFromScale),
               opacity(sharp ? 1 : 0),
               animation(reduceMotion ? Animation.easeOut({ duration: welcomeIntro.reducedFadeMs / 1000 }) : Animation.smooth({ duration: welcomeIntro.titleS }).delay(welcomeIntro.titleDelayS), sharp),
               accessibilityHidden(true),
+              onAppear(titleAppeared),
             ]}
           >
             {WELCOME_TITLE}
