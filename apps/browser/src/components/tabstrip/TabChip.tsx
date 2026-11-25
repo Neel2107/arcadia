@@ -2,7 +2,7 @@ import { memo, useContext, useLayoutEffect, useRef, type ReactNode } from "react
 import { Animated, Pressable, StyleSheet, View, type GestureResponderEvent } from "react-native";
 import { toggleMute } from "../../state/browser/actions";
 import { useIsActiveTab, useSettings, useTab, useTabLive, useWindowId } from "../../state/browser/hooks";
-import { useMuteState, useTabGroupColor } from "../../state/tabs/hooks";
+import { useMuteState } from "../../state/tabs/hooks";
 import { muteTitle, type MuteState } from "../../state/tabs/mute";
 import { firstStaying } from "../../state/drag/drops";
 import { pressTabClose, useTabCloseControl } from "../../state/sidebar/closeControl";
@@ -13,15 +13,11 @@ import { pressStripClose } from "../../state/tabs/stripPress";
 import { workspaceSnapshot } from "../../state/browser/current";
 import { TabBadges } from "../media/TabBadges";
 import { TabIcon } from "../sidebar/TabIcon";
-import { Button, continuousCorners, FadeLabel, GradientFill, HoverFill, Symbol, useTooltip, type GradientStop } from "../ui";
+import { Button, continuousCorners, FadeLabel, HoverFill, Symbol, useTooltip } from "../ui";
 import { surfaceTheme, useTheme } from "../ui/theme";
 import { ThemeOverride } from "../ui/ThemeOverride";
 import { toolbarPalette, useEasedColor } from "../ui/toolbarColors";
-import { font, ink, withAlpha } from "../ui/tokens";
-import { over } from "../../lib/color";
-import type { GroupColor } from "../../state/browser/types";
-import { groupTint, useSidebarTokens, type SidebarTokens } from "../sidebar/tokens";
-import { GROUP_TRAY_ALPHA } from "./tokens";
+import { font, iconButton } from "../ui/tokens";
 import { DockContext, FloatingStrip } from "./context";
 import { tabIn, tileHold } from "./dockCross";
 import { FadeIn } from "./FadeIn";
@@ -29,7 +25,7 @@ import { dropAt, type GroupOut, type StripDrag } from "./model";
 import { PinnedFace } from "./PinnedFace";
 import { SelectedTab } from "./SelectedTab";
 import { CELL_STEP, dragRange, leaveIndex, type DragGeometry } from "./stripGroups";
-import { AUDIO_BADGE, CHIP_LABEL_GAP, CHIP_PAD, CLOSE_AFTER_SELECT_MS, CLOSE_PLATE_FADE, CLOSE_MIN_CHIP, FAVICON, GAP, ITEM_HEIGHT, ITEM_TOP, PINNED_CELL, tabCloseRadius, tabRadius, TITLE_FADE_MAX, TITLE_FADE_MIN, TITLE_MIN_CHIP, TOP_STRIP_HEIGHT } from "./tokens";
+import { AUDIO_BADGE, CHIP_LABEL_GAP, CHIP_PAD, CLOSE_AFTER_SELECT_MS, CLOSE_MIN_CHIP, FAVICON, GAP, ITEM_HEIGHT, ITEM_TOP, PINNED_CELL, tabCloseRadius, tabRadius, TITLE_FADE_MAX, TITLE_FADE_MIN, TITLE_MIN_CHIP, TOP_STRIP_HEIGHT } from "./tokens";
 import { useStripDrag } from "./useStripDrag";
 import { useStripPick } from "./stripPick";
 import { StripScrollContext } from "./stripScroll";
@@ -180,8 +176,6 @@ export const TabChip = memo(function TabChip({ tabId, width, drawn, tuck, dragge
   const chipHover = hover ?? ownHover;
   const unread = useTabUnread(tabId);
   const struck = useStruckTitle(tabId);
-  const groupColor = useTabGroupColor(tabId);
-  const tokens = useSidebarTokens();
   if (!tab) return null;
   const title = tab.customTitle ? tabTitle(tab) : titleWithoutUnread(tabTitle(tab), unread);
   const away = rowAwayTitle(tab);
@@ -190,8 +184,6 @@ export const TabChip = memo(function TabChip({ tabId, width, drawn, tuck, dragge
   const closable = active || !!tuck || width >= CLOSE_MIN_CHIP;
   const onBand = active && !floating && !!palette.background;
   const ink = onBand ? palette.text : active ? theme.tabSelectedText : theme.textTab;
-  const strip = over(groupTray(groupColor, tokens), theme.windowTint[0]);
-  const plate = active ? (onBand ? palette.background! : over(theme.card, strip)) : over(theme.tabHover, strip);
   return (
     <ThemeOverride theme={theme}>
       <Animated.View {...chipHover.hoverProps} style={{ width: drawn ?? width, height: TOP_STRIP_HEIGHT }}>
@@ -207,7 +199,6 @@ export const TabChip = memo(function TabChip({ tabId, width, drawn, tuck, dragge
               quiet={active}
               pressed={pressed && !active}
               inset={compact ? (width - FAVICON) / 2 : undefined}
-              plate={plate}
               action={closable &&
                 <Button variant="icon"
                   icon={tuck ? "minus" : closeControl.icon}
@@ -269,7 +260,6 @@ function ChipRow({
   quiet,
   pressed,
   inset,
-  plate,
   action,
   badge,
   children,
@@ -279,7 +269,6 @@ function ChipRow({
   quiet: boolean;
   pressed: boolean;
   inset?: number;
-  plate: string;
   action: ReactNode;
   badge: ReactNode;
   children: ReactNode;
@@ -290,12 +279,10 @@ function ChipRow({
     <ItemRow hovered={(hovered || dragged) && !quiet} pressed={pressed} inset={inset}>
       {children}
       {inset === undefined && !closing ? badge : null}
+      {closing ? <View style={CLOSE_ROOM} /> : null}
       {closing ? (
         <View pointerEvents="box-none" style={CLOSE_OVERLAY}>
-          <View>
-            <ClosePlateFade plate={plate} />
-            <View style={[continuousCorners(tabRadius()), { backgroundColor: plate }]}>{action}</View>
-          </View>
+          {action}
         </View>
       ) : null}
     </ItemRow>
@@ -303,23 +290,7 @@ function ChipRow({
 }
 
 const CLOSE_OVERLAY = { position: "absolute", right: CHIP_PAD.right, top: 0, bottom: 0, justifyContent: "center" } as const;
-
-const SOLID: readonly GradientStop[] = [[0, 1], [1, 1]];
-
-function ClosePlateFade({ plate }: { plate: string }) {
-  const overlap = tabRadius();
-  const width = CLOSE_PLATE_FADE.width + overlap;
-  const solidFrom = CLOSE_PLATE_FADE.width / width;
-  const fade = CLOSE_PLATE_FADE.curve.map(([at, alpha]) => [at * solidFrom, alpha] as const).concat([[1, 1]]);
-  return <GradientFill color={plate} stops={SOLID} fade={fade} style={{ position: "absolute", top: 0, bottom: 0, left: -CLOSE_PLATE_FADE.width, width }} />;
-}
-
-function groupTray(color: GroupColor | null | undefined, tokens: SidebarTokens): string {
-  if (color === undefined) return ink.clear;
-  if (color === "none") return ink.clear;
-  const tint = groupTint(color);
-  return tint ? withAlpha(tint, GROUP_TRAY_ALPHA) : tokens.groupFill;
-}
+const CLOSE_ROOM = { width: iconButton.xs.box } as const;
 
 export function ItemRow({ hovered, pressed, padded = true, inset, children }: { hovered: boolean; pressed: boolean; padded?: boolean; inset?: number; children: React.ReactNode }) {
   const theme = useTheme();

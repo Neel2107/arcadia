@@ -37,10 +37,6 @@ export const SELECTED_TIGHT_CHIP = 128;
 export const SELECTED_STEPS = [SELECTED_MIN_CHIP, 150, SELECTED_TIGHT_CHIP] as const;
 export const GAP = 4;
 export const CHIP_PAD = { left: 9.5, right: 6 } as const;
-export const CLOSE_PLATE_FADE = {
-  width: 16,
-  curve: [[0, 0], [0.25, 0.16], [0.5, 0.5], [0.75, 0.84], [1, 1]],
-} as const;
 export const FAVICON = 16;
 export const AUDIO_BADGE = 12;
 export const CHIP_LABEL_GAP = 5;
