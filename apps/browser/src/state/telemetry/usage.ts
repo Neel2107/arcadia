@@ -17,7 +17,7 @@ import { percentile } from "./transport";
 import { reportNativeCrashes } from "./errors";
 import { emitJourneys, journeysEnding, startJourneys } from "./journeys";
 import { commandBarPlacementLabel, takeExternalAppRequests, takeNotificationRequestCounts, takeRecentlyClosedCounts, takeHistoryRemovalCounts, takeOmniboxLatency, takePopupTabCounts, takeSearchSuggests } from "./track";
-import { contextSamples, noteAppMemory, recordContext, takeMainProcessWork, takeContentDriftCounts, takeColdTabHoldCounts, takeStopBreathing, startContextSamples, stopContextSamples, watchEngineReports } from "./diagnostics";
+import { contextSamples, noteAppMemory, recordContext, takeMainProcessWork, takeContentDriftCounts, takePageMetrics, takeColdTabHoldCounts, takeStopBreathing, startContextSamples, stopContextSamples, watchEngineReports } from "./diagnostics";
 import { emitTabPresses } from "./tabPresses";
 import { takeFreezeCounts } from "./freezes";
 import { switcherSwitchProperties } from "./switcherPresses";
@@ -53,6 +53,9 @@ import { takeDockCounts } from "./dockCounts";
 import { takeCliCounts } from "./cliCounts";
 import { pluginsSnapshot, takePluginCounts } from "./pluginCounts";
 import { passwordManagerSnapshot } from "../site/passwordManager";
+import { isAutoPipMiss, noteAutoPipMiss, type AutoPipMiss } from "./autoPipMisses";
+import { processCpuFields } from "./processCpu";
+import { ctrlTabChoice } from "../commands/commandShortcuts";
 import { keptTabsAdded } from "./keptTabs";
 import { takeTabStripCounts } from "./tabStripCounts";
 import { takeFocusFeatureCounts } from "./focusFeatureCounts";
@@ -68,7 +71,7 @@ const HOUR_MS = 60 * 60_000;
 const FIRST_MEMORY_SAMPLE_MS = 10 * 60_000, FIRST_SETTINGS_SNAPSHOT_MS = 2 * 60_000;
 const LOCAL_STORE_LAUNCH_DELAY_MS = 20_000;
 const startedAt = Date.now();
-const NO_COUNTS = { tabs: 0, windows: 0, fullScreens: 0, sidebarPeeks: 0, sidebarPeekBounces: 0, sidebarPeekPageHides: 0, sidebarEmptyWindowPeeks: 0, sidebarPeekCardMoves: 0, cliTabEdits: 0, cliGroupEdits: 0, cliEditFailures: 0, popoverPressCloses: 0, popoverEscapeCloses: 0, siteAutoplayBlocks: 0, siteAutoplayAllows: 0, autoplayPlaysBlocked: 0, siteSettingsOpens: 0, sidebarFieldSiteControlsOpens: 0, siteManageExtensionsOpens: 0, tabSwitcherOpens: 0, tabSwitcherClosedLeftOut: 0, tabSwitcherUnseenLast: 0, approvalNoticesDeferred: 0, reopenedPages: 0, reopenedPagesWithBack: 0, backClosesToOpener: 0, groupTabsKept: 0, groupHeaderHides: 0, peekPinchOpens: 0, peekPinchCloses: 0, peeksShownAgain: 0, littleArdiaPinchOpens: 0, littleArdiaPinchCloses: 0, littleArdiaSwipeCloses: 0, littleArdiaSwipeCloseCancels: 0, externalLinksTabSettingOff: 0, externalLinksTabSettingOn: 0, externalLinksLittleSettingOn: 0, externalLinksLittleSettingOff: 0, autoHideTabsToggles: 0, windowsRealignedToAutoHideTabs: 0, tabStripPeeks: 0, tabStripMenuOpens: 0, tabStripOverflowOpens: 0, tabPeeksWithAutoHideOff: 0, toolbarScrollHides: 0, toolbarScrollHideBounces: 0, toolbarPeeks: 0, toolbarPeekPageHides: 0, toolbarMotionPageHides: 0, cardResizeLayouts: 0, cardResizeLayoutsApplied: 0, importedPinnedRows: 0, importedSplits: 0, importedSpaces: 0, importedContainerSpaces: 0, importedDataProfiles: 0, importedEssentials: 0, importedStartersNamed: 0, splitPaneCloses: 0, splitViewCloses: 0, splitDividerResets: 0, windowCloseTabsKept: 0, sharesPickedTab: 0, sharesPickedWindow: 0, sharesPickedScreen: 0, sharesWithCaptureController: 0, screenRecordingMissing: 0, screenRecordingAsked: 0, extensionInstallPrompts: 0, extensionInstallPromptsStale: 0, extensionProfilePageOpens: 0, extensionProfilePageReroutes: 0, privateWindowExtensionOpens: 0, sidePanelsKeptOnSwitch: 0, emptyTabSidebarExtensionPresses: 0, toolbarExtensionMoves: 0, toolbarExtensionMenuMoves: 0, toolbarAnchorMoves: 0, toolbarAnchorMisses: 0, contentBlockerUnavailable: 0, contentBlockerPagesBehind: 0, contentBlockerWriteFailures: 0, contentBlockerCustomListsAdded: 0, contentBlockerCustomListAddFailures: 0, contentBlockerCustomListsRemoved: 0, newTabNoticesShown: 0, newTabNoticePresses: 0, statusBubbleTopShows: 0, loadingFieldShows: 0, loadingPillShows: 0, loadingPillLongShows: 0, loadingPillSkips: 0, paneOverlaysAtShow: 0, paneOverlayOpens: 0, dockReopens: 0, dockReopensPastFloating: 0, pipActivationReturns: 0, pipActivationReturnFailures: 0, sidebarMotionMerges: 0, sidebarSlideOverruns: 0, webKitPagesKeptHidden: 0, newTabBarKeeps: 0, newTabBarLaunchShows: 0, newTabLingers: 0, newTabLingersLate: 0, newTabLeavesForWebKit: 0, newTabLeavesWithoutLinger: 0, newTabKeptForPages: 0, newTabKeptForPageTimeouts: 0, barSplitOpens: 0, barSplitFullTabs: 0, splitSuggestionKeyPicks: 0, settingsSearchKeyboardReveals: 0, settingsSearchClickReveals: 0, settingsSearches: 0, settingsSearchesEmpty: 0, settingsSearchesDropped: 0, settingsSearchesClosed: 0, settingsSearchTopPicks: 0, settingsSearchTop3Picks: 0, settingsSearchLowerPicks: 0, settingsSearchUnshownReveals: 0, settingsProfilePicks: 0, shortcutsKeySearchesTyped: 0, shortcutsKeySearchesRecorded: 0, shortcutsKeySearchesEmpty: 0, settingsSearchKeySearches: 0, settingsSearchKeyHitOpens: 0, autoPictureInPictureKept: 0, autoPictureInPictureStayedOnAppSwitch: 0, selectionCloseKeys: 0, selectionCloseKeyTabs: 0, selectionGroupRemovals: 0, selectionGroupRemovalTabs: 0, onboardingImports: 0, onboardingHeliumImports: 0, onboardingListedOnlyImports: 0, onboardingGlassPicks: 0, onboardingClassicPicks: 0, onboardingTintedGlassPicks: 0, onboardingStepsCompleted: 0, onboardingStepsSkipped: 0, onboardingRedoOpened: 0, onboardingRedoCompleted: 0, onboardingRedoCancelled: 0, onboardingPresetKeptImports: 0, onboardingWheelMoves: 0, onboardingKeyMoves: 0, onboardingClickMoves: 0, updateChannelSwitches: 0, updateChannelSwitchOffers: 0, updateChannelSwitchUpToDate: 0, updateChannelSwitchCheckFailures: 0, cleanUpSuggestionShows: 0, cleanUpSuggestionOnce: 0, cleanUpSuggestionDaily: 0, cleanUpSuggestionNotNow: 0, cleanUpSuggestionNeverAgain: 0, cleanUpUndos: 0, linkTabsMatched: 0, linkTabWaitsSkipped: 0, linkTabWaitTimeouts: 0, historySearchFocusRequests: 0, historySearchFocused: 0 , selectedRowPillShows: 0, selectedRowPillPresses: 0, webKitLimitsFromEngineRow: 0, webKitLimitsFromEnginesPane: 0, tabSwipes: 0, tabSwipesInSidebarField: 0, tabSwipeEnds: 0 };
+const NO_COUNTS = { tabs: 0, windows: 0, fullScreens: 0, sidebarPeeks: 0, sidebarPeekBounces: 0, sidebarPeekPageHides: 0, sidebarEmptyWindowPeeks: 0, sidebarPeekCardMoves: 0, cliTabEdits: 0, cliGroupEdits: 0, cliEditFailures: 0, popoverPressCloses: 0, popoverEscapeCloses: 0, siteAutoplayBlocks: 0, siteAutoplayAllows: 0, autoplayPlaysBlocked: 0, siteSettingsOpens: 0, sidebarFieldSiteControlsOpens: 0, siteManageExtensionsOpens: 0, tabSwitcherOpens: 0, tabSwitcherClosedLeftOut: 0, tabSwitcherUnseenLast: 0, approvalNoticesDeferred: 0, reopenedPages: 0, reopenedPagesWithBack: 0, backClosesToOpener: 0, groupTabsKept: 0, groupHeaderHides: 0, peekPinchOpens: 0, peekPinchCloses: 0, peeksShownAgain: 0, littleArdiaPinchOpens: 0, littleArdiaPinchCloses: 0, littleArdiaSwipeCloses: 0, littleArdiaSwipeCloseCancels: 0, externalLinksTabSettingOff: 0, externalLinksTabSettingOn: 0, externalLinksLittleSettingOn: 0, externalLinksLittleSettingOff: 0, autoHideTabsToggles: 0, windowsRealignedToAutoHideTabs: 0, tabStripPeeks: 0, tabStripMenuOpens: 0, tabStripOverflowOpens: 0, tabPeeksWithAutoHideOff: 0, toolbarScrollHides: 0, toolbarScrollHideBounces: 0, toolbarPeeks: 0, toolbarPeekPageHides: 0, toolbarMotionPageHides: 0, cardResizeLayouts: 0, cardResizeLayoutsApplied: 0, importedPinnedRows: 0, importedSplits: 0, importedSpaces: 0, importedContainerSpaces: 0, importedDataProfiles: 0, importedEssentials: 0, importedStartersNamed: 0, splitPaneCloses: 0, splitViewCloses: 0, splitDividerResets: 0, windowCloseTabsKept: 0, sharesPickedTab: 0, sharesPickedWindow: 0, sharesPickedScreen: 0, sharesWithCaptureController: 0, screenRecordingMissing: 0, screenRecordingAsked: 0, extensionInstallPrompts: 0, extensionInstallPromptsStale: 0, extensionProfilePageOpens: 0, extensionProfilePageReroutes: 0, privateWindowExtensionOpens: 0, sidePanelsKeptOnSwitch: 0, emptyTabSidebarExtensionPresses: 0, toolbarExtensionMoves: 0, toolbarExtensionMenuMoves: 0, toolbarAnchorMoves: 0, toolbarAnchorMisses: 0, contentBlockerUnavailable: 0, contentBlockerPagesBehind: 0, contentBlockerWriteFailures: 0, contentBlockerCustomListsAdded: 0, contentBlockerCustomListAddFailures: 0, contentBlockerCustomListsRemoved: 0, newTabNoticesShown: 0, newTabNoticePresses: 0, statusBubbleTopShows: 0, loadingFieldShows: 0, loadingPillShows: 0, loadingPillLongShows: 0, loadingPillSkips: 0, paneOverlaysAtShow: 0, paneOverlayOpens: 0, dockReopens: 0, dockReopensPastFloating: 0, pipActivationReturns: 0, pipActivationReturnFailures: 0, sidebarMotionMerges: 0, sidebarSlideOverruns: 0, webKitPagesKeptHidden: 0, newTabBarKeeps: 0, newTabBarLaunchShows: 0, newTabLingers: 0, newTabLingersLate: 0, newTabLeavesForWebKit: 0, newTabLeavesWithoutLinger: 0, newTabKeptForPages: 0, newTabKeptForPageTimeouts: 0, barSplitOpens: 0, barSplitFullTabs: 0, splitSuggestionKeyPicks: 0, splitEmptyPaneEscapeCloses: 0, settingsSearchKeyboardReveals: 0, settingsSearchClickReveals: 0, settingsSearches: 0, settingsSearchesEmpty: 0, settingsSearchesDropped: 0, settingsSearchesClosed: 0, settingsSearchTopPicks: 0, settingsSearchTop3Picks: 0, settingsSearchLowerPicks: 0, settingsSearchUnshownReveals: 0, settingsScrollRestores: 0, settingsScrollRestoresUnreachable: 0, settingsScrollRestoresClamped: 0, settingsRevealMisses: 0, settingsProfilePicks: 0, shortcutsKeySearchesTyped: 0, shortcutsKeySearchesRecorded: 0, shortcutsKeySearchesEmpty: 0, settingsSearchKeySearches: 0, settingsSearchKeyHitOpens: 0, autoPictureInPictureKept: 0, autoPictureInPictureStayedOnAppSwitch: 0, selectionCloseKeys: 0, selectionCloseKeyTabs: 0, selectionGroupRemovals: 0, selectionGroupRemovalTabs: 0, onboardingImports: 0, onboardingHeliumImports: 0, onboardingListedOnlyImports: 0, onboardingGlassPicks: 0, onboardingClassicPicks: 0, onboardingTintedGlassPicks: 0, onboardingStepsCompleted: 0, onboardingStepsSkipped: 0, onboardingRedoOpened: 0, onboardingRedoCompleted: 0, onboardingRedoCancelled: 0, onboardingPresetKeptImports: 0, onboardingWheelMoves: 0, onboardingKeyMoves: 0, onboardingClickMoves: 0, updateChannelSwitches: 0, updateChannelSwitchOffers: 0, updateChannelSwitchUpToDate: 0, updateChannelSwitchCheckFailures: 0, cleanUpSuggestionShows: 0, cleanUpSuggestionOnce: 0, cleanUpSuggestionDaily: 0, cleanUpSuggestionNotNow: 0, cleanUpSuggestionNeverAgain: 0, cleanUpUndos: 0, clearSelectedTabCloses: 0, linkTabsMatched: 0, linkTabWaitsSkipped: 0, linkTabWaitTimeouts: 0, historySearchFocusRequests: 0, historySearchFocused: 0 , selectedRowPillShows: 0, selectedRowPillPresses: 0, webKitLimitsFromEngineRow: 0, webKitLimitsFromEnginesPane: 0, tabSwipes: 0, tabSwipesInSidebarField: 0, tabSwipeEnds: 0 };
 let counts = { ...NO_COUNTS }, countsSince = Date.now();
 const bump = (consent: ConsentToken | null | undefined, add: Partial<Record<keyof typeof NO_COUNTS, number>>) => countFor(consentOrNow(consent), () => { for (const key in add) counts[key as keyof typeof NO_COUNTS] += add[key as keyof typeof NO_COUNTS] ?? 0; });
 
@@ -126,12 +129,12 @@ function emitCounts(consent: ConsentToken | null) {
       new_tab_notices_shown: counts.newTabNoticesShown,
       new_tab_notice_presses: counts.newTabNoticePresses, selected_row_pill_shows: counts.selectedRowPillShows, selected_row_pill_presses: counts.selectedRowPillPresses, tab_swipes: counts.tabSwipes, tab_swipes_in_sidebar_field: counts.tabSwipesInSidebarField, tab_swipe_ends: counts.tabSwipeEnds,
       status_bubble_top_shows: counts.statusBubbleTopShows, loading_field_shows: counts.loadingFieldShows, loading_pill_shows: counts.loadingPillShows, loading_pill_long_shows: counts.loadingPillLongShows, loading_pill_skips: counts.loadingPillSkips, pane_overlays_at_show: counts.paneOverlaysAtShow, pane_overlay_opens: counts.paneOverlayOpens,
-      new_tab_bar_keeps: counts.newTabBarKeeps, new_tab_bar_launch_shows: counts.newTabBarLaunchShows, new_tab_lingers: counts.newTabLingers, new_tab_lingers_late: counts.newTabLingersLate, new_tab_leaves_for_webkit: counts.newTabLeavesForWebKit, new_tab_leaves_without_linger: counts.newTabLeavesWithoutLinger, new_tab_kept_for_pages: counts.newTabKeptForPages, new_tab_kept_for_page_timeouts: counts.newTabKeptForPageTimeouts, bar_split_opens: counts.barSplitOpens, bar_split_full_tabs: counts.barSplitFullTabs, split_suggestion_key_picks: counts.splitSuggestionKeyPicks,
+      new_tab_bar_keeps: counts.newTabBarKeeps, new_tab_bar_launch_shows: counts.newTabBarLaunchShows, new_tab_lingers: counts.newTabLingers, new_tab_lingers_late: counts.newTabLingersLate, new_tab_leaves_for_webkit: counts.newTabLeavesForWebKit, new_tab_leaves_without_linger: counts.newTabLeavesWithoutLinger, new_tab_kept_for_pages: counts.newTabKeptForPages, new_tab_kept_for_page_timeouts: counts.newTabKeptForPageTimeouts, bar_split_opens: counts.barSplitOpens, bar_split_full_tabs: counts.barSplitFullTabs, split_suggestion_key_picks: counts.splitSuggestionKeyPicks, split_empty_pane_escape_closes: counts.splitEmptyPaneEscapeCloses,
       dock_reopens: counts.dockReopens, dock_reopens_past_floating: counts.dockReopensPastFloating, pip_activation_returns: counts.pipActivationReturns, pip_activation_return_failures: counts.pipActivationReturnFailures, webkit_pages_kept_hidden: counts.webKitPagesKeptHidden,
-      settings_search_keyboard_reveals: counts.settingsSearchKeyboardReveals, settings_profile_picks: counts.settingsProfilePicks, settings_search_click_reveals: counts.settingsSearchClickReveals, settings_searches: counts.settingsSearches, settings_searches_empty: counts.settingsSearchesEmpty, settings_searches_dropped: counts.settingsSearchesDropped, settings_searches_closed: counts.settingsSearchesClosed, settings_search_top_picks: counts.settingsSearchTopPicks, webkit_limits_opens_engine_row: counts.webKitLimitsFromEngineRow, webkit_limits_opens_engines_pane: counts.webKitLimitsFromEnginesPane, settings_search_top3_picks: counts.settingsSearchTop3Picks, settings_search_lower_picks: counts.settingsSearchLowerPicks, settings_search_unshown_reveals: counts.settingsSearchUnshownReveals, shortcuts_key_searches_typed: counts.shortcutsKeySearchesTyped, shortcuts_key_searches_recorded: counts.shortcutsKeySearchesRecorded, shortcuts_key_searches_empty: counts.shortcutsKeySearchesEmpty, settings_search_key_searches: counts.settingsSearchKeySearches, settings_search_key_hit_opens: counts.settingsSearchKeyHitOpens,
+      settings_search_keyboard_reveals: counts.settingsSearchKeyboardReveals, settings_reveal_misses: counts.settingsRevealMisses, settings_profile_picks: counts.settingsProfilePicks, settings_scroll_restores: counts.settingsScrollRestores, settings_scroll_restores_unreachable: counts.settingsScrollRestoresUnreachable, settings_scroll_restores_clamped: counts.settingsScrollRestoresClamped, settings_search_click_reveals: counts.settingsSearchClickReveals, settings_searches: counts.settingsSearches, settings_searches_empty: counts.settingsSearchesEmpty, settings_searches_dropped: counts.settingsSearchesDropped, settings_searches_closed: counts.settingsSearchesClosed, settings_search_top_picks: counts.settingsSearchTopPicks, webkit_limits_opens_engine_row: counts.webKitLimitsFromEngineRow, webkit_limits_opens_engines_pane: counts.webKitLimitsFromEnginesPane, settings_search_top3_picks: counts.settingsSearchTop3Picks, settings_search_lower_picks: counts.settingsSearchLowerPicks, settings_search_unshown_reveals: counts.settingsSearchUnshownReveals, shortcuts_key_searches_typed: counts.shortcutsKeySearchesTyped, shortcuts_key_searches_recorded: counts.shortcutsKeySearchesRecorded, shortcuts_key_searches_empty: counts.shortcutsKeySearchesEmpty, settings_search_key_searches: counts.settingsSearchKeySearches, settings_search_key_hit_opens: counts.settingsSearchKeyHitOpens,
       auto_pip_kept_visible: counts.autoPictureInPictureKept, auto_pip_stayed_on_app_switch: counts.autoPictureInPictureStayedOnAppSwitch, selection_close_keys: counts.selectionCloseKeys, selection_close_key_tabs: counts.selectionCloseKeyTabs, selection_group_removals: counts.selectionGroupRemovals, selection_group_removal_tabs: counts.selectionGroupRemovalTabs,
       onboarding_imports: counts.onboardingImports, onboarding_helium_imports: counts.onboardingHeliumImports, onboarding_listed_only_imports: counts.onboardingListedOnlyImports, onboarding_glass_picks: counts.onboardingGlassPicks, onboarding_classic_picks: counts.onboardingClassicPicks, onboarding_tinted_glass_picks: counts.onboardingTintedGlassPicks, onboarding_steps_completed: counts.onboardingStepsCompleted, onboarding_steps_skipped: counts.onboardingStepsSkipped, onboarding_redo_opened: counts.onboardingRedoOpened, onboarding_redo_completed: counts.onboardingRedoCompleted, onboarding_redo_cancelled: counts.onboardingRedoCancelled, onboarding_preset_kept_imports: counts.onboardingPresetKeptImports, onboarding_wheel_moves: counts.onboardingWheelMoves, onboarding_key_moves: counts.onboardingKeyMoves, onboarding_click_moves: counts.onboardingClickMoves,
-      update_channel_switches: counts.updateChannelSwitches, update_channel_switch_offers: counts.updateChannelSwitchOffers, update_channel_switch_up_to_date: counts.updateChannelSwitchUpToDate, update_channel_switch_check_failures: counts.updateChannelSwitchCheckFailures, clean_up_suggestion_shows: counts.cleanUpSuggestionShows, clean_up_suggestion_once: counts.cleanUpSuggestionOnce, clean_up_suggestion_daily: counts.cleanUpSuggestionDaily, clean_up_suggestion_not_now: counts.cleanUpSuggestionNotNow, clean_up_suggestion_never_again: counts.cleanUpSuggestionNeverAgain, clean_up_undos: counts.cleanUpUndos, link_tabs_matched: counts.linkTabsMatched, link_tab_waits_skipped: counts.linkTabWaitsSkipped, link_tab_wait_timeouts: counts.linkTabWaitTimeouts, history_search_focus_requests: counts.historySearchFocusRequests, history_search_focused: counts.historySearchFocused, period_minutes: Math.round((Date.now() - countsSince) / 60_000),
+      update_channel_switches: counts.updateChannelSwitches, update_channel_switch_offers: counts.updateChannelSwitchOffers, update_channel_switch_up_to_date: counts.updateChannelSwitchUpToDate, update_channel_switch_check_failures: counts.updateChannelSwitchCheckFailures, clean_up_suggestion_shows: counts.cleanUpSuggestionShows, clean_up_suggestion_once: counts.cleanUpSuggestionOnce, clean_up_suggestion_daily: counts.cleanUpSuggestionDaily, clean_up_suggestion_not_now: counts.cleanUpSuggestionNotNow, clean_up_suggestion_never_again: counts.cleanUpSuggestionNeverAgain, clean_up_undos: counts.cleanUpUndos, clear_selected_tab_closes: counts.clearSelectedTabCloses, link_tabs_matched: counts.linkTabsMatched, link_tab_waits_skipped: counts.linkTabWaitsSkipped, link_tab_wait_timeouts: counts.linkTabWaitTimeouts, history_search_focus_requests: counts.historySearchFocusRequests, history_search_focused: counts.historySearchFocused, period_minutes: Math.round((Date.now() - countsSince) / 60_000),
     }, consent);
   }
   counts = { ...NO_COUNTS };
@@ -149,7 +152,7 @@ export const noteOnboarding = (event: "stepCompleted" | "stepSkipped" | "redoOpe
 
 export const noteOnboardingStyle = (style: "glass" | "classic", tinted: boolean) => void (counts[style === "glass" ? "onboardingGlassPicks" : "onboardingClassicPicks"]++, style === "glass" && tinted && counts.onboardingTintedGlassPicks++);
 
-export const noteSplit = (count: "splitPaneCloses" | "splitViewCloses" | "splitDividerResets" | "barSplitOpens" | "barSplitFullTabs" | "splitSuggestionKeyPicks", consent?: ConsentToken | null) => bump(consent, { [count]: 1 });
+export const noteSplit = (count: "splitPaneCloses" | "splitViewCloses" | "splitDividerResets" | "barSplitOpens" | "barSplitFullTabs" | "splitSuggestionKeyPicks" | "splitEmptyPaneEscapeCloses", consent?: ConsentToken | null) => bump(consent, { [count]: 1 });
 export const noteBackCloseToOpener = () => void counts.backClosesToOpener++;
 
 export const noteWindowCloseTabsKept = (n: number) => void (counts.windowCloseTabsKept += n);
@@ -163,8 +166,8 @@ export const noteScreenRecordingMissing = () => counts.screenRecordingMissing++;
 export const noteScreenRecordingAsked = () => counts.screenRecordingAsked++;
 
 export const noteWebKitPageKeptHidden = () => counts.webKitPagesKeptHidden++;
-export const noteAutoPictureInPictureKept = (reason: "onScreen" | "appSwitch" | "nothingPlaying", epoch: string) =>
-  counted(nativeConsent({ epoch }), () => (reason === "nothingPlaying" ? noteAutoPictureInPictureNothingPlaying() : counts[reason === "appSwitch" ? "autoPictureInPictureStayedOnAppSwitch" : "autoPictureInPictureKept"]++));
+export const noteAutoPictureInPictureKept = (reason: "onScreen" | "appSwitch" | "nothingPlaying" | AutoPipMiss, epoch: string) =>
+  isAutoPipMiss(reason) ? noteAutoPipMiss(reason, epoch) : counted(nativeConsent({ epoch }), () => (reason === "nothingPlaying" ? noteAutoPictureInPictureNothingPlaying() : counts[reason === "appSwitch" ? "autoPictureInPictureStayedOnAppSwitch" : "autoPictureInPictureKept"]++));
 
 export const noteExtensionInstallPrompt = () => counts.extensionInstallPrompts++;
 export const noteExtensionInstallPromptStale = (consent?: ConsentToken | null) => bump(consent, { extensionInstallPromptsStale: 1 });
@@ -188,6 +191,7 @@ export const notePopoverClosed = (by: "press" | "escape") => void counts[by === 
 export const noteSiteControls = (event: "autoplayBlock" | "autoplayAllow" | "autoplayPlaysBlocked" | "siteSettings" | "manageExtensions" | "sidebarField", times = 1, consent?: ConsentToken | null) => bump(consent, { [(({ autoplayBlock: "siteAutoplayBlocks", autoplayAllow: "siteAutoplayAllows", autoplayPlaysBlocked: "autoplayPlaysBlocked", siteSettings: "siteSettingsOpens", manageExtensions: "siteManageExtensionsOpens", sidebarField: "sidebarFieldSiteControlsOpens" }) as const)[event]]: times });
 
 export const noteCleanUp = (event: "suggestionShown" | "suggestionOnce" | "suggestionDaily" | "suggestionNotNow" | "suggestionNeverAgain" | "undone") => void counts[(({ suggestionShown: "cleanUpSuggestionShows", suggestionOnce: "cleanUpSuggestionOnce", suggestionDaily: "cleanUpSuggestionDaily", suggestionNotNow: "cleanUpSuggestionNotNow", suggestionNeverAgain: "cleanUpSuggestionNeverAgain", undone: "cleanUpUndos" }) as const)[event]]++;
+export const noteClearClosedSelectedTab = (consent?: ConsentToken | null) => bump(consent, { clearSelectedTabCloses: 1 });
 export const noteUpdateChannelSwitch = (outcome: "offered" | "upToDate" | "failed" | null, consent?: ConsentToken | null) => bump(consent, { updateChannelSwitches: 1, ...(outcome && { [outcome === "offered" ? "updateChannelSwitchOffers" : outcome === "upToDate" ? "updateChannelSwitchUpToDate" : "updateChannelSwitchCheckFailures"]: 1 }) });
 
 export const noteTabSwitcherOpened = (closedLeftOut: number, unseenLast: number) =>
@@ -227,6 +231,10 @@ export function noteSidebarPeek(bounce: boolean) {
 }
 
 export const noteSettingsSearchReveal = (via: "keyboard" | "click", rank: number, unshown: boolean) => void (counts[via === "keyboard" ? "settingsSearchKeyboardReveals" : "settingsSearchClickReveals"]++, counts[rank === 0 ? "settingsSearchTopPicks" : rank < 3 ? "settingsSearchTop3Picks" : "settingsSearchLowerPicks"]++, unshown && counts.settingsSearchUnshownReveals++);
+export const noteSettingsScrollRestore = (outcome: "applied" | "clamped" | "unreachable", consent: ConsentToken | null) => bump(consent, { [({ applied: "settingsScrollRestores", clamped: "settingsScrollRestoresClamped", unreachable: "settingsScrollRestoresUnreachable" } as const)[outcome]]: 1 });
+let relayCountsNow: ((consent: ConsentToken | null) => void) | null = null;
+export const setCountsRelayNow = (relay: ((consent: ConsentToken | null) => void) | null) => void (relayCountsNow = relay);
+export const noteSettingsRevealMiss = (consent: ConsentToken | null) => { if (stillValid(consent)) { bump(consent, { settingsRevealMisses: 1 }); relayCountsNow?.(consent); } };
 export const noteSettingsProfilePick = (consent?: ConsentToken | null) => bump(consent, { settingsProfilePicks: 1 });
 export const noteSettingsSearch = (event: "started" | "empty" | "dropped" | "closed" | "keys" | "keysOpened" | "shortcutsTyped" | "shortcutsRecorded" | "shortcutsEmpty", consent?: ConsentToken | null) => bump(consent, { [({ started: "settingsSearches", empty: "settingsSearchesEmpty", dropped: "settingsSearchesDropped", closed: "settingsSearchesClosed", keys: "settingsSearchKeySearches", keysOpened: "settingsSearchKeyHitOpens", shortcutsTyped: "shortcutsKeySearchesTyped", shortcutsRecorded: "shortcutsKeySearchesRecorded", shortcutsEmpty: "shortcutsKeySearchesEmpty" } as const)[event]]: 1 });
 export const noteWebKitLimits = (event: "engineRow" | "enginesPane") => void counts[({ engineRow: "webKitLimitsFromEngineRow", enginesPane: "webKitLimitsFromEnginesPane" } as const)[event]]++;
@@ -286,8 +294,6 @@ function watchTranslate() {
   });
 }
 
-
-
 const mb = (bytes: number) => Math.round(bytes / 1_048_576);
 
 async function sampleMemory(consent: ConsentToken | null) {
@@ -309,11 +315,12 @@ async function sampleMemory(consent: ConsentToken | null) {
     const mainProcessWork = await takeMainProcessWork();
     const contentDrift = await takeContentDriftCounts();
     const coldTabHolds = await takeColdTabHoldCounts();
-    capture("perf_memory", { ...mainProcessWork, ...contentDrift, ...takeFreezeCounts(consent), ...coldTabHolds, ...(stillValid(consent) ? takeStopBreathing() : {}),
+    const pageMetrics = await takePageMetrics();
+    capture("perf_memory", { ...mainProcessWork, ...contentDrift, ...pageMetrics, ...takeFreezeCounts(consent), ...coldTabHolds, ...(stillValid(consent) ? takeStopBreathing() : {}),
       total_mb: mb(total),
       browser_mb: mb(browser),
       gpu_mb: mb(gpu),
-      renderer_processes: renderers,
+      renderer_processes: renderers, ...processCpuFields(tasks),
       tabs: size(useBrowser.getState().tabs),
       uptime_hours: Math.round((Date.now() - startedAt) / HOUR_MS),
     }, consent);
@@ -331,12 +338,11 @@ function snapshotSettings(consent: ConsentToken | null) {
   const today = utcDay(Date.now()), passwordManagers = passwordManagerSnapshot();
   if (settingsSnapshotDay() === today || !passwordManagers) return;
   const state = useBrowser.getState();
-  const settings = { ...settingsSnapshot(state.settings), ...customColorProfiles(state.profiles, state.settings.defaultProfileId), ...openTabSyncProfiles(state.profiles), ...narrowWindows(state.windows, state.settings.sidebarWidth), ...airTrafficSnapshot(), ...currentThemeFileSnapshot(), ...pluginsSnapshot(), ...windowButtonLayoutSnapshot(), ...passwordManagers };
+  const settings = { ...settingsSnapshot(state.settings), ...customColorProfiles(state.profiles, state.settings.defaultProfileId), ...openTabSyncProfiles(state.profiles), ...narrowWindows(state.windows, state.settings.sidebarWidth), ...airTrafficSnapshot(), ...currentThemeFileSnapshot(), ...pluginsSnapshot(), ...windowButtonLayoutSnapshot(), ...passwordManagers, ctrl_tab_mode: ctrlTabChoice(state) };
   void Promise.all([currentAppIcon().catch(() => null), listComponents().catch(() => null)]).then(([icon, components]) => (capture(SETTINGS_SNAPSHOT_EVENT, { ...settings, ...appIconSetting(icon), ...widevineSetting(components) }, consent), stillValid(consent) && markSettingsSnapshot(today)));
 }
 
-let previousContext: SavedContext | null = null;
-let launchCrashRead: ReturnType<typeof setTimeout> | undefined;
+let previousContext: SavedContext | null = null, launchCrashRead: ReturnType<typeof setTimeout> | undefined;
 
 function hourly() {
   snapshotSettings(consentToken());
@@ -351,8 +357,10 @@ export function startUsage(continuing = false) {
   const session = startClient(continuing);
   previousContext = session.context;
   releaseTopAppsSharing();
-  if (!continuing) void launchEvents(session, consentToken());
-  if (!continuing) launchCrashRead = setTimeout(() => void reportNativeCrashes([previousContext]), session.previous === "unclean" ? 1000 : 5000);
+  if (!continuing) {
+    void launchEvents(session, consentToken());
+    launchCrashRead = setTimeout(() => void reportNativeCrashes([previousContext]), session.previous === "unclean" ? 1000 : 5000);
+  }
   startWatchChecks();
   startLocalStore(LOCAL_STORE_LAUNCH_DELAY_MS);
   startContextSamples();
@@ -370,11 +378,8 @@ export function startUsage(continuing = false) {
   setInterval(hourly, HOUR_MS);
   onAppEvent((e) => {
     if (e.type === "pipActivationReturn") notePiPActivationReturn(e.success, nativeConsent(e)); else if (e.type === "pipActivationHandBack") notePictureInPictureHandBack(e.again, nativeConsent(e));
-    else if (e.type === "willQuit") {
-      clearTimeout(launchCrashRead);
-      stopContextSamples();
-      sessionEnding();
-    } else if (e.type === "quitCancelled") startContextSamples();
+    else if (e.type === "willQuit") { clearTimeout(launchCrashRead); stopContextSamples(); sessionEnding(); }
+    else if (e.type === "quitCancelled") startContextSamples();
   });
 }
 

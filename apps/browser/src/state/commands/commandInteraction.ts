@@ -120,3 +120,5 @@ export const COMMAND_INTERACTION: Readonly<Record<BrowserCommand, CommandInterac
   closeTabGroup: "asksWhen",
   openProfileMenu: "interactive",
 };
+
+export const KEY_REPEAT_IGNORED_COMMANDS: ReadonlySet<string> = new Set(["focusCommandBar"]);

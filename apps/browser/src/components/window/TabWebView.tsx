@@ -16,7 +16,8 @@ import { opaqueCard } from "../ui/opaqueCard";
 import { handOff, takeHandOff, wantsPage } from "../../state/tabs/tabPages";
 import { noteDiscarded, noteGone, noteReady } from "../../state/tabs/tabLifecycle";
 import { noteTabHidden, presentTab, trackPageArrival } from "../../state/tabs/busyTabWatch";
-import { noteWebKitPage, offerWebKit, persistEngine } from "../../state/engines/actions";
+import { notePageCommit, noteWebKitPage, persistEngine, refusedVideoSiteOf } from "../../state/engines/actions";
+import { offerWebKit } from "../../state/engines/siteMoves";
 import { heldBySwap, watchFirstPaint } from "../../state/engines/engineSwap";
 import { useRetiringEngine } from "../../state/engines/hooks";
 import { noteProtectedVideoRefusal } from "../../state/telemetry/protectedVideoCounts";
@@ -38,7 +39,7 @@ import { fieldProviderHint, fieldProviderOpened, verificationCodeFound, type Fie
 import { verificationCodeDocument, verificationCodeTabGone } from "../../state/site/verificationCodes";
 import { hoverStatus } from "../../state/tabs/hoverStatus";
 import { endPageDocument, forgetPageDocument, notePageDocument } from "../../state/plugins/pageBarDocuments";
-import { leftPage, pageAskedToClose, pageEnded } from "../../state/tabs/pageEvents";
+import { arrivedOnFirstPage, leftPage, pageAskedToClose, pageEnded } from "../../state/tabs/pageEvents";
 import { copyLinkToSelection, searchSelection, setPageSelection } from "../../state/site/selection";
 import { shareFromPage } from "../../state/site/share";
 import { useAutoPictureInPicture } from "../../state/media/pip";
@@ -223,6 +224,7 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
         noteCommit(tabId, committedUrl, committedAt, httpStatus);
         notePluginStateCommit(tabId, committedUrl, committedAt);
         verificationCodeDocument(tabId, committedAt);
+        if (!retired) notePageCommit(tabId, committedAt);
         notePageDocument(tabId, reported, committedUrl, committedAt, isIncognitoProfile(profileId), documentReporter);
         if (reopening.current && reported && !isBlankAddress(reported)) {
           reopening.current = false;
@@ -265,7 +267,8 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
         pageArrived();
         dropOutlivedFavicon(tabId, url, isLoading);
         if (engine === "webkit") noteWebKitPage(tabId, { url, title, isLoading, committedUrl: committedUrl ?? "" });
-        if (lastPage.current !== null && withoutFragment(url) !== lastPage.current) leftPage(tabId, url, lastPage.current, engine, peekOf !== undefined);
+        if (lastPage.current !== null && withoutFragment(url) !== lastPage.current) leftPage(tabId, url, lastPage.current, engine);
+        else if (lastPage.current === null) arrivedOnFirstPage(tabId, url, engine);
         lastPage.current = withoutFragment(url);
         patchPage(tabId, { themeColorSource: themeColorSource ?? null });
       }}
@@ -358,7 +361,7 @@ function EngineWebView({ tabId, visible, selected = true, warm, peekOf, engine, 
       onSelection={(selection) => setPageSelection(tabId, selection)}
       onScroll={(state) => noteScroll(tabId, state)}
       onProtectedMedia={(request) => {
-        if (engine === "chromium") noteProtectedVideoRefusal(request, consentToken());
+        if (engine === "chromium") noteProtectedVideoRefusal(request, consentToken(), refusedVideoSiteOf(tabId));
         offerWebKit(tabId, request);
       }}
       onAutoplayBlocked={(count) => noteSiteControls("autoplayPlaysBlocked", count)}

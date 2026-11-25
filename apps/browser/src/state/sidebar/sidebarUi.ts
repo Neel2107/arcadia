@@ -11,6 +11,7 @@ export type Hover = Target & { windowId: string; anchor: Anchor };
 type SidebarUi = {
   renaming: (Target & { windowId: string }) | null;
   iconPicker: (Target & { windowId: string; anchor: Anchor | null }) | null;
+  tileLetters: { windowId: string; tabId: string; anchor: Anchor | null } | null;
   hover: Hover | null;
   searchTabs: string | null;
   switcher: { windowId: string; ids: string[]; index: number; mounted: boolean; visible: boolean } | null;
@@ -20,6 +21,7 @@ type SidebarUi = {
 export const useSidebarUi = create<SidebarUi>()(() => ({
   renaming: null,
   iconPicker: null,
+  tileLetters: null,
   hover: null,
   searchTabs: null,
   switcher: null,

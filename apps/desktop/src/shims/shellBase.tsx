@@ -11,6 +11,7 @@ import { createHostDocuments } from "../hostDocuments";
 import { createAppearance, type AppearanceMode } from "../hostAppearance";
 import { createHostWindowOpener, dropRefusedWindow } from "../hostWindowProfiles";
 import { createLinuxWindowIds } from "../windowSweep";
+import { handKeyboardToShell } from "../pageFocus";
 import { useBrowser } from "../../../browser/src/state/browser/store";
 
 export { Symbol } from "./web/Symbol";
@@ -29,6 +30,7 @@ export {
 export { FadeLabel } from "./web/FadeLabel";
 export { EdgeFadeMask } from "./web/EdgeFadeMask";
 export { MouseArea } from "./web/MouseArea";
+export { WheelArea } from "./web/WheelArea";
 export { FileDropArea } from "./web/FileDropArea";
 export { PopoverBubble } from "./web/PopoverBubble";
 export { showMenu } from "../menus";
@@ -104,7 +106,10 @@ export const launchConfig = () => hostLaunchConfig(ardiaHost);
 
 const claimHostFocus = async (generation: number, tag: number) => {
   const node = tag as unknown;
-  if (node instanceof HTMLElement) node.focus();
+  if (node instanceof HTMLElement) {
+    node.focus();
+    await handKeyboardToShell(node);
+  }
   else await hostModuleMethod("ArdiaShell", "claimFocus")(generation, tag);
 };
 const openHostWindow = ardiaHost ? createHostWindowOpener(ardiaHost, () => useBrowser.getState(), (event) => emitWindowEvent(event), (id) => dropRefusedWindow(useBrowser, id)) : undefined;

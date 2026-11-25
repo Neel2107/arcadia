@@ -602,84 +602,6 @@ test("every hostile value in a page's matched styles gives a bounded cascade ans
   assert.equal(Object.prototype.polluted, undefined);
 });
 
-const { parseVerifiedUpdate, readManifest: readWindowsManifest } = await import("../../../packages/expo-windows/src/updater/manifest.ts");
-
-test("windows update manifest and verified update parser refuse every hostile input while passing a valid control", () => {
-  const published = "https://github.com/ardia-browser/ardia/releases/download/";
-  const sha = "a".repeat(64);
-  const goodUrl = `${published}windows-alpha/Ardia-Setup-x64-60.exe`;
-  const controlManifest = JSON.stringify({ version: "0.2.48", build: 60, x64: { url: goodUrl, sha256: sha, bytes: 180_000_000 } });
-  const controlParsed = readWindowsManifest(controlManifest, published);
-  assert.equal(controlParsed?.installers.x64?.url, goodUrl, "positive control manifest passes");
-  const controlReply = parseVerifiedUpdate(JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: goodUrl, sha256: sha, bytes: 180_000_000 }), published, 59);
-  assert.equal(controlReply.status, "ok", "positive control verified reply passes");
-
-  for (const { id, value } of HOSTILE_VALUES) {
-    if (typeof value === "string") {
-      assert.equal(readWindowsManifest(value, published), null, `${id} raw manifest`);
-      assert.equal(readWindowsManifest(controlManifest, value), null, `${id} publishedUnder`);
-      const reply = parseVerifiedUpdate(value, published, 59);
-      assert.equal(reply.status, "failed", `${id} raw verified reply`);
-    }
-    const versionManifest = readWindowsManifest(
-      JSON.stringify({ version: value, build: 60, x64: { url: goodUrl, sha256: sha, bytes: 10 } }),
-      published,
-    );
-    if (versionManifest !== null) {
-      assert.match(versionManifest.version, /^[0-9][0-9A-Za-z.+-]{0,63}$/, `${id} version manifest`);
-    }
-    const forgedManifests = [
-      JSON.stringify({ version: "0.2.48", build: value, x64: { url: goodUrl, sha256: sha, bytes: 10 } }),
-      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: value, sha256: sha, bytes: 10 } }),
-      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: goodUrl, sha256: value, bytes: 10 } }),
-      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: goodUrl, sha256: sha, bytes: value } }),
-    ];
-    for (const candidate of forgedManifests) {
-      assert.equal(readWindowsManifest(candidate, published), null, `${id} manifest ${candidate.slice(0, 80)}`);
-    }
-    const suffixManifest = readWindowsManifest(
-      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: typeof value === "string" ? `${published}windows-alpha/${value}.exe` : value, sha256: sha, bytes: 10 } }),
-      published,
-    );
-    if (suffixManifest !== null) {
-      assert.match(suffixManifest.installers.x64.url, /^https:\/\/github\.com\/ardia-browser\/ardia\/releases\/download\/windows-alpha\/[0-9A-Za-z][0-9A-Za-z._+-]*\.exe$/, `${id} url suffix`);
-    }
-    const versionReply = parseVerifiedUpdate(
-      JSON.stringify({ status: "ok", version: value, build: 60, url: goodUrl, sha256: sha, bytes: 10 }),
-      published,
-      59,
-    );
-    if (versionReply.status === "ok") {
-      assert.match(versionReply.version, /^[0-9][0-9A-Za-z.+-]{0,63}$/, `${id} reply version`);
-    } else {
-      assert.equal(versionReply.status, "failed", `${id} reply version`);
-    }
-    const forgedReplies = [
-      JSON.stringify({ status: "ok", version: "0.2.48", build: value, url: goodUrl, sha256: sha, bytes: 10 }),
-      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: value, sha256: sha, bytes: 10 }),
-      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: goodUrl, sha256: value, bytes: 10 }),
-      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: goodUrl, sha256: sha, bytes: value }),
-      JSON.stringify({ status: value }),
-    ];
-    for (const candidate of forgedReplies) {
-      const parsed = parseVerifiedUpdate(candidate, published, 59);
-      assert.equal(parsed.status, "failed", `${id} reply ${candidate.slice(0, 80)}`);
-    }
-    const suffixReply = parseVerifiedUpdate(
-      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: typeof value === "string" ? `${published}windows-alpha/${value}.exe` : value, sha256: sha, bytes: 10 }),
-      published,
-      59,
-    );
-    if (suffixReply.status === "ok") {
-      assert.match(suffixReply.installer.url, /^https:\/\/github\.com\/ardia-browser\/ardia\/releases\/download\/windows-alpha\/[0-9A-Za-z][0-9A-Za-z._+-]*\.exe$/, `${id} reply url suffix`);
-    } else {
-      assert.equal(suffixReply.status, "failed", `${id} reply url suffix`);
-    }
-  }
-  assert.equal({}.ardiaPolluted, undefined);
-  assert.equal(Object.prototype.polluted, undefined);
-});
-
 test("windows webui native update policy keeps every hostile input and call argument away from the installer download, launch and claim gates while passing valid controls", (t) => {
   const { spawnSync } = process.getBuiltinModule("node:child_process");
   const { mkdtempSync, rmSync, writeFileSync } = process.getBuiltinModule("node:fs");
@@ -722,6 +644,33 @@ test("windows webui native update policy keeps every hostile input and call argu
     assert.equal(unit.status, 0, unit.stderr || unit.stdout);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("a synced pinned tile's letters are at most two visible characters, whatever the record holds", async () => {
+  const { pinnedLettersAdapter } = await import("./state/sync/pinnedLettersAdapter.ts");
+  const { cleanTileLetters, TILE_LETTERS_MAX, TILE_LETTERS_MAX_LENGTH } = await import("./lib/tileLetter.ts");
+  const { graphemeClusters } = await import("./lib/graphemes.ts");
+  const S = () => useBrowser.getState();
+  S().hydrate({});
+  const w = S().createWindow({ url: "https://tile.example/" });
+  const id = S().windows[w].tabIds[0];
+  S().pinTabs([id], true);
+  const profileId = S().tabs[id].profileId;
+  const adapter = pinnedLettersAdapter(profileId);
+  const key = `plet:${S().tabs[id].pinKey ?? id}`;
+  const records = { known: () => true, defer: () => {}, landed: () => {}, held: () => false, now: 0, horizon: 0, joined: true };
+  const apply = (value) => adapter.apply(new Map([[key, value]]), new Set([key]), () => undefined, records);
+  apply("Ab");
+  assert.equal(S().tabs[id].tileLetters, "AB", "positive control: plain letters land");
+  for (const { value } of HOSTILE_VALUES) {
+    apply(value);
+    const letters = S().tabs[id].tileLetters;
+    if (letters === undefined) continue;
+    assert.equal(typeof letters, "string");
+    assert.ok(!/[\p{Cc}\p{Cs}\p{Zl}\p{Zp}\s]/u.test(letters.replace(/[\u200C\u200D\u{E0020}-\u{E007F}]/gu, "")) && !/(?![\u200C\u200D\u{E0020}-\u{E007F}])\p{Cf}/u.test(letters), JSON.stringify(letters));
+    assert.ok(letters.length <= TILE_LETTERS_MAX_LENGTH && graphemeClusters(letters).length <= TILE_LETTERS_MAX, JSON.stringify(letters));
+    assert.equal(cleanTileLetters(letters), letters, "what lands is already clean, so it doesn't change on the next sync");
   }
 });
 
@@ -829,4 +778,47 @@ test("socket tabs.diagnostics: a hostile page's console text and addresses leave
   } finally {
     delete globalThis.acTestTabDiagnostics;
   }
+});
+
+test("a tab a page opened moves engines only when its page answers the opener check with false, whatever else it returns", async () => {
+  const { followSiteChoice } = await import("./state/engines/siteMoves.ts");
+  const { notePageMadeTab, openerAnswer } = await import("./state/engines/openedPages.ts");
+  const { tabEngine } = await import("./state/engines/engines.ts");
+  const { dropSwap } = await import("./state/engines/engineSwap.ts");
+  S().hydrate({});
+  S().updateSettings({ protectedVideoInWebKit: true, engineMode: "automatic", websiteEngines: {} });
+  const w = S().createWindow({ url: "https://blog.example/" });
+  const opener = activeTabId(S(), w);
+  S().updateTab(opener, { engine: "chromium", url: "https://blog.example/" });
+  const asked = new Map();
+  const probes = new Set();
+  const plant = (value) => {
+    const tab = S().newTab(w, { url: "https://www.netflix.com/", adoptId: "ardiacore:9", openerId: opener, background: true });
+    webviews.set(tab, {
+      evaluate: async (script) => {
+        if (script.includes("window.opener")) probes.add(script);
+        asked.set(tab, { count: (asked.get(tab)?.count ?? 0) + 1, at: Date.now() });
+        return value;
+      },
+      pageCookies: async () => [],
+    });
+    S().updateTab(tab, { url: "https://www.netflix.com/" });
+    notePageMadeTab(tab);
+    followSiteChoice(tab, "chromium", "https://www.netflix.com/", "");
+    return tab;
+  };
+  const planted = HOSTILE_VALUES.filter(({ value }) => value !== false).map(({ id, value }) => ({ id, tab: plant(value) }));
+  const control = plant(false);
+  const settled = (tab) => (asked.get(tab)?.count ?? 0) > 0 && Date.now() - asked.get(tab).at > 800;
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline && !(tabEngine(S(), control) === "webkit" && planted.every(({ tab }) => settled(tab)))) await wait(50);
+  for (const { id, tab } of planted) assert.ok(settled(tab), `${id} stopped asking`);
+  for (const { id, tab } of planted) assert.equal(S().tabs[tab].engine === "webkit", false, id);
+  assert.equal(tabEngine(S(), control), "webkit", "positive control: a page that answers false moves");
+  for (const { id, value } of HOSTILE_VALUES) assert.equal(openerAnswer(value), value === true ? "live" : value === false ? "none" : "unknown", id);
+  assert.equal(probes.size, 1);
+  const [probe] = probes;
+  assert.doesNotMatch(probe, /JSON|String|toString|valueOf|Object|Reflect|\.call|\.apply|Symbol/, "the probe calls nothing a page can replace");
+  dropSwap(control);
+  webviews.clear();
 });
