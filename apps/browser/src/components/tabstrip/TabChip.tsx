@@ -190,7 +190,8 @@ export const TabChip = memo(function TabChip({ tabId, width, drawn, tuck, dragge
   const closable = active || !!tuck || width >= CLOSE_MIN_CHIP;
   const onBand = active && !floating && !!palette.background;
   const ink = onBand ? palette.text : active ? theme.tabSelectedText : theme.textTab;
-  const plate = active ? (onBand ? palette.background! : theme.card) : over(theme.tabHover, over(groupTray(groupColor, tokens), theme.windowTint[0]));
+  const strip = over(groupTray(groupColor, tokens), theme.windowTint[0]);
+  const plate = active ? (onBand ? palette.background! : over(theme.card, strip)) : over(theme.tabHover, strip);
   return (
     <ThemeOverride theme={theme}>
       <Animated.View {...chipHover.hoverProps} style={{ width: drawn ?? width, height: TOP_STRIP_HEIGHT }}>
