@@ -13,7 +13,7 @@ import { pressStripClose } from "../../state/tabs/stripPress";
 import { workspaceSnapshot } from "../../state/browser/current";
 import { TabBadges } from "../media/TabBadges";
 import { TabIcon } from "../sidebar/TabIcon";
-import { Button, continuousCorners, FadeLabel, HoverFill, Symbol, useTooltip } from "../ui";
+import { Button, continuousCorners, FadeLabel, GradientFill, HoverFill, Symbol, useTooltip, type GradientStop } from "../ui";
 import { surfaceTheme, useTheme } from "../ui/theme";
 import { ThemeOverride } from "../ui/ThemeOverride";
 import { toolbarPalette, useEasedColor } from "../ui/toolbarColors";
@@ -29,7 +29,7 @@ import { dropAt, type GroupOut, type StripDrag } from "./model";
 import { PinnedFace } from "./PinnedFace";
 import { SelectedTab } from "./SelectedTab";
 import { CELL_STEP, dragRange, leaveIndex, type DragGeometry } from "./stripGroups";
-import { AUDIO_BADGE, CHIP_LABEL_GAP, CHIP_PAD, CLOSE_AFTER_SELECT_MS, CLOSE_MIN_CHIP, FAVICON, GAP, ITEM_HEIGHT, ITEM_TOP, PINNED_CELL, tabCloseRadius, tabRadius, TITLE_FADE_MAX, TITLE_FADE_MIN, TITLE_MIN_CHIP, TOP_STRIP_HEIGHT } from "./tokens";
+import { AUDIO_BADGE, CHIP_LABEL_GAP, CHIP_PAD, CLOSE_AFTER_SELECT_MS, CLOSE_PLATE_FADE, CLOSE_MIN_CHIP, FAVICON, GAP, ITEM_HEIGHT, ITEM_TOP, PINNED_CELL, tabCloseRadius, tabRadius, TITLE_FADE_MAX, TITLE_FADE_MIN, TITLE_MIN_CHIP, TOP_STRIP_HEIGHT } from "./tokens";
 import { useStripDrag } from "./useStripDrag";
 import { useStripPick } from "./stripPick";
 import { StripScrollContext } from "./stripScroll";
@@ -292,7 +292,10 @@ function ChipRow({
       {inset === undefined && !closing ? badge : null}
       {closing ? (
         <View pointerEvents="box-none" style={CLOSE_OVERLAY}>
-          <View style={[continuousCorners(tabRadius()), { backgroundColor: plate }]}>{action}</View>
+          <View>
+            <ClosePlateFade plate={plate} />
+            <View style={[continuousCorners(tabRadius()), { backgroundColor: plate }]}>{action}</View>
+          </View>
         </View>
       ) : null}
     </ItemRow>
@@ -300,6 +303,16 @@ function ChipRow({
 }
 
 const CLOSE_OVERLAY = { position: "absolute", right: CHIP_PAD.right, top: 0, bottom: 0, justifyContent: "center" } as const;
+
+const SOLID: readonly GradientStop[] = [[0, 1], [1, 1]];
+
+function ClosePlateFade({ plate }: { plate: string }) {
+  const overlap = tabRadius();
+  const width = CLOSE_PLATE_FADE.width + overlap;
+  const solidFrom = CLOSE_PLATE_FADE.width / width;
+  const fade = CLOSE_PLATE_FADE.curve.map(([at, alpha]) => [at * solidFrom, alpha] as const).concat([[1, 1]]);
+  return <GradientFill color={plate} stops={SOLID} fade={fade} style={{ position: "absolute", top: 0, bottom: 0, left: -CLOSE_PLATE_FADE.width, width }} />;
+}
 
 function groupTray(color: GroupColor | null | undefined, tokens: SidebarTokens): string {
   if (color === undefined) return ink.clear;
