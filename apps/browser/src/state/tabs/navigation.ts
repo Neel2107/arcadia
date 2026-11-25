@@ -20,7 +20,7 @@ import { liveOf } from "./tabLive";
 
 const store = () => useBrowser.getState();
 
-export function backClosesTab(s: BrowserState, tabId: string): boolean {
+function backClosesTab(s: BrowserState, tabId: string): boolean {
   const tab = s.tabs[tabId];
   if (!tab?.openerId) return false;
   if (!isPeekTab(s, tabId) && tab.linkOpenerId !== tab.openerId) return false;
@@ -30,9 +30,9 @@ export function backClosesTab(s: BrowserState, tabId: string): boolean {
   return true;
 }
 
-export function canGoBack(tabId: string, live: Pick<TabLive, "canGoBack">): boolean {
+export function canGoBack(tabId: string, live: Pick<TabLive, "canGoBack">, s: BrowserState = store()): boolean {
   const page = pageOf(tabId);
-  return !page.newTabShown && (live.canGoBack || page.backToNewTab || !!page.engineBack || backClosesTab(store(), tabId));
+  return !page.newTabShown && (live.canGoBack || page.backToNewTab || !!page.engineBack || backClosesTab(s, tabId));
 }
 
 export function canGoForward(tabId: string, live: Pick<TabLive, "canGoForward">): boolean {

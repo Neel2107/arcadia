@@ -1,5 +1,6 @@
 import type { EventSubscription } from "expo-modules-core";
 import type { ViewProps } from "react-native";
+import type { PluginsNative } from "./generated/native";
 
 export type PluginFolderEntry = {
   name: string;
@@ -17,8 +18,8 @@ export type PluginFolderEntry = {
 
 export type OfficialCandidate = { folderId: string; text: string; legacyHash: string; version: string };
 export type OfficialPinned = { name: string; version: string; folderId: string };
-export type OfficialFetchCode = "offline" | "failed" | "verify" | "cancelled" | "unsupported";
-export type OfficialFetchResult = { ok: true; candidate: OfficialCandidate; reused?: boolean } | { ok: false; code: OfficialFetchCode; reason: string };
+type OfficialFetchCode = "offline" | "failed" | "verify" | "cancelled" | "unsupported";
+export type OfficialFetchResult = { ok: true; candidate: OfficialCandidate; reused?: boolean } | { ok: false; code: OfficialFetchCode; reason: string; cause?: string };
 export type OfficialFetchProgress = { name: string; received: number; total: number };
 
 export type PluginProgramsSpec = {
@@ -31,7 +32,7 @@ export type PluginProgramsSpec = {
 export type PluginAfterUpdateQuitStops = { consent: string; exitedOnTerm: number; killed: number };
 export type PluginProgramRegistry = { claims: Record<string, string>; failClosed: boolean; legacyOwners: string[] };
 export type PluginProgramsResult =
-  | { ok: true; linked: string[]; refused: Record<string, string>; binDir: string; adopted: boolean; adoptBusy?: boolean; kept?: string }
+  | { ok: true; linked: string[]; refused: Record<string, string>; causes?: Record<string, string>; binDir: string; adopted: boolean; adoptBusy?: boolean; kept?: string }
   | { ok: false; reason?: string; stale?: true };
 
 export type PluginStartSpec = {
@@ -57,39 +58,9 @@ export type PluginFetchResult =
 export type PluginFileReadResult = { ok: true; text: string } | { ok: false; reason: string };
 export type PluginStorageReadResult = { status: "ok"; text: string } | { status: "missing" } | { status: "error"; reason: string };
 
-export type PluginsNative = {
-  folder(): string;
-  list(): Promise<PluginFolderEntry[]>;
-  start(spec: PluginStartSpec): Promise<PluginStartResult>;
-  stop(name: string, run: number, graceMs: number): Promise<void>;
-  reply(name: string, run: number, line: string): void;
-  event(name: string, run: number, line: string): void;
-  call(name: string, run: number, line: string): void;
-  remove(name: string, official: boolean, folderId: string | null): Promise<PluginRemoveResult>;
-  linkPrograms(spec: PluginProgramsSpec): Promise<PluginProgramsResult>;
-  unlinkPrograms(name: string, programs: string[], remove: boolean): Promise<{ ok: boolean }>;
-  sweepPrograms(active: string[]): Promise<void>;
-  takeAfterUpdateQuitStops(): Promise<PluginAfterUpdateQuitStops>;
-  setAfterUpdateQuitConsent(consent: string): void;
-  legacyProgramsInstalled(): Promise<string[]>;
-  programRegistry(): Promise<PluginProgramRegistry>;
-  revealLog(name: string): void;
-  revealFolder(): void;
-  devSnapshotPage(name: string, path: string): Promise<boolean>;
-  officialPlugins(): Promise<OfficialPinned[] | null>;
-  fetchOfficial(name: string): Promise<OfficialFetchResult>;
-  cancelOfficialFetch(name: string): void;
-  promoteOfficial(name: string, folderId: string, approved: string): Promise<{ ok: true } | { ok: false; reason: string }>;
-  hostFetch(spec: PluginFetchSpec): Promise<PluginFetchResult>;
-  storageRead(name: string): Promise<PluginStorageReadResult>;
-  storageWrite(name: string, text: string): Promise<{ ok: boolean; reason?: string }>;
-  readPluginFile(name: string, folderId: string, approved: string, path: string): Promise<PluginFileReadResult>;
-  addListener(name: "onLine", listener: (e: PluginLine) => void): EventSubscription;
-  addListener(name: "onExit", listener: (e: PluginExit) => void): EventSubscription;
-  addListener(name: "onOfficialFetch", listener: (e: OfficialFetchProgress) => void): EventSubscription;
-};
+export type { PluginsNative };
 
-export type PluginPageEvent<T> = { nativeEvent: T };
+type PluginPageEvent<T> = { nativeEvent: T };
 
 export type PluginPageProps = ViewProps & {
   plugin: string;

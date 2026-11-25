@@ -34,7 +34,7 @@ test("with the page under the bars, a failed page fills with the page colour the
   const design = Platform.OS === "ios" ? "redesigned" : "material";
   const root = renderSurface(
     <DesignProvider design={design}>
-      <BrowsingScreen tab={tab} />
+      <BrowsingScreen tabId={tab.id} />
     </DesignProvider>,
     { flushTimers: false },
   );

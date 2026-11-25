@@ -1,3 +1,4 @@
+import { withEntry } from "../browser/changes";
 import type { StateCreator } from "zustand";
 import type { AdoptId } from "../browser/types";
 import type { BrowserState } from "../browser/store";
@@ -11,11 +12,11 @@ import { pinnedGroupMembers } from "../browser/structure";
 import { orderSections } from "../groups/groups";
 import { withoutFragment } from "../../lib/url";
 
-export type PeekPoint = { x: number; y: number };
+type PeekPoint = { x: number; y: number };
 export type SiteLanding = { host: string; until: number; then: "tab" | "source" };
 export type Peek = { tabId: string; sourceId: string; sourcePage: string; from: PeekPoint | null; landing?: SiteLanding };
-export type PeekOptions = { adoptId?: AdoptId; landing?: SiteLanding };
-export type PeekToTabOptions = { activate?: boolean; sourceId?: string };
+type PeekOptions = { adoptId?: AdoptId; landing?: SiteLanding };
+type PeekToTabOptions = { activate?: boolean; sourceId?: string };
 
 export type PeekSlice = {
   peeks: Record<string, Peek>;
@@ -107,7 +108,7 @@ export const createPeekSlice: StateCreator<BrowserState, [], [], PeekSlice> = (s
     const peek: Peek = { tabId: tab.id, sourceId: sourceTabId, sourcePage: withoutFragment(s.tabs[sourceTabId]!.url), from, ...(landing ? { landing } : {}) };
     set({
       ...s,
-      tabs: { ...s.tabs, [tab.id]: tab },
+      tabs: withEntry(s.tabs, tab.id, tab),
       peeks: { ...s.peeks, [sourceTabId]: peek },
     });
     return tab.id;
@@ -128,7 +129,7 @@ export const createPeekSlice: StateCreator<BrowserState, [], [], PeekSlice> = (s
     const loaded = hasNavigatedPage(tab);
     const moved = { ...tab, openerId: s.tabs[peek.sourceId] ? peek.sourceId : null, page: loaded ? renavigated(tab, navigationTo(tab.url)) : tab.page, lastActiveAt: Date.now() };
     if (moved.openerId) moved.linkOpenerId = peek.sourceId;
-    const tabs = { ...s.tabs, [tab.id]: moved };
+    const tabs = withEntry(s.tabs, tab.id, moved);
     const w = s.windows[windowId]!;
     const tabIds = [...w.tabIds];
     tabIds.splice(Math.min(insertionIndex({ ...s, tabs }, w, moved, false), tabIds.length), 0, tab.id);

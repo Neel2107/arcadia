@@ -4,7 +4,7 @@ import { createElement, type ComponentType, type ReactNode } from "react";
 import { Platform } from "react-native";
 import type { LookColors } from "./look";
 
-export type ModifierConfig = { $type: string; [key: string]: unknown; eventListener?: (args: unknown) => void };
+type ModifierConfig = { $type: string; [key: string]: unknown; eventListener?: (args: unknown) => void };
 
 type ModifierHelpers = {
   createModifier: (type: string, params?: Record<string, unknown>) => ModifierConfig;
@@ -29,7 +29,7 @@ export const SETTINGS_UI_MODULE = "ArdiaPhoneSettingsUI";
 
 export const settingsUIAvailable = () => requireOptionalNativeModule(SETTINGS_UI_MODULE) !== null;
 
-export type SettingsPieceProps = { testID?: string; modifiers?: ModifierConfig[]; children?: ReactNode };
+type SettingsPieceProps = { testID?: string; modifiers?: ModifierConfig[]; children?: ReactNode };
 
 const views = new Map<string, ComponentType<object>>();
 
@@ -137,6 +137,8 @@ export const navigationBarBackButtonHidden = (hidden: boolean) => ardia("navigat
 export const minListRowHeight = (height: number) => ardia("minListRowHeight", { height });
 
 export const contentMargins = (params: { edges: "top" | "bottom" | "all"; length: number }) => ardia("contentMargins", params);
+
+export const neverBounces = () => ardia("neverBounces");
 
 export const modifierList = (...items: (ModifierConfig | null | undefined | false)[]): ModifierConfig[] => items.filter((item): item is ModifierConfig => !!item);
 

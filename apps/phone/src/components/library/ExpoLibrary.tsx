@@ -60,10 +60,11 @@ import {
 import { useSync } from "../../state/sync/store";
 import { useSelectedProfile, useSyncEnabled } from "../../state/sync/hooks";
 import { useTabs } from "../../state/tabs/store";
+import { usePageUi } from "../../state/page/store";
 import { ExpoClearDataPage } from "../settings/ExpoClearDataPage";
 import { actionWords } from "../../lib/sharedWords";
 import { DoneToolbarItem } from "../settings/ExpoSettingsDone";
-import { contentMargins, iconRoles, modifierList, settingsChrome, sfName } from "../ui";
+import { contentMargins, iconRoles, modifierList, neverBounces, settingsChrome, sfName } from "../ui";
 import { LinkMenuItems, ListLoading, ListNoResults, ListRow, ListRowSubtitle, listSheetWords, opensPage } from "./listSheet";
 import { libraryLayout as L, listRowLayout } from "./listSheetTokens";
 
@@ -78,16 +79,17 @@ const shareable = (url: string) => /^https?:\/\//i.test(url);
 
 export function ExpoLibrarySheet() {
   const open = useLibrary((s) => s.open);
+  const inPageMenu = usePageUi((s) => s.menuOpen && s.menuPage === "library");
   return (
     <Host testID="expoLibrarySheet" style={styles.anchor} pointerEvents="none">
-      <BottomSheet isPresented={open} onIsPresentedChange={(presented) => (presented ? undefined : closeLibrary())}>
+      <BottomSheet isPresented={open && !inPageMenu} onIsPresentedChange={(presented) => (presented ? undefined : closeLibrary())}>
         <LibraryNavigation />
       </BottomSheet>
     </Host>
   );
 }
 
-function LibraryNavigation() {
+export function LibraryNavigation() {
   const section = useLibrary((s) => s.section);
   const path = useLibrary((s) => s.path);
   const hasFiles = useLibrary((s) => s.files.length > 0);
@@ -104,6 +106,7 @@ function LibraryNavigation() {
     navigationBarTitleDisplayMode("inline"),
     tint(PlatformColor("systemBlue")),
     settingsChrome(),
+    neverBounces(),
     prompt ? searchable(searchText, { placement: "navigationBarDrawer", prompt, onChange: setQuery }) : null,
   );
   const content = section === "history" ? <HistoryContent query={query} page={page} /> : section === "bookmarks" ? <BookmarksContent query={query} page={page} /> : <DownloadsContent page={page} />;
@@ -333,7 +336,7 @@ function findFolder(items: readonly BookmarkItem[], key: string): BookmarkItem |
 function BookmarkFolderPage({ folderKey }: { folderKey: string }) {
   const bookmarks = useBookmarks();
   const folder = findFolder(bookmarks, folderKey);
-  const page = modifierList(navigationTitle(folder?.title ?? ""), navigationBarTitleDisplayMode("inline"), settingsChrome());
+  const page = modifierList(navigationTitle(folder?.title ?? ""), navigationBarTitleDisplayMode("inline"), settingsChrome(), neverBounces());
   const children = folder?.children ?? [];
   if (!children.length) return <ContentUnavailableView title="Empty Folder" systemImage="folder" modifiers={page} />;
   return (

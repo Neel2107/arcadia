@@ -34,6 +34,14 @@ extension SearchStageView {
     return StageAnchor(id: id, frame: frame, style: view.traitCollection.userInterfaceStyle)
   }
 
+  var anchorMissReason: String {
+    guard let id = anchorNativeId else { return "noAnchorId" }
+    guard let root = window else { return "noWindow" }
+    guard let view = Self.find(nativeId: id, in: root) else { return "anchorNotFound" }
+    guard view.window != nil else { return "anchorOffWindow" }
+    return "anchorEmpty"
+  }
+
   func renderFace(of anchor: StageAnchor) -> StageFace? {
     guard let root = window, let view = Self.find(nativeId: faceNativeId ?? anchor.id, in: root), view.bounds.width > 0, view.bounds.height > 0 else { return nil }
     let size = anchor.frame.size
@@ -58,6 +66,7 @@ extension SearchStageView {
     guard let field = Self.find(nativeId: id, in: self) as? CompletingFieldView, field.window != nil else { return }
     field.focus()
     focusPending = false
+    if PhoneTestBuild.isOn { NSLog("PAGELAB time stage focused %.0f", Date().timeIntervalSince1970 * 1000) }
   }
 
   func holdReveals() {
@@ -71,7 +80,13 @@ extension SearchStageView {
   }
 
   func fadeInReveals(from base: CFTimeInterval) {
-    let fades: [(String?, CFTimeInterval)] = [(revealNativeId, Motion.stageRevealFieldDelay), (rowsRevealNativeId, Motion.stageRevealRowsDelay)]
+    if let id = revealNativeId, let field = Self.find(nativeId: id, in: self) {
+      UIView.performWithoutAnimation {
+        field.layer.removeAllAnimations()
+        field.layer.opacity = 1
+      }
+    }
+    let fades: [(String?, CFTimeInterval)] = [(rowsRevealNativeId, Motion.stageRevealRowsDelay)]
     for (id, delay) in fades {
       guard let id, let view = Self.find(nativeId: id, in: self) else { continue }
       view.restartStageOpacityFade(to: 1, after: reduceMotionNow ? 0 : delay, from: base, curve: Motion.stageRevealCurve)
@@ -318,6 +333,7 @@ final class StageMorph {
   private var fades: [UIViewPropertyAnimator] = []
 
   private static let landedTolerance: CGFloat = 0.17
+  private static let visiblyLandedWithin: CGFloat = 8
 
   struct Start {
     var frame: CGRect
@@ -326,6 +342,11 @@ final class StageMorph {
 
   var hasDestination: Bool { destination != nil }
   var isShown: Bool { !view.isHidden }
+
+  var isVisiblyLanded: Bool {
+    guard let destination, let shown = view.layer.presentation()?.frame else { return false }
+    return Self.gap(between: shown, and: destination) <= Self.visiblyLandedWithin
+  }
 
   var isMoving: Bool {
     guard let flight, flight.isRunning || folding.contains(where: \.isRunning) else { return false }
@@ -344,8 +365,9 @@ final class StageMorph {
     stage.addSubview(view)
   }
 
-  func fly(to target: CGRect, style: UIUserInterfaceStyle, carrying face: StageFace?, timing: UITimingCurveProvider, duration: TimeInterval, direct: Bool = false) {
-    guard !hasFlown else { return }
+  @discardableResult
+  func fly(to target: CGRect, style: UIUserInterfaceStyle, carrying face: StageFace?, timing: UITimingCurveProvider, duration: TimeInterval, direct: Bool = false) -> TimeInterval {
+    guard !hasFlown else { return 0 }
     hasFlown = true
     destination = target
     appear()
@@ -364,7 +386,7 @@ final class StageMorph {
       travel.startAnimation()
       flight = travel
       folding = []
-      return
+      return duration
     }
     let start = view.frame
     let radius = view.radius
@@ -385,6 +407,8 @@ final class StageMorph {
     narrow.startAnimation(afterDelay: Motion.stageFoldLag + Motion.stageFold.time(toReach: Motion.stageFoldBeforeNarrowing))
     flight = travel
     folding = [fold, narrow]
+    let narrowing = Motion.stageFoldLag + Motion.stageFold.time(toReach: Motion.stageFoldBeforeNarrowing)
+    return max(duration, narrowing + Motion.stageWiden.settlingDuration)
   }
 
   func vanish() {
@@ -396,18 +420,8 @@ final class StageMorph {
   }
 
   func handOff() {
-    if let destination {
-      flight?.stopAnimation(true)
-      folding.forEach { $0.stopAnimation(true) }
-      UIView.performWithoutAnimation {
-        view.shape(to: destination, radius: corners.anchor(height: destination.height))
-        view.alpha = 0
-      }
-      DispatchQueue.main.async { self.remove() }
-      return
-    }
     let fade = Self.run(Motion.stageHandOff) { [view] in view.alpha = 0 }
-    fade.addCompletion { _ in self.remove() }
+    fade.addCompletion { [weak self] _ in self?.remove() }
   }
 
   func remove() {
@@ -472,7 +486,11 @@ final class StageMorphView: UIView {
     self.cardSize = cardSize
     self.fieldCenter = fieldCenter
     if look.usesGlass {
-      surface = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+      let glass = LiquidGlassSurface()
+      glass.capsule = false
+      glass.followsPresentation = true
+      glass.label = "searchMorph"
+      surface = glass
       classicFill = nil
     } else if look.frosted {
       let frost = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
@@ -502,6 +520,9 @@ final class StageMorphView: UIView {
     tint.overrideUserInterfaceStyle = look.panelStyle
     tint.layer.cornerCurve = .continuous
     tint.clipsToBounds = true
+    if let glass = surface as? LiquidGlassSurface {
+      glass.presentedRadius = { [weak tint] in tint.map { $0.layer.presentation()?.cornerRadius ?? $0.layer.cornerRadius } }
+    }
     let layers = look.usesGlass ? [tint, surface, contents, faceSlot] : [surface, tint, contents, faceSlot]
     layers.forEach(addSubview)
     if let snapshot {
@@ -527,8 +548,8 @@ final class StageMorphView: UIView {
     for piece in [surface, tint, contents] {
       piece.frame = bounds
     }
-    if let glass = surface as? UIVisualEffectView {
-      glass.cornerConfiguration = .uniformCorners(radius: .fixed(radius))
+    if let glass = surface as? LiquidGlassSurface {
+      glass.cornerRadius = radius
     } else {
       surface.layer.cornerRadius = radius
     }

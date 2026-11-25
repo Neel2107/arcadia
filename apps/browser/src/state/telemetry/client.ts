@@ -1,3 +1,4 @@
+import { SecretEscapeError, withoutSecrets, type SecretFree } from "@ardia/core";
 import { engineInfo, updaterState } from "../../platform/app";
 import { readDocument, saveDocument, writeDocument } from "../../platform/documents";
 import { MAX_BODY_BYTES } from "./config";
@@ -8,6 +9,7 @@ import type { RequestLogEntry } from "./requestLog";
 import { appInfo, mayPost, post } from "./transport";
 import { telemetryRelay, type AskPlacement, type CaptureOptions, type SharingSource } from "./relay";
 import { uuidv4, uuidv7 } from "./ids";
+import { upcomingInstallId } from "./installId";
 import { parseSaved, versionedJson } from "../../lib/savedDocument";
 import { withDeadline } from "../../lib/deadline";
 import { isFields, isString } from "../../lib/decode";
@@ -80,21 +82,26 @@ function persistQueue(now = false) {
   else persistTimer = setTimeout(write, 2000);
 }
 
-export function saveQueueNow(timeoutMs = 1000): Promise<void> {
-  try {
-    flushLocalNow();
-  } catch {}
-  if (!saved().sharing) return Promise.resolve();
+function saveQueueDoc(timeoutMs: number): Promise<boolean> {
+  if (!saved().sharing) return Promise.resolve(false);
   clearTimeout(persistTimer);
   persistTimer = undefined;
   try {
     loadQueue();
-    const landed = saveDocument(QUEUE_DOC, queueDoc()).catch(() => {});
-    return withDeadline(landed, timeoutMs, undefined);
+    return withDeadline(saveDocument(QUEUE_DOC, queueDoc()).then(() => true, () => false), timeoutMs, false);
   } catch {
-    return Promise.resolve();
+    return Promise.resolve(false);
   }
 }
+
+export function saveQueueNow(timeoutMs = 1000): Promise<void> {
+  try {
+    flushLocalNow();
+  } catch {}
+  return saveQueueDoc(timeoutMs).then(() => undefined);
+}
+
+export const queueSavedDurably = (timeoutMs = 5000): Promise<boolean> => (telemetryRelay() ? Promise.resolve(false) : saveQueueDoc(timeoutMs));
 
 function clearQueue() {
   queue = { events: [], logs: [] };
@@ -125,14 +132,22 @@ let droppedWhileOff = 0;
 
 export type { CaptureOptions };
 
-export function capture(event: string, props: Record<string, unknown>, consent: ConsentToken | null, options: CaptureOptions = {}) {
+export function capture<P extends Record<string, unknown>, R extends Record<string, unknown> = Record<string, never>>(
+  event: string,
+  props: P & SecretFree<P>,
+  consent: ConsentToken | null,
+  options: CaptureOptions & { raw?: R & SecretFree<R> } = {},
+): boolean {
   const sharing = stillValid(consent);
   if (!sharing && COUNT_EVENTS.has(event)) {
     droppedWhileOff++;
-    return;
+    return false;
   }
   const relay = telemetryRelay();
-  if (relay) return relay.capture(event, props, consent, options);
+  if (relay) {
+    const relayed = relay.capture(event, withoutSecrets(props, "telemetry"), consent, { ...options, raw: withoutSecrets(options.raw, "telemetry") });
+    return sharing && relayed === true;
+  }
   try {
     const { installId } = saved();
     const at = Date.now();
@@ -141,24 +156,28 @@ export function capture(event: string, props: Record<string, unknown>, consent: 
       event,
       distinct_id: installId ?? "",
       timestamp: new Date(at).toISOString(),
-      properties: { ...context(), ...cleanProperties(props), ...options.raw },
+      properties: { ...context(), ...cleanProperties(props), ...withoutSecrets(options.raw, "telemetry") },
     };
     recordLocal("event", sharing, { event, uuid: record.uuid, distinct_id: sharing ? installId : null, properties: record.properties }, at);
     if (!sharing) {
       droppedWhileOff++;
-      return;
+      return false;
     }
     loadQueue();
     queue.events.push(record);
     if (queue.events.length > MAX_EVENTS) queue.events.splice(0, queue.events.length - MAX_EVENTS);
     persistQueue(options.persist);
     scheduleFlush(options.urgent ? URGENT_FLUSH_DELAY_MS : FLUSH_DELAY_MS);
-  } catch {}
+    return true;
+  } catch (error) {
+    if (error instanceof SecretEscapeError) throw error;
+    return false;
+  }
 }
 
 export function queueLog(level: "warn" | "error", message: string, attributes: Record<string, string | number | boolean>, consent: ConsentToken | null) {
   const relay = telemetryRelay();
-  if (relay) return relay.log(level, message, attributes, consent);
+  if (relay) return relay.log(level, message, withoutSecrets(attributes, "log"), consent);
   try {
     const sharing = stillValid(consent);
     const at = Date.now();
@@ -227,6 +246,7 @@ async function drain<T>(
 }
 
 export async function flush() {
+  clearTimeout(flushTimer);
   flushTimer = undefined;
   if (!saved().sharing || flushing) return;
   flushing = true;
@@ -250,7 +270,7 @@ export async function flush() {
   }
 }
 
-export type { AskPlacement, SharingSource };
+export type { AskPlacement };
 
 export function setSharing(on: boolean, source: SharingSource, placement?: AskPlacement): Promise<boolean> {
   const relay = telemetryRelay();
@@ -274,7 +294,7 @@ export function setSharing(on: boolean, source: SharingSource, placement?: AskPl
   }
   save({
     sharing: true,
-    installId: current.installId ?? uuidv4(),
+    installId: current.installId ?? upcomingInstallId(),
     crashCursor: now,
     lastVersion: appInfo().appVersion,
     lastBuild: appInfo().appBuild,

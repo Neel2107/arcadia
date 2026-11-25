@@ -7,7 +7,7 @@ const { tintedImage, tintedImageKey } = await import("./TintedImage.tsx");
 
 const SRC = fileURLToPath(new URL("../../", import.meta.url));
 const REPO = fileURLToPath(new URL("../../../../../", import.meta.url));
-const ROOTS = [SRC, join(REPO, "packages"), join(REPO, "apps/linux/src")];
+const ROOTS = [SRC, join(REPO, "packages"), join(REPO, "apps/desktop/src")];
 
 function sources(dir, out = []) {
   for (const name of readdirSync(dir)) {
@@ -48,6 +48,6 @@ test("tintedImage adds no component of its own: it returns the Image, so a favic
 
 test("only macOS swaps the image for a new tint; Windows and Linux redraw the one they have", () => {
   const read = (name) => readFileSync(new URL(`../../lib/${name}`, import.meta.url), "utf8");
-  assert.match(read("platformFeatures.ts"), /tintNeedsNewImage: true \}/);
-  for (const name of ["platformFeatures.linux.ts", "platformFeatures.windows.ts"]) assert.match(read(name), /tintNeedsNewImage: false \}/);
+  assert.match(read("platformFeatures.ts"), /\btintNeedsNewImage:\s*true\b/);
+  for (const name of ["platformFeatures.linux.ts", "platformFeatures.windows.ts"]) assert.match(read(name), /\btintNeedsNewImage:\s*false\b/);
 });

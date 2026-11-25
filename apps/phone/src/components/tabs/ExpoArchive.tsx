@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { PlatformColor, StyleSheet, View } from "react-native";
-import { BottomSheet, Button, ConfirmationDialog, ContentUnavailableView, ContextMenu, Divider, Host, List, Menu, NavigationStack, Picker, Section, Text, Toolbar, ToolbarItem, useNativeState } from "@expo/ui/swift-ui";
+import { PlatformColor, StyleSheet } from "react-native";
+import { BottomSheet, Button, ConfirmationDialog, ContentUnavailableView, ContextMenu, Divider, Host, Label, List, Menu, NavigationStack, Picker, Section, Text, Toolbar, ToolbarItem, useNativeState } from "@expo/ui/swift-ui";
 import { accessibilityLabel, disabled, environment, listRowInsets, listStyle, navigationBarTitleDisplayMode, navigationTitle, onAppear, pickerStyle, searchable, tag, tint } from "@expo/ui/swift-ui/modifiers";
 import { actionWords, destinationWords, dismissWords } from "../../lib/sharedWords";
 import { DoneToolbarItem } from "../settings/ExpoSettingsDone";
@@ -9,15 +9,15 @@ import { eagerSections, LIST_PAGE_ROWS, sectionOverscan, sectionsWithin, sheetWa
 import { countUsage } from "../../state/telemetry/telemetry";
 import { haptics } from "../../state/app/haptics";
 import { closeArchive, useBrowse } from "../../state/browse/store";
-import { canShareTab, copyTabLink, deleteArchivedTab, openArchivedTab } from "../../state/browse/tabMenus";
+import { canShareTab, copyTabLink, deleteArchivedTab, deleteArchivedTabs, openArchivedTab } from "../../state/browse/tabMenus";
 import { display } from "../../state/search/omnibox";
 import { usePreferences } from "../../state/settings/hooks";
 import { useArchiveDays, useArchiveLoaded } from "../../state/tabs/hooks";
-import { clearArchivedTabs, loadArchiveUnlessPrepared, searchArchive, setAutoArchiveInterval } from "../../state/tabs/store";
-import { AUTO_ARCHIVE_INTERVALS, autoArchiveTitle, type AutoArchiveInterval, type BrowserTab } from "../../state/tabs/tabModels";
+import { archiveInMemory, clearArchivedTabs, loadArchiveUnlessPrepared, searchArchive, setAutoArchiveInterval } from "../../state/tabs/store";
+import { AUTO_ARCHIVE_INTERVALS, autoArchiveSymbol, autoArchiveTitle, type AutoArchiveInterval, type BrowserTab } from "../../state/tabs/tabModels";
 import { LinkMenuItems, ListLoading, ListNoResults, ListRow, listSheetWords, opensPage } from "../library/listSheet";
 import { listSheetInsets } from "../library/listSheetTokens";
-import { iconRoles, modifierList, settingsChrome, sfName } from "../ui";
+import { iconRoles, modifierList, neverBounces, settingsChrome, sfName } from "../ui";
 
 const INTERVALS = Object.keys(AUTO_ARCHIVE_INTERVALS) as AutoArchiveInterval[];
 
@@ -26,67 +26,12 @@ export function ExpoArchiveSheet() {
   const requestedAt = useRef<number | null>(null);
   if (!open) requestedAt.current = null;
   else requestedAt.current ??= Date.now();
-  const deckShown = useBrowse((s) => s.surface === "deck");
-  const [warming, setWarming] = useState(false);
-  useEffect(() => {
-    if (!deckShown || sheetWarmed) return;
-    const start = setTimeout(() => {
-      sheetWarmed = true;
-      setWarming(true);
-    }, SHEET_WARM_AFTER_MS);
-    return () => clearTimeout(start);
-  }, [deckShown]);
-  useEffect(() => {
-    if (!warming) return;
-    const cool = setTimeout(() => setWarming(false), SHEET_WARM_MS);
-    return () => clearTimeout(cool);
-  }, [warming]);
   return (
-    <>
-      {warming && !open ? (
-        <View style={styles.anchor} pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-          <Host style={styles.anchor}>
-            <WarmArchive />
-          </Host>
-        </View>
-      ) : null}
-      <Host testID="expoArchiveSheet" style={styles.anchor} pointerEvents="none">
-        <BottomSheet isPresented={open} onIsPresentedChange={(presented) => (presented ? undefined : closeArchive())}>
-          <ArchiveNavigation requestedAt={requestedAt} />
-        </BottomSheet>
-      </Host>
-    </>
-  );
-}
-
-const SHEET_WARM_AFTER_MS = 1_000;
-const SHEET_WARM_MS = 700;
-let sheetWarmed = false;
-
-const WARM_ROWS: BrowserTab[] = [{ id: "archive-warm", url: "https://example.com/", title: "", created: 0, lastActive: 0, archivedAt: 0, position: 0, profileSyncId: null, faviconUrl: null, themeColorHex: null, snapshotFileName: null, origin: "typed", receivedKey: null, receivedFromDevice: null, pinnedKey: null, isPrivate: false }];
-
-function WarmArchive() {
-  const searchText = useNativeState("");
-  const page = modifierList(navigationTitle(destinationWords.archive), navigationBarTitleDisplayMode("inline"), tint(PlatformColor("systemBlue")), settingsChrome(), searchable(searchText, { placement: "navigationBarDrawer", prompt: SEARCH_PROMPT }));
-  return (
-    <NavigationStack>
-      <Toolbar>
-        <List modifiers={modifierList(...page, listStyle("insetGrouped"))}>
-          <Section title="">
-            <ArchiveRows tabs={WARM_ROWS} overscan={0} />
-          </Section>
-        </List>
-        <Toolbar.Content>
-          <ToolbarItem placement="topBarLeading">
-            <Button label={EDIT} onPress={noop} />
-          </ToolbarItem>
-          <ToolbarItem placement="primaryAction">
-            <Menu label={actionWords.more} systemImage={sfName(iconRoles.more)} modifiers={[accessibilityLabel(actionWords.more)]}>{null}</Menu>
-          </ToolbarItem>
-          <DoneToolbarItem onDone={noop} />
-        </Toolbar.Content>
-      </Toolbar>
-    </NavigationStack>
+    <Host testID="expoArchiveSheet" style={styles.anchor} pointerEvents="none">
+      <BottomSheet isPresented={open} onIsPresentedChange={(presented) => (presented ? undefined : closeArchive())}>
+        <ArchiveNavigation requestedAt={requestedAt} />
+      </BottomSheet>
+    </Host>
   );
 }
 
@@ -117,7 +62,9 @@ function ArchiveNavigation({ requestedAt }: { requestedAt: MutableRefObject<numb
   const [shown, setShown] = useState(false);
   const [editing, setEditing] = useState(false);
   const appeared = useCallback(() => setShown(true), []);
-  useEffect(() => loadArchiveUnlessPrepared(), []);
+  useEffect(() => {
+    if (!archiveInMemory()) loadArchiveUnlessPrepared();
+  }, []);
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed) {
@@ -129,8 +76,12 @@ function ArchiveNavigation({ requestedAt }: { requestedAt: MutableRefObject<numb
   }, [query]);
   const results = useMemo(() => (searched ? searchArchive(searched) : null), [searched, days]);
   const hasArchive = days.some((day) => day.tabs.length > 0);
+  const onScreen = shown || (loaded && !hasArchive);
+  useEffect(() => {
+    if (onScreen) loadArchiveUnlessPrepared();
+  }, [onScreen]);
   const now = Date.now();
-  const page = modifierList(navigationTitle(destinationWords.archive), navigationBarTitleDisplayMode("inline"), tint(PlatformColor("systemBlue")), settingsChrome(), searchable(searchText, { placement: "navigationBarDrawer", prompt: SEARCH_PROMPT, onChange: setQuery }));
+  const page = modifierList(navigationTitle(destinationWords.archive), navigationBarTitleDisplayMode("inline"), tint(PlatformColor("systemBlue")), settingsChrome(), neverBounces(), searchable(searchText, { placement: "navigationBarDrawer", prompt: SEARCH_PROMPT, onChange: setQuery }));
   const content = !loaded ? (
     <ListLoading modifiers={page} />
   ) : !hasArchive ? (
@@ -177,9 +128,7 @@ function ArchiveNavigation({ requestedAt }: { requestedAt: MutableRefObject<numb
                 <>
                   <Picker label="Archive Inactive Tabs" systemImage="archivebox" selection={interval} onSelectionChange={(next: AutoArchiveInterval) => setAutoArchiveInterval(next)} modifiers={[pickerStyle("menu")]}>
                     {INTERVALS.map((option) => (
-                      <Text key={option} modifiers={[tag(option)]}>
-                        {autoArchiveTitle(option)}
-                      </Text>
+                      <Label key={option} title={autoArchiveTitle(option)} systemImage={autoArchiveSymbol(option)} modifiers={[tag(option)]} />
                     ))}
                   </Picker>
                   <Divider />
@@ -212,7 +161,7 @@ function ArchiveDaySection({ title, tabs, eager, onLast }: { title: string; tabs
 function ArchiveRows({ tabs, overscan }: { tabs: BrowserTab[]; overscan?: number }) {
   const row = useCallback(({ item }: { item: BrowserTab }) => <ArchiveRow tab={item} />, []);
   return (
-    <List.ForEach data={tabs} keyExtractor={(tab) => tab.id} onDelete={(indices) => indices.forEach((index) => tabs[index] && deleteArchivedTab(tabs[index]))} estimatedItemSize={60} overscanCount={overscan}>
+    <List.ForEach data={tabs} keyExtractor={(tab) => tab.id} onDelete={(indices) => deleteArchivedTabs(indices.flatMap((index) => (tabs[index] ? [tabs[index]] : [])))} estimatedItemSize={60} overscanCount={overscan}>
       {row}
     </List.ForEach>
   );
@@ -238,7 +187,6 @@ function ArchiveRow({ tab }: { tab: BrowserTab }) {
 
 const EDIT = "Edit";
 const SEARCH_PROMPT = "Search Archive";
-const noop = () => undefined;
 
 const styles = StyleSheet.create({
   anchor: { position: "absolute", width: 0, height: 0 },

@@ -282,10 +282,6 @@ public struct AppIconPreview: View {
       .interpolation(.high)
       .frame(width: scaledSide, height: scaledSide)
       .clipShape(.rect(cornerRadius: scaledSide * 0.225, style: .continuous))
-      .overlay {
-        RoundedRectangle(cornerRadius: scaledSide * 0.225, style: .continuous)
-          .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)
-      }
       .accessibilityHidden(true)
   }
 }
@@ -428,8 +424,8 @@ private struct ChromeButtonStyle: ViewModifier {
   @ViewBuilder
   func body(content: Content) -> some View {
     switch (usesGlass, prominent) {
-    case (true, true): content.buttonStyle(.glassProminent)
-    case (true, false): content.buttonStyle(.glass)
+    case (true, true): content.buttonStyle(LiquidGlassButtonStyle(prominent: true))
+    case (true, false): content.buttonStyle(LiquidGlassButtonStyle())
     case (false, true): content.buttonStyle(.borderedProminent)
     case (false, false): content.buttonStyle(.bordered)
     }

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, posix, relative } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { citations, DOC } from "./parity-tests.mjs";
+import { LOCK, parseLock } from "./promises.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const workflow = (name) => readFileSync(join(REPO, ".github/workflows", name), "utf8").replace(/\r\n/g, "\n");
@@ -41,7 +44,7 @@ function changeFilters(text) {
 const covers = (outer, inner) => outer === inner || (outer.endsWith("/**") && inner.startsWith(outer.slice(0, -2)));
 
 const globPattern = (glob) =>
-  new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*/g, "\0").replace(/\*/g, "[^/]*").replace(/\0/g, ".*")}$`);
+  new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*\*\//g, "\u0001").replace(/\*\*/g, "\0").replace(/\*/g, "[^/]*").replace(/\0/g, ".*").replace(/\u0001/g, "(?:.*/)?")}$`);
 
 function matched(globs, path) {
   let included = false;
@@ -73,15 +76,23 @@ function filesUnder(dir, pick) {
 
 const REPO_PATH = /['"`](?:\.\.\/)*((?:apps|packages|engine|docs|infra|\.claude)\/[A-Za-z0-9_.@/-]+)['"`]/g;
 
-function repoPathsNamedIn(files) {
+function repoPathsNamedIn(files, root = REPO) {
   const named = new Set();
   for (const file of files) {
-    for (const [, path] of readFileSync(join(REPO, file), "utf8").matchAll(REPO_PATH)) {
+    for (const [, path] of readFileSync(join(root, file), "utf8").matchAll(REPO_PATH)) {
       const clean = path.replace(/\/+$/, "");
-      if (existsSync(join(REPO, clean))) named.add(statSync(join(REPO, clean)).isDirectory() ? `${clean}/` : clean);
+      if (clean.split("/").includes("node_modules")) continue;
+      if (existsSync(join(root, clean))) named.add(statSync(join(root, clean)).isDirectory() ? `${clean}/` : clean);
     }
   }
   return [...named].sort();
+}
+
+function assertRepoJobStartsOnNamedPaths(repo, files, root = REPO) {
+  for (const path of repoPathsNamedIn(files, root)) {
+    const probe = path.endsWith("/") ? `${path}any` : path;
+    assert.ok(matched(repo, probe), `a change to ${path}, which a root test names, runs the repository job`);
+  }
 }
 
 const IMPORT = /(?:from\s+|import\s*\(\s*)["'](\.{1,2}\/[^"']+)["']/g;
@@ -148,7 +159,7 @@ test("Checks' code filter covers every site file the meadow check builds from", 
 });
 
 test("Linux starts on every repository file its fixture suites read", () => {
-  const suites = ["engine/ardiacore-linux/tests", "engine/patches/build/tests", "engine/chromium/src/chrome/browser/ardia/tests", "scripts/linux", "apps/linux/scripts"];
+  const suites = ["engine/ardiacore-linux/tests", "engine/patches/build/tests", "engine/chromium/src/chrome/browser/ardia/tests", "scripts/linux", "apps/desktop/scripts"];
   const files = suites.flatMap((dir) => filesUnder(dir, (name) => /\.(?:py|mjs|sh)$/.test(name)));
   const triggers = triggerPaths(workflow("linux.yml"), "pull_request");
   const named = repoPathsNamedIn(files);
@@ -171,10 +182,72 @@ test("the repository job starts on every test test:root runs and every repositor
   });
   assert.ok(runs.length > 10, "test:root still finds its tests");
   for (const path of runs) assert.ok(matched(repo, path), `a change to ${path} runs the repository job`);
-  for (const path of repoPathsNamedIn(runs)) {
-    const probe = path.endsWith("/") ? `${path}any` : path;
-    assert.ok(matched(repo, probe), `a change to ${path}, which a root test names, runs the repository job`);
+  assertRepoJobStartsOnNamedPaths(repo, runs);
+});
+
+test("the repository job isn't asked to start on a folder an install adds under a path a root test names", () => {
+  const root = mkdtempSync(join(tmpdir(), "workflow-paths-"));
+  try {
+    mkdirSync(join(root, "apps/desktop/node_modules/real"), { recursive: true });
+    mkdirSync(join(root, "apps/desktop/scripts"), { recursive: true });
+    writeFileSync(join(root, "apps/desktop/scripts/host-tests.mjs"), "");
+    writeFileSync(join(root, "named.test.mjs"), 'const files = ["apps/desktop/node_modules", "apps/desktop/node_modules/real", "apps/desktop/scripts/host-tests.mjs"];\n');
+    const repo = changeFilters(workflow("checks.yml")).repo;
+    assertRepoJobStartsOnNamedPaths(repo, ["named.test.mjs"], root);
+    assert.deepEqual(repoPathsNamedIn(["named.test.mjs"], root), ["apps/desktop/scripts/host-tests.mjs"]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("the repository job starts on the parity doc, the promises lock and every test either one cites", () => {
+  const repo = changeFilters(workflow("checks.yml")).repo;
+  const locked = parseLock(readFileSync(join(REPO, LOCK), "utf8")).map((promise) => promise.file);
+  const cited = citations(readFileSync(join(REPO, DOC), "utf8")).found.map((citation) => citation.file);
+  assert.ok(locked.length > 50 && cited.length > 50, "the lock and the doc still name their tests");
+  for (const path of [DOC, LOCK, ...locked, ...cited]) assert.ok(matched(repo, path), `a change to ${path} runs the repository job`);
+});
+
+test("Mac starts on the paths its jobs read, and its Swift tests run for the plugin sandbox, archive and import readers", () => {
+  const text = workflow("mac.yml");
+  const filters = changeFilters(text);
+  assert.deepEqual(Object.keys(filters).sort(), ["app", "swift"]);
+  assertTriggersMatchFilters(triggerPaths(text, "pull_request"), filters, ".github/workflows/mac.yml");
+  assert.match(text, /^  push:\n    branches: \[main\]\n    paths: \*native$/m);
+  for (const path of [
+    "packages/shell/ios/PluginCore/PluginSandbox.swift",
+    "packages/shell/ios/PluginProcess.swift",
+    "packages/shell/plugin-tests/PluginSandboxEscapeTests.swift",
+    "packages/import/ios/Core/ZipArchive.swift",
+  ]) {
+    assert.ok(existsSync(join(REPO, path)), `${path} exists`);
+    assert.ok(matched(filters.swift, path), `a change to ${path} runs the Swift tests`);
+  }
+  const suites = filesUnder("packages/shell/plugin-tests", (name) => name.endsWith(".swift"));
+  const read = new Set();
+  for (const file of suites) {
+    for (const [, path] of readFileSync(join(REPO, file), "utf8").matchAll(/"(?:\.\.\/)+((?:scripts|apps|docs)\/[A-Za-z0-9_./-]+)"/g)) read.add(path);
+  }
+  assert.ok(read.size >= 3, "the plugin tests still name the repository files they read");
+  for (const path of read) assert.ok(matched(filters.swift, path), `a change to ${path}, which the plugin tests read, runs the Swift tests`);
+  for (const name of ["app", "swift"]) {
+    assert.ok(text.includes(`      ${name}: \${{ steps.filter.outcome != 'success' || steps.filter.outputs.${name} == 'true' }}`), `${name} falls back to running`);
+    assert.match(text, new RegExp(`\\(needs\\.changes\\.result != 'success' \\|\\| needs\\.changes\\.outputs\\.${name} == 'true'\\)`), `${name} runs when the changes job failed`);
+  }
+});
+
+test("the conventions check runs on every pull request and push to main, with no paths filter and no install", () => {
+  const text = workflow("conventions.yml");
+  assert.match(text, /^on:\n  pull_request:\n  push:\n    branches: \[main\]\n\n/m, "no paths filter, so a file in a new folder is checked too");
+  assert.match(text, /\n        run: node apps\/browser\/src\/conventions\.test\.mjs\n/);
+  assert.doesNotMatch(text, /pnpm install|npm ci|paths:/);
+});
+
+test("the weekly expiry run lists skips past their date in its summary, without an install", () => {
+  const text = workflow("expiring-skips.yml");
+  assert.match(text, /^  schedule:\n    - cron: "[^"]+"\n  workflow_dispatch:\n/m);
+  assert.match(text, /\n        run: node apps\/browser\/src\/conventions\.test\.mjs --expired --summary "\$GITHUB_STEP_SUMMARY"\n/);
+  assert.doesNotMatch(text, /pnpm install|npm ci/);
 });
 
 test("Deploy starts on main only for the paths one of its services deploys from", () => {
@@ -186,5 +259,10 @@ test("the path globs these tests use read like GitHub's", () => {
   assert.ok(matched(["packages/*/src/**", "!packages/phone/**"], "packages/core/src/a.ts"));
   assert.ok(!matched(["packages/*/src/**", "!packages/phone/**"], "packages/phone/src/a.ts"));
   assert.ok(!matched(["packages/*/package.json"], "packages/core/src/package.json"));
+  assert.ok(matched(["**/*.test.*"], "example.test.mjs"));
+  assert.ok(matched(["**/*.test.*"], "apps/browser/src/a/b.test.mjs"));
+  assert.ok(!matched(["**/*.test.*"], "apps/browser/src/a/b.mjs"));
+  const repo = changeFilters(workflow("checks.yml")).repo;
+  for (const path of ["apps/phone/android/app/src/test/java/com/ardia/browser/android/ShareSheetTest.kt", "apps/phone/test/release/a.test.sh", "engine/x/tests/test_a.py", "packages/shell/tests/ATests.swift"]) assert.ok(matched(repo, path), `a change to ${path} runs the repository job`);
   assert.equal(relative(REPO, dirname(fileURLToPath(import.meta.url))), "scripts/ci");
 });

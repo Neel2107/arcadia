@@ -47,6 +47,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)cliMoveOffscreen:(NSString *)tabId completion:(void (^)(NSDictionary<NSString *, id> *moved))completion
     NS_SWIFT_NAME(cliMoveOffscreen(_:completion:));
 + (void)cliCloseOffscreenTabs;
++ (NSDictionary<NSString *, id> *)cliHoldTabs:(NSArray<NSDictionary<NSString *, id> *> *)holds NS_SWIFT_NAME(cliHoldTabs(_:));
 + (BOOL)isPrivateProfile:(NSString *)profile NS_SWIFT_NAME(isPrivateProfile(_:));
 @property(class, nullable, copy) void (^quitCancelledHandler)(void);
 + (void)menuShortcutsChanged;
@@ -90,6 +91,20 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSString *)fileStampOfDescriptor:(int)fd NS_SWIFT_NAME(fileStamp(ofDescriptor:));
 @property(class, readonly) NSString *missingFileStamp;
 
+@end
+
+@interface ArdiaHost (FileArms)
++ (void)armFiles:(NSDictionary<NSString *, id> *)spec completion:(void (^)(NSDictionary<NSString *, id> *result))completion NS_SWIFT_NAME(armFiles(_:completion:));
++ (NSInteger)disarmFiles:(nullable NSArray<NSString *> *)ids purge:(BOOL)purge NS_SWIFT_NAME(disarmFiles(_:purge:));
+@property(class, readonly) NSArray<NSDictionary<NSString *, id> *> *fileArms;
+@end
+
+@interface ArdiaHost (FileArmDownloads)
++ (NSDictionary<NSString *, id> *)claimArmedDownload:(NSString *)armId download:(NSString *)downloadId path:(NSString *)path
+    NS_SWIFT_NAME(claimArmedDownload(_:download:path:));
++ (void)placeArmedDownload:(NSString *)armId download:(NSString *)downloadId path:(NSString *)path completion:(void (^)(NSDictionary<NSString *, id> *result))completion
+    NS_SWIFT_NAME(placeArmedDownload(_:download:path:completion:));
++ (BOOL)releaseArmedDownload:(NSString *)armId download:(NSString *)downloadId state:(NSString *)state NS_SWIFT_NAME(releaseArmedDownload(_:download:state:));
 @end
 
 NS_ASSUME_NONNULL_END

@@ -52,6 +52,7 @@ export type SuggestOptions = {
   scope?: SearchScope | null;
   preventInline?: boolean;
   switchToOpenTab?: boolean;
+  remotePending?: boolean;
   bangs?: BangTable | null;
   providers?: readonly ProviderSection[];
 };

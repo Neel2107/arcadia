@@ -5,20 +5,18 @@ import { CommandPanel } from "./components/omnibox/CommandPanel";
 import { windowOverlays } from "./components/window/WindowOverlays";
 import { ContentCard } from "./components/window/ContentCard";
 import { browserWindowControls } from "./components/window/BrowserWindowControls";
-import { BookmarkDialog } from "./components/bookmarks/BookmarkDialog";
-import { EditBookmarkDialog } from "./components/bookmarks/EditBookmarkDialog";
 import { FolderMenus } from "./components/bookmarks/FolderMenus";
-import { ExtensionOverlays } from "./components/extensions/ExtensionOverlays";
 import { ExtensionSidePanel } from "./components/extensions/SidePanel";
 import { PluginSidePanel } from "./components/plugins/PluginSidePanel";
 import { PluginOverlays } from "./components/plugins/PluginOverlays";
 import { PLUGIN_CHROME, PluginChromeContext, usePluginChrome, usePluginChromeOf } from "./state/plugins/chrome";
 import { CrxDropArea } from "./components/extensions/CrxDropArea";
-import { DownloadMagnet, DownloadsPopover } from "./components/downloads/Downloads";
+import { WindowPopups } from "./components/window/WindowPopups";
 import { UtilityWindow } from "./components/settings/UtilityWindow";
 import { isUtilityWindowId } from "./state/settings/settingsWindows";
 import { OnboardingOverlay } from "./components/onboarding";
-import { CreateProfileHost } from "./components/profiles/CreateProfile";
+import { IntroWindow } from "./components/onboarding/IntroWindow";
+import { INTRO_WINDOW_ID } from "./state/onboarding/introWindow";
 import { useFullscreenTab } from "./state/tabs/pageState";
 import { ProfileTint } from "./components/window/ProfileSwipe";
 import { TOP_STRIP_HEIGHT, TopStripPeek, TopTabStrip } from "./components/tabstrip/TopTabStrip";
@@ -42,6 +40,12 @@ import { forgetWindowRootSize, setWindowRootSize } from "./state/windows/rootSiz
 provideProfileLooks({ accent: profileAccent, theme: (profile, appDark, source) => profileTheme(profile, appDark, source, currentBasePalette()) });
 
 export function WindowRoot({ windowId }: { windowId?: string }) {
+  if (windowId === INTRO_WINDOW_ID)
+    return (
+      <ThemeScope>
+        <IntroWindow />
+      </ThemeScope>
+    );
   if (isUtilityWindowId(windowId))
     return (
       <ThemeScope>
@@ -114,13 +118,7 @@ function BrowserWindow() {
       {windowOverlays(
         <>
           <FolderMenus />
-          <DownloadsPopover />
-          <ExtensionOverlays />
-          {pluginOverlays ? <PluginOverlays /> : null}
-          <DownloadMagnet />
-          <BookmarkDialog />
-          <EditBookmarkDialog />
-          <CreateProfileHost />
+          <WindowPopups plugins={pluginOverlays ? <PluginOverlays /> : null} />
           <SidebarOverlays windowWidth={width} />
         </>,
       )}

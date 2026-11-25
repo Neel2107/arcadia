@@ -5,7 +5,7 @@ on:
     paths: &inputs
       - ".gitattributes"
       - "apps/browser/**"
-      - "apps/linux/**"
+      - "apps/desktop/**"
       - "apps/site/**"
       - "apps/phone/scripts/**"
       - "apps/ios/**"
@@ -17,6 +17,7 @@ on:
       - "tests/**"
       - "docs/plugin.schema.json"
       - "docs/plugins.md"
+      - "docs/privacy.md"
       - "docs/engine-build.md"
       - "docs/release-notes/**"
       - "infra/site/**"
@@ -29,6 +30,12 @@ on:
       - "tsconfig.base.json"
       - ".nvmrc"
       - "patches/**"
+      - "docs/dia-feature-parity.md"
+      - "**/*.test.*"
+      - "**/*-test.mjs"
+      - "**/*Tests.swift"
+      - "**/test_*.py"
+      - "**/*Test.kt"
   push:
     branches: [main]
     paths: *inputs
@@ -43,7 +50,7 @@ concurrency:
 jobs:
   changes:
     name: which checks run
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
       contents: read
@@ -66,7 +73,7 @@ jobs:
             code:
               - ".gitattributes"
               - "apps/browser/**"
-              - "apps/linux/**"
+              - "apps/desktop/**"
               - "apps/phone/scripts/**"
               - "apps/site/src/assets/**"
               - "apps/site/src/scripts/meadowApp.ts"
@@ -75,7 +82,8 @@ jobs:
               - "apps/site/src/data/heroFrames.mjs"
               - "packages/**"
               - "engine/ardiacore/src/**"
-              - "engine/ardiacore-linux/src/ardia/linux/ac_linux_contract.h"
+              - "engine/ardiacore-linux/src/**"
+              - "engine/ardiacore-desktop/src/**"
               - "engine/patches/**"
               - "docs/engine-build.md"
               - "scripts/lib/**"
@@ -91,19 +99,23 @@ jobs:
               - ".github/workflows/checks.yml"
             browser:
               - "apps/browser/**"
-              - "apps/linux/src/**"
-              - "apps/linux/package.json"
+              - "apps/desktop/src/**"
+              - "apps/desktop/package.json"
               - "apps/site/public/switches.json"
               - "packages/**"
               - "engine/ardiacore/src/**"
               - "engine/chromium/src/**"
+              - "engine/ardiacore-desktop/src/**"
+              - "engine/ardiacore-linux/src/**"
               - "engine/ardiacore-linux/content-blocker/**"
+              - "engine/patches/**"
               - "scripts/lib/**"
               - "scripts/security/**"
               - "scripts/windows/**"
               - "tests/**"
               - "docs/plugin.schema.json"
               - "docs/plugins.md"
+              - "docs/privacy.md"
               - ".github/workflows/windows.yml"
               - "package.json"
               - "pnpm-lock.yaml"
@@ -119,11 +131,17 @@ jobs:
               - "apps/ios/**"
               - "apps/site/**"
               - "apps/cli/**"
-              - "apps/linux/scripts/**"
+              - "apps/desktop/scripts/**"
               - "apps/browser/official-plugins.json"
               - "apps/browser/official-plugins-history.json"
+              - "apps/browser/macos/Ardia.xcodeproj/project.pbxproj"
+              - "apps/browser/macos/Ardia-macOS/Info.plist"
               - "packages/ardiacore/ios/ArdiaLaunchConfig.mm"
               - "packages/sync/ios/Core/LegacyMigration.swift"
+              - "packages/shell/ios/PluginCore/PluginSandbox.swift"
+              - "packages/shell/ios/PluginProcess.swift"
+              - "packages/shell/plugin-tests/**"
+              - "packages/import/ios/Core/ZipArchive.swift"
               - "packages/ardiacore/ios/page_script.js"
               - "packages/ardiacore/prebuilt-engines.tsv"
               - "packages/ardiacore/prebuilt-engines-linux.tsv"
@@ -131,6 +149,8 @@ jobs:
               - "packages/shaders/scripts/meadow.mjs"
               - "apps/browser/assets/offline-game/**"
               - "apps/browser/assets/offline-game-pipeline/**"
+              - "apps/browser/windows/Ardia/EngineApi.h"
+              - "apps/browser/windows/Ardia/Ardia.ico"
               - "engine/**"
               - "docs/release-notes/**"
               - "infra/site/**"
@@ -138,6 +158,12 @@ jobs:
               - ".github/**"
               - "package.json"
               - ".nvmrc"
+              - "docs/dia-feature-parity.md"
+              - "**/*.test.*"
+              - "**/*-test.mjs"
+              - "**/*Tests.swift"
+              - "**/test_*.py"
+              - "**/*Test.kt"
 
   check:
     name: typecheck, tests and Mac bundle
@@ -146,7 +172,7 @@ jobs:
     concurrency:
       group: checks-code-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -186,18 +212,18 @@ jobs:
           ls -l "$RUNNER_TEMP/main.hbc"
 
   browser:
-    name: browser tests, share ${{ matrix.shard }} of 3
+    name: browser tests, share ${{ matrix.shard }} of 6
     needs: changes
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.browser == 'true') }}
     concurrency:
       group: checks-browser-${{ matrix.shard }}-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -213,8 +239,8 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: apps/browser/node_modules/.cache/ardia-test-tsx
-          key: ardia-test-tsx-${{ matrix.shard }}-of-3-${{ hashFiles('apps/browser/src/test-loader.mjs', 'pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: ardia-test-tsx-${{ matrix.shard }}-of-3-${{ hashFiles('apps/browser/src/test-loader.mjs', 'pnpm-lock.yaml') }}-
+          key: ardia-test-tsx-${{ matrix.shard }}-of-6-${{ hashFiles('apps/browser/src/test-loader.mjs', 'pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: ardia-test-tsx-${{ matrix.shard }}-of-6-${{ hashFiles('apps/browser/src/test-loader.mjs', 'pnpm-lock.yaml') }}-
       - name: The uBlock Origin release ubo.sh pins
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
@@ -222,14 +248,14 @@ jobs:
           key: ublock-${{ hashFiles('packages/ardiacore/scripts/ubo.sh') }}
       - name: This share of the browser's tests
         env:
-          NODE_OPTIONS: --test-shard=${{ matrix.shard }}/3
+          NODE_OPTIONS: --test-shard=${{ matrix.shard }}/6
         run: pnpm --filter @ardia/browser test
       - name: Keep the TSX for the next run on main
         if: ${{ !cancelled() && github.event_name == 'push' && steps.tsx.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: apps/browser/node_modules/.cache/ardia-test-tsx
-          key: ardia-test-tsx-${{ matrix.shard }}-of-3-${{ hashFiles('apps/browser/src/test-loader.mjs', 'pnpm-lock.yaml') }}-${{ github.sha }}
+          key: ardia-test-tsx-${{ matrix.shard }}-of-6-${{ hashFiles('apps/browser/src/test-loader.mjs', 'pnpm-lock.yaml') }}-${{ github.sha }}
 
   repo:
     name: repository, vouch and stale tests
@@ -238,7 +264,7 @@ jobs:
     concurrency:
       group: checks-repo-${{ github.ref }}
       cancel-in-progress: true
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -251,4 +277,4 @@ jobs:
         run: node --run test:root
       - name: Vouch and stale tests
         if: ${{ !cancelled() }}
-        run: node --test .github/vouch/vouch.test.cjs .github/stale/stale.test.cjs
+        run: node --test .github/vouch/vouch.test.cjs .github/stale/stale.test.cjs .github/cla/cla.test.cjs

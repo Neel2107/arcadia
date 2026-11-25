@@ -21,6 +21,8 @@ import { takePageFaviconCounts } from "./pageFaviconCounts";
 import { takePlatformCounts, watchPlatformCounts } from "./platformCounts";
 import { takeProfileDataCounts } from "./profileDataCounts";
 import { takeQuitWarningCounts } from "./quitWarningCounts";
+import { takeRendererEfficiencyCounts } from "./rendererEfficiencyCounts";
+import { takeWindowsUpdateCounts } from "./windowsUpdateCounts";
 import { takeSwipeHistoryListCounts } from "./swipeHistoryListCounts";
 import { takeStreamingSiteCounts } from "./streamingSiteCounts";
 import { takeSyncFileCounts } from "./syncFileCounts";
@@ -29,7 +31,7 @@ export { watchPlatformCounts };
 
 export const USAGE_COUNTS_EVENT = "usage_counts";
 
-export const takeHourlyExtras = () => ({ ...takePlatformCounts(), ...takeOfficialPluginCounts(), ...takeImportRuns(), ...takeArcImportCounts(), ...takeProfileDataCounts(), ...takeExportCounts(), ...takeInlineCompletionCounts(), ...takeFirstRunCounts(), ...takeMemoryTrimCounts(), ...takeDownloadsPanelCauses(), ...takeExternalAppCounts(), ...takeDialogPageCounts(), ...takeFindCounts(), ...takeSyncFileCounts(), ...takeKeyboardFollowCounts(), ...takePagerCounts(), ...takeSwipeHistoryListCounts(), ...takeEditKeyAckCounts(), ...takeQuitWarningCounts(), ...takeInputSourceKeyCounts(), ...takeDevToolsKeyCounts(), ...takeSessionWrites(), ...takePeekMotionCounts(), ...takeMouseShortcutCounts(), ...takePageFaviconCounts(), ...takeStreamingSiteCounts() });
+export const takeHourlyExtras = () => ({ ...takePlatformCounts(), ...takeOfficialPluginCounts(), ...takeImportRuns(), ...takeArcImportCounts(), ...takeProfileDataCounts(), ...takeExportCounts(), ...takeInlineCompletionCounts(), ...takeFirstRunCounts(), ...takeMemoryTrimCounts(), ...takeDownloadsPanelCauses(), ...takeExternalAppCounts(), ...takeDialogPageCounts(), ...takeFindCounts(), ...takeSyncFileCounts(), ...takeKeyboardFollowCounts(), ...takePagerCounts(), ...takeSwipeHistoryListCounts(), ...takeEditKeyAckCounts(), ...takeQuitWarningCounts(), ...takeInputSourceKeyCounts(), ...takeDevToolsKeyCounts(), ...takeSessionWrites(), ...takePeekMotionCounts(), ...takeMouseShortcutCounts(), ...takePageFaviconCounts(), ...takeStreamingSiteCounts(), ...takeRendererEfficiencyCounts(), ...takeWindowsUpdateCounts() });
 
 type Send = typeof send;
 
@@ -40,7 +42,7 @@ export function usageWithExtras(sendEvent: Send, takeExtras: () => Record<string
   const capture: Send = (event, props, consent, options = {}) => {
     if (event !== USAGE_COUNTS_EVENT || !(draining || stillValid(consent))) return sendEvent(event, props, consent, options);
     sentWithCounts = true;
-    sendEvent(event, { ...takeExtras(), ...props }, consent, options);
+    return sendEvent(event, { ...takeExtras(), ...props }, consent, options);
   };
   const withHourlyExtras = (emitCounts: () => void, consent: Parameters<Send>[2]) => {
     sentWithCounts = false;

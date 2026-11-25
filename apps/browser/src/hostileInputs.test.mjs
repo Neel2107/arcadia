@@ -23,6 +23,14 @@ const { syncedHome } = await import("./state/sync/pinRecords.ts");
 const { sendableUrl } = await import("./state/sync/sentTabsAdapter.ts");
 const { filterListAddress } = await import("./state/site/contentBlocking.ts");
 const { CLEAN_UP_KEY, LEGACY_CLEAN_UP_KEY } = await import("./state/settings/cleanUpAfter.ts");
+const { checkedInput, isKeyName, MAX_TEXT_LENGTH } = await import("./state/automation/tabInput.ts");
+const { MAX_MESSAGE_LENGTH } = await import("./state/automation/tabDiagnostics.ts");
+const { updateWithin } = await import("./state/plugins/officialUpdate.ts");
+const { readManifest } = await import("./lib/pluginManifest.ts");
+const { parseIntent, INTENT_SPECS } = await import("./state/plugins/stateIntents.ts");
+const { pluginStateUrl, redactedTabs } = await import("./state/plugins/pluginEventRedaction.ts");
+const { copyLinkFromPageMenu } = await import("./state/site/pageLinkCopy.ts");
+const { cleanUrl } = await import("@ardia/core");
 
 const S = () => useBrowser.getState();
 const show = (value) => {
@@ -202,6 +210,64 @@ test("the owner's URL rule never opens script, data or engine-internal addresses
     }
 });
 
+test("a plugin's state event never carries a hostile address, whatever its tab holds", () => {
+  for (const r of [{ full: false, urls: true }, { full: true, urls: true }, { full: true, urls: false }]) {
+    for (const { value } of HOSTILE_VALUES) {
+      for (const url of typeof value === "string" ? [value, `https://a.test/${value}`, `${value}https://a.test/`, `https://a.test/?q=${value}#${value}`] : [value]) {
+        const shown = pluginStateUrl(url, r);
+        if (shown === null) continue;
+        assert.ok(r.urls, show(url));
+        assert.match(shown, /^https?:\/\/[^/?#\s@]+(?:[/?]|$)/i, show(url));
+        assert.doesNotMatch(shown, /[\u0000-\u001f\u007f-\u009f\u2028\u2029#]/u, show(url));
+        if (!r.full) assert.doesNotMatch(shown, /\?/, show(url));
+      }
+    }
+  }
+  S().hydrate({});
+  const w = S().createWindow({ url: "https://a.test/" });
+  for (const s of strings) S().newTab(w, { url: s });
+  for (const t of redactedTabs(S(), { full: true, urls: true })) {
+    if (t.url !== null) assert.match(t.url, /^https?:\/\//i, show(t.url));
+    if (t.title !== null) assert.doesNotMatch(t.title, /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/u, show(t.title));
+  }
+});
+
+test("a hostile value in any intent field is refused before it reaches a reducer", () => {
+  S().hydrate({});
+  const w = S().createWindow({ url: "https://a.test/" });
+  const tab = activeTabId(S(), w);
+  const other = S().newTab(w, { url: "https://b.test/" });
+  const group = S().createGroup([other], { name: "G" });
+  assert.ok(S().groups[group], "the fixture's group exists");
+  const defaults = (spec) => {
+    const args = { tabs: [tab], tab, group, collapsed: false };
+    for (const key of Object.keys(args)) if (!Object.hasOwn(spec.fields, key)) delete args[key];
+    return args;
+  };
+  for (const [intent, spec] of Object.entries(INTENT_SPECS)) assert.ok("op" in parseIntent(intent, defaults(spec)), `${intent}'s fixture parses, so each field below is what's tested`);
+  for (const [intent, spec] of Object.entries(INTENT_SPECS)) {
+    for (const field of Object.keys(spec.fields)) {
+      for (const { value } of HOSTILE_VALUES) {
+        const args = { ...defaults(spec), [field]: value };
+        const parsed = parseIntent(intent, args);
+        if (!("op" in parsed)) {
+          assert.ok(parsed.code === "bad_request" || parsed.code === "refused", show(value));
+          continue;
+        }
+        for (const [key, out] of Object.entries(parsed.op)) {
+          if (typeof out === "string") assert.doesNotMatch(out, /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e]/u, `${intent}.${key} ${show(value)}`);
+          if (key === "tabs") for (const id of out) assert.equal(id, tab, show(value));
+        }
+        assert.ok(!("profile" in parsed.op) && !("urls" in parsed.op), show(value));
+      }
+    }
+  }
+  for (const key of PROTOTYPE_KEYS) {
+    assert.equal(parseIntent(key, { tabs: [tab] }).code, "bad_request", key);
+    assert.equal(parseIntent("tabs.pin", JSON.parse(`{"tabs":[${JSON.stringify(tab)}],${JSON.stringify(key)}:1}`)).code, "bad_request", key);
+  }
+});
+
 test("an operation named after an Object prototype key is a bad request, not a crash", () => {
   for (const key of PROTOTYPE_KEYS)
     for (const op of [{ op: key }, { op: key, tab: "t1" }, { op: key, urls: ["https://a.test/"] }]) {
@@ -355,4 +421,412 @@ test("the release's original smuggled hide is refused at every layer", () => {
   assert.equal(hidingFilter(HOST, smuggled), null);
   assert.equal(MAC_WRITE_RULE.test(`${HOST}##${smuggled}`), false);
   assert.equal(LINUX_NATIVE_REFUSES.test(`${HOST}##${smuggled}`), true);
+});
+
+test("an official update's manifest with any hostile value in a field that counts is never approved without a sheet", () => {
+  const steps = [["skills", "install", "--auto"], ["skills", "refresh"], ["computer", "refresh"]];
+  const approved = readManifest(JSON.stringify({ manifest: 1, name: "cli", title: "Command Line", version: "0.4.0", alwaysOn: true, official: true, permissions: ["control"], programs: [{ name: "ardia", path: "bin/ardia", afterUpdate: steps }] })).manifest;
+  const next = readManifest(JSON.stringify({ manifest: 2, name: "cli", title: "Command Line", version: "0.6.0", alwaysOn: true, official: true, main: "dist/main.js", permissions: { control: true }, contributes: { commands: [{ name: "show-status", title: "Status", icon: "terminal", view: "status" }], programs: [{ name: "ardia", path: "bin/ardia", claim: true, afterUpdate: steps }] } })).manifest;
+  assert.equal(updateWithin(approved, next).ok, true, "the real move passes, so the refusals below aren't vacuous");
+  const COSMETIC = new Set(["manifest", "declaredManifest", "title", "description", "version", "requires", "icon", "keywords", "telemetry"]);
+  const unchanged = (a, b) => typeof a === typeof b && JSON.stringify(a) === JSON.stringify(b);
+  let refused = 0;
+  for (const { value } of HOSTILE_VALUES) {
+    for (const key of Object.keys(next).filter((k) => !COSMETIC.has(k) && !unchanged(value, next[k]) && !unchanged(value, approved[k]))) {
+      const verdict = updateWithin(approved, { ...next, [key]: value });
+      assert.equal(verdict.ok, false, `${key} = ${show(value)}`);
+      refused++;
+    }
+    for (const key of Object.keys(next.permissions).filter((k) => !unchanged(value, next.permissions[k]) && !unchanged(value, approved.permissions[k]))) assert.equal(updateWithin(approved, { ...next, permissions: { ...next.permissions, [key]: value } }).ok, false, `permissions.${key} = ${show(value)}`);
+    for (const key of Object.keys(next.contributes).filter((k) => !unchanged(value, next.contributes[k]) && !unchanged(value, approved.contributes[k]))) assert.equal(updateWithin(approved, { ...next, contributes: { ...next.contributes, [key]: value } }).ok, false, `contributes.${key} = ${show(value)}`);
+    assert.equal(updateWithin(approved, { ...next, programs: [{ ...next.programs[0], afterUpdate: [...steps, [value]] }] }).ok, false, `afterUpdate step ${show(value)}`);
+  }
+  for (const key of PROTOTYPE_KEYS) {
+    const extra = JSON.parse(`{${JSON.stringify(key)}: true}`);
+    assert.equal(updateWithin(approved, { ...next, ...extra }).ok, false, `manifest key ${key}`);
+    assert.equal(updateWithin(approved, { ...next, permissions: { ...next.permissions, ...extra } }).ok, false, `permission key ${key}`);
+    assert.equal(updateWithin(approved, { ...next, contributes: { ...next.contributes, ...extra } }).ok, false, `contributes key ${key}`);
+  }
+  assert.ok(refused > 1000);
+});
+
+test("a WebKit page menu address reaches native's writer only as a string the cleaner returned, whatever the page holds", async () => {
+  const { webKitAddressWrites } = stub;
+  webKitAddressWrites.written.length = 0;
+  for (const { id, value } of HOSTILE_VALUES) {
+    webKitAddressWrites.written.length = 0;
+    await copyLinkFromPageMenu(value, 7, null);
+    if (typeof value !== "string" || !value) assert.deepEqual(webKitAddressWrites.written, [], id);
+    else assert.deepEqual(webKitAddressWrites.written, [{ request: 7, url: cleanUrl(value) }], id);
+  }
+  for (const s of strings) {
+    for (const address of [s, `https://a.example/?utm_source=${s}&q=1`, `https://a.example/${s}?fbclid=1`]) {
+      webKitAddressWrites.written.length = 0;
+      await copyLinkFromPageMenu(address, 7, null);
+      assert.deepEqual(webKitAddressWrites.written, address ? [{ request: 7, url: cleanUrl(address) }] : [], show(address));
+    }
+  }
+});
+
+const { logpointCondition, checkedExpression } = await import("./state/automation/devToolsLogpoints.ts");
+const { inlineMapText, SourceMapResolver } = await import("./state/automation/devToolsSourceMaps.ts");
+const { fieldDataOrigin } = await import("./state/automation/devToolsFieldData.ts");
+const { describeIssue } = await import("./state/automation/devToolsIssues.ts");
+const { schemaProblem } = await import("./state/automation/socketSchema.ts");
+const { DEVTOOLS_INSPECT_METHODS } = await import("./state/automation/socketDevToolsInspect.ts");
+const vm = await import("node:vm");
+
+test("no hostile expression or condition makes a logpoint's condition truthy, so it never pauses the page", () => {
+  const run = (code) => {
+    const logged = [];
+    const context = vm.createContext({ console: { log: (...args) => logged.push(args) }, String });
+    return { result: vm.runInContext(`(function () { const total = 3; return ${code}; })()`, context, { timeout: 500 }), logged };
+  };
+  const control = run(logpointCondition("c", "total", null));
+  assert.deepEqual([control.result, control.logged], [false, [["[ardia logpoint c]", 3]]], "a plain logpoint logs");
+  for (const s of strings) {
+    let usable = true;
+    try {
+      checkedExpression(s, "expression");
+    } catch {
+      usable = false;
+    }
+    if (!usable) continue;
+    for (const code of [logpointCondition("h", s, null), logpointCondition("h", "total", s), logpointCondition("h", s, s)]) assert.equal(run(code).result, false, show(s));
+  }
+});
+
+test("a source map is only ever an inline data: map or one the caller passed, and nothing goes to the network, whatever the page names", () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = () => assert.fail("source maps never go to the network");
+  try {
+    const map = JSON.stringify({ version: 3, sources: ["a.ts"], names: [], mappings: "AAAA" });
+    assert.equal(inlineMapText(`data:application/json;base64,${Buffer.from(map).toString("base64")}`), map, "an inline map decodes");
+    for (const s of strings)
+      for (const ref of [s, `${s}.map`, `https://evil.example/${s}`, `\u002f/evil.example/${s}`, `data:application/json;base64,${s}`]) {
+        const text = inlineMapText(ref);
+        if (text !== null) assert.ok(ref.startsWith("data:application/json"), show(ref));
+        const resolver = new SourceMapResolver({ scripts: { "https://shop.example/a.js": `x()\n//# sourceMappingURL=${ref}` } });
+        const parsed = resolver.mapFor("https://shop.example/a.js");
+        if (parsed) assert.ok(ref.startsWith("data:"), show(ref));
+      }
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("field data asks only for a web origin, never another scheme, credentials, a path or a query", () => {
+  assert.equal(fieldDataOrigin("https://shop.example/a?b=1#c"), "https://shop.example");
+  for (const s of strings)
+    for (const page of [s, `https://shop.example/${s}`, `${s}://shop.example/`]) {
+      let origin = null;
+      try {
+        origin = fieldDataOrigin(page);
+      } catch {
+        continue;
+      }
+      assert.match(origin, /^https?:\/\/[^/?#@\s]+$/, show(page));
+    }
+});
+
+test("DevTools issue codes and the styles method's property names refuse hostile values", () => {
+  const styles = DEVTOOLS_INSPECT_METHODS.find((m) => m.name === "devtools.styles");
+  assert.equal(schemaProblem(styles.params, { tab: "t", selector: "a", properties: ["color", "--brand-1"] }, "params"), null);
+  for (const { id, value } of HOSTILE_VALUES) {
+    const described = describeIssue({ issue: { code: value, details: {} } });
+    if (described) assert.match(described.code, /^[A-Za-z]+$/, id);
+    if (typeof value === "string" && /^[a-z][a-z-]*$/i.test(value)) continue;
+    assert.notEqual(schemaProblem(styles.params, { tab: "t", selector: "a", properties: [value] }, "params"), null, id);
+  }
+});
+
+const { analyzeTrace } = await import("./state/automation/devToolsInsights.ts");
+const { cascadeFor, declaredProperties } = await import("./state/automation/devToolsCascade.ts");
+
+function assertBoundedTree(value, label, depth = 0) {
+  assert.ok(depth < 12, `${label}: nesting stays shallow`);
+  if (typeof value === "string") assert.ok(value.length <= 4096, `${label}: a string of ${value.length} characters`);
+  else if (typeof value === "number") assert.ok(Number.isFinite(value), `${label}: a finite number`);
+  else if (Array.isArray(value)) {
+    assert.ok(value.length <= 64, `${label}: a list of ${value.length}`);
+    value.forEach((item, i) => assertBoundedTree(item, `${label}[${i}]`, depth + 1));
+  } else if (value && typeof value === "object") for (const [key, item] of Object.entries(value)) assertBoundedTree(item, `${label}.${key}`, depth + 1);
+}
+
+test("every hostile value in a page's trace events gives a bounded, well-shaped analysis and pollutes nothing", () => {
+  const navigation = { name: "navigationStart", ph: "R", pid: 2, tid: 3, ts: 1_000_000, args: { frame: "F", data: { documentLoaderURL: "https://a.example/", isOutermostMainFrame: true, navigationId: "N" } } };
+  const control = analyzeTrace([navigation, { name: "LayoutShift", ph: "I", pid: 2, tid: 3, ts: 1_100_000, args: { frame: "F", data: { score: 0.2, had_recent_input: false } } }]);
+  assert.equal(control.metrics.cls.value, 0.2, "a real shift is measured, so the hostile runs aren't vacuous");
+  for (const { id, value } of HOSTILE_VALUES) {
+    const events = [
+      navigation,
+      { name: value, ph: value, ts: value, dur: value, pid: value, tid: value, args: value },
+      { name: "ResourceSendRequest", ph: "I", pid: 2, tid: 3, ts: 1_000_100, args: { data: { requestId: value, url: value, frame: value, renderBlocking: value, priority: value } } },
+      { name: "ResourceSendRequest", ph: "I", pid: 2, tid: 3, ts: 1_000_200, args: { data: { requestId: "R", url: typeof value === "string" ? `https://a.example/${value}` : value, frame: "F", renderBlocking: "blocking" } } },
+      { name: "ResourceFinish", ph: "I", pid: 2, tid: 3, ts: 1_000_300, args: { data: { requestId: "R", finishTime: value, encodedDataLength: value } } },
+      { name: "largestContentfulPaint::Candidate", ph: "R", pid: 2, tid: 3, ts: 1_200_000, args: { frame: "F", data: { candidateIndex: value, nodeId: value, type: value, url: value, navigationId: "N" } } },
+      { name: "LayoutShift", ph: "I", pid: 2, tid: 3, ts: 1_300_000, args: { frame: value, data: { score: value, weighted_score_delta: value, impacted_nodes: value } } },
+      { name: "EventTiming", ph: "b", pid: 2, tid: 3, ts: 1_400_000, args: { data: { interactionId: value, duration: value, type: value, frame: value, timeStamp: value, processingStart: value, processingEnd: value } } },
+      { name: "RunTask", ph: "X", pid: 2, tid: 3, ts: 1_500_000, dur: 90_000, args: {} },
+      { name: "EvaluateScript", ph: "X", pid: 2, tid: 3, ts: 1_500_100, dur: 80_000, args: { data: { url: value, functionName: value } } },
+      { name: "TracingStartedInBrowser", ph: "I", pid: 1, tid: 1, ts: 999_000, args: { data: { frames: value } } },
+      { name: "FrameCommittedInBrowser", ph: "I", pid: 1, tid: 1, ts: 1_000_050, args: { data: { frame: value, parent: value } } },
+    ];
+    for (const input of [events, { traceEvents: events }, value]) {
+      const result = analyzeTrace(input);
+      assertBoundedTree(JSON.parse(JSON.stringify(result)), id);
+      assert.equal(typeof result.metrics.cls.value, "number", id);
+      for (const insight of result.insights) assert.match(insight.id, /^[a-z-]+$/, id);
+    }
+  }
+  assert.equal({}.ardiaPolluted, undefined);
+  assert.equal(Object.prototype.polluted, undefined);
+});
+
+test("every hostile value in a page's matched styles gives a bounded cascade answer and pollutes nothing", () => {
+  const control = cascadeFor({ matchedCSSRules: [{ rule: { origin: "regular", selectorList: { selectors: [{ text: ".x" }] }, style: { cssProperties: [{ name: "color", value: "red" }] } }, matchingSelectors: [0] }] }, {}, ["color"], new Map());
+  assert.equal(control.winner?.value ?? control[0].winner.value, "red", "a real rule wins, so the hostile runs aren't vacuous");
+  for (const { id, value } of HOSTILE_VALUES) {
+    const prop = { name: value, value, important: value, disabled: value, parsedOk: value, implicit: value, range: value, longhandProperties: value };
+    const rule = { rule: { origin: value, styleSheetId: value, selectorList: { selectors: [{ text: value, specificity: value }], text: value }, style: { styleSheetId: value, cssProperties: [prop, { name: "color", value, longhandProperties: [{ name: value, value }] }] }, layers: value, media: value, supports: value }, matchingSelectors: value };
+    const matched = { inlineStyle: { cssProperties: [prop] }, attributesStyle: value, matchedCSSRules: [rule, value], inherited: [value, { matchedCSSRules: [rule] }], cssPropertyRules: [{ propertyName: { text: value }, style: { cssProperties: [{ name: "inherits", value }] } }, value] };
+    for (const input of [matched, value]) {
+      const properties = typeof value === "string" && value ? ["color", value] : ["color"];
+      const answer = cascadeFor(input, { computedStyle: [{ name: value, value }] }, properties, new Map([[typeof value === "string" ? value : "sheet", { url: value, origin: value, startLine: value, startColumn: value, isInline: value }]]));
+      assertBoundedTree(JSON.parse(JSON.stringify(answer)), id);
+      for (const entry of answer) for (const declaration of [entry.winner, ...entry.overridden].filter(Boolean)) assert.equal(typeof declaration.value, "string", id);
+      assertBoundedTree(declaredProperties(input), `${id} declared`);
+    }
+  }
+  assert.equal({}.ardiaPolluted, undefined);
+  assert.equal(Object.prototype.polluted, undefined);
+});
+
+const { parseVerifiedUpdate, readManifest: readWindowsManifest } = await import("../../../packages/expo-windows/src/updater/manifest.ts");
+
+test("windows update manifest and verified update parser refuse every hostile input while passing a valid control", () => {
+  const published = "https://github.com/ardia-browser/ardia/releases/download/";
+  const sha = "a".repeat(64);
+  const goodUrl = `${published}windows-alpha/Ardia-Setup-x64-60.exe`;
+  const controlManifest = JSON.stringify({ version: "0.2.48", build: 60, x64: { url: goodUrl, sha256: sha, bytes: 180_000_000 } });
+  const controlParsed = readWindowsManifest(controlManifest, published);
+  assert.equal(controlParsed?.installers.x64?.url, goodUrl, "positive control manifest passes");
+  const controlReply = parseVerifiedUpdate(JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: goodUrl, sha256: sha, bytes: 180_000_000 }), published, 59);
+  assert.equal(controlReply.status, "ok", "positive control verified reply passes");
+
+  for (const { id, value } of HOSTILE_VALUES) {
+    if (typeof value === "string") {
+      assert.equal(readWindowsManifest(value, published), null, `${id} raw manifest`);
+      assert.equal(readWindowsManifest(controlManifest, value), null, `${id} publishedUnder`);
+      const reply = parseVerifiedUpdate(value, published, 59);
+      assert.equal(reply.status, "failed", `${id} raw verified reply`);
+    }
+    const versionManifest = readWindowsManifest(
+      JSON.stringify({ version: value, build: 60, x64: { url: goodUrl, sha256: sha, bytes: 10 } }),
+      published,
+    );
+    if (versionManifest !== null) {
+      assert.match(versionManifest.version, /^[0-9][0-9A-Za-z.+-]{0,63}$/, `${id} version manifest`);
+    }
+    const forgedManifests = [
+      JSON.stringify({ version: "0.2.48", build: value, x64: { url: goodUrl, sha256: sha, bytes: 10 } }),
+      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: value, sha256: sha, bytes: 10 } }),
+      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: goodUrl, sha256: value, bytes: 10 } }),
+      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: goodUrl, sha256: sha, bytes: value } }),
+    ];
+    for (const candidate of forgedManifests) {
+      assert.equal(readWindowsManifest(candidate, published), null, `${id} manifest ${candidate.slice(0, 80)}`);
+    }
+    const suffixManifest = readWindowsManifest(
+      JSON.stringify({ version: "0.2.48", build: 60, x64: { url: typeof value === "string" ? `${published}windows-alpha/${value}.exe` : value, sha256: sha, bytes: 10 } }),
+      published,
+    );
+    if (suffixManifest !== null) {
+      assert.match(suffixManifest.installers.x64.url, /^https:\/\/github\.com\/ardia-browser\/ardia\/releases\/download\/windows-alpha\/[0-9A-Za-z][0-9A-Za-z._+-]*\.exe$/, `${id} url suffix`);
+    }
+    const versionReply = parseVerifiedUpdate(
+      JSON.stringify({ status: "ok", version: value, build: 60, url: goodUrl, sha256: sha, bytes: 10 }),
+      published,
+      59,
+    );
+    if (versionReply.status === "ok") {
+      assert.match(versionReply.version, /^[0-9][0-9A-Za-z.+-]{0,63}$/, `${id} reply version`);
+    } else {
+      assert.equal(versionReply.status, "failed", `${id} reply version`);
+    }
+    const forgedReplies = [
+      JSON.stringify({ status: "ok", version: "0.2.48", build: value, url: goodUrl, sha256: sha, bytes: 10 }),
+      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: value, sha256: sha, bytes: 10 }),
+      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: goodUrl, sha256: value, bytes: 10 }),
+      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: goodUrl, sha256: sha, bytes: value }),
+      JSON.stringify({ status: value }),
+    ];
+    for (const candidate of forgedReplies) {
+      const parsed = parseVerifiedUpdate(candidate, published, 59);
+      assert.equal(parsed.status, "failed", `${id} reply ${candidate.slice(0, 80)}`);
+    }
+    const suffixReply = parseVerifiedUpdate(
+      JSON.stringify({ status: "ok", version: "0.2.48", build: 60, url: typeof value === "string" ? `${published}windows-alpha/${value}.exe` : value, sha256: sha, bytes: 10 }),
+      published,
+      59,
+    );
+    if (suffixReply.status === "ok") {
+      assert.match(suffixReply.installer.url, /^https:\/\/github\.com\/ardia-browser\/ardia\/releases\/download\/windows-alpha\/[0-9A-Za-z][0-9A-Za-z._+-]*\.exe$/, `${id} reply url suffix`);
+    } else {
+      assert.equal(suffixReply.status, "failed", `${id} reply url suffix`);
+    }
+  }
+  assert.equal({}.ardiaPolluted, undefined);
+  assert.equal(Object.prototype.polluted, undefined);
+});
+
+test("windows webui native update policy keeps every hostile input and call argument away from the installer download, launch and claim gates while passing valid controls", (t) => {
+  const { spawnSync } = process.getBuiltinModule("node:child_process");
+  const { mkdtempSync, rmSync, writeFileSync } = process.getBuiltinModule("node:fs");
+  const { tmpdir } = process.getBuiltinModule("node:os");
+  const { join } = process.getBuiltinModule("node:path");
+  const { fileURLToPath } = process.getBuiltinModule("node:url");
+  const repo = fileURLToPath(new URL("../../../", import.meta.url));
+  const compiler = ["c++", "clang++", "g++"].find((name) => spawnSync(name, ["--version"], { stdio: "ignore" }).status === 0);
+  if (!compiler) {
+    if (process.env.CI) assert.fail("no C++ compiler to build scripts/windows/engine/tests/webui_update_policy_test.cc");
+    return t.skip("no C++ compiler");
+  }
+  const scratch = mkdtempSync(join(tmpdir(), "ardia-update-policy-"));
+  try {
+    const binary = join(scratch, "webui_update_policy_test");
+    const build = spawnSync(compiler, ["-std=c++20", "-I", join(repo, "scripts/windows/engine/src"), join(repo, "scripts/windows/engine/tests/webui_update_policy_test.cc"), "-o", binary], { encoding: "utf8" });
+    assert.equal(build.status, 0, build.stderr);
+    const describe = (value) => {
+      if (value === null || value === undefined) return "z:";
+      if (typeof value === "boolean") return "b:";
+      if (typeof value === "number") return Number.isInteger(value) && Math.abs(value) <= 2 ** 31 - 1 ? `i:${value}` : `d:${value}`;
+      if (typeof value === "string") return `s:${Buffer.from(value, "utf8").toString("hex")}`;
+      return Array.isArray(value) ? "a:" : "o:";
+    };
+    const wire = (value) => JSON.parse(JSON.stringify({ args: value }) ?? "{}").args;
+    const lines = HOSTILE_VALUES.map(({ value }) => {
+      const single = JSON.parse(JSON.stringify([value]))[0];
+      const args = wire(value);
+      const whole = args === undefined ? "O" : Array.isArray(args) ? `L${args.map(describe).join(",")}` : "N";
+      return `${describe(single)}|${whole}`;
+    });
+    const strings = HOSTILE_VALUES.filter(({ value }) => typeof JSON.parse(JSON.stringify([value]))[0] === "string").length;
+    assert.ok(strings >= HOSTILE_STRINGS.length);
+    const corpus = join(scratch, "hostile.txt");
+    writeFileSync(corpus, lines.join("\n") + "\n");
+    const run = spawnSync(binary, ["--hostile", corpus], { encoding: "utf8" });
+    assert.equal(run.status, 0, run.stderr || run.stdout);
+    assert.match(run.stdout, new RegExp(`hostile: ${HOSTILE_VALUES.length} values, ${strings} strings, ${strings * 33} answers, \\d+ reached the download gate with a valid offer, ${HOSTILE_VALUES.length * 18} calls, \\d+ reached a call sink with a valid request, controls reached them`));
+    const unit = spawnSync(binary, [], { encoding: "utf8" });
+    assert.equal(unit.status, 0, unit.stderr || unit.stdout);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+test("socket tabs.input: every hostile value reaches the engine only as a checked action, point, key or text", () => {
+  for (const value of HOSTILE_VALUES.map((h) => h.value)) {
+    for (const params of [{ action: value, x: 1, y: 1 }, { action: "click", x: value, y: 1 }, { action: "key", key: value }, { action: "key", key: "a", code: value }, { action: "text", text: value }, { action: "click", x: 1, y: 1, modifiers: [value] }]) {
+      let out;
+      try {
+        out = checkedInput(params);
+      } catch (error) {
+        assert.equal(error.code, "bad_request", show(params));
+        continue;
+      }
+      if (out.key !== undefined) assert.ok(isKeyName(out.key), show(params));
+      if (out.text !== undefined) assert.ok(typeof out.text === "string" && out.text.length <= MAX_TEXT_LENGTH && !out.text.includes("\0"), show(params));
+      if (out.x !== undefined) assert.ok(Number.isFinite(out.x) && Number.isFinite(out.y), show(params));
+    }
+  }
+});
+
+const { startAutomation } = await import("./state/automation/controlSocket.ts");
+
+test("socket tabs.diagnostics: a hostile page's console text and addresses leave the socket sink redacted and bounded", async () => {
+  S().hydrate({});
+  S().updateSettings({ cliControl: true });
+  startAutomation();
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 5 && !stub.controlSocket.running; i++) await tick();
+  await tick();
+  const w = S().createWindow({ url: "https://a.example/" });
+  const tab = activeTabId(S(), w);
+  let nextId = 700;
+  const conn = 88;
+  const socketCall = async (method, params) => {
+    const id = ++nextId;
+    const before = stub.controlSocket.replies.length;
+    stub.emitControlRequest({ connection: conn, generation: stub.controlSocket.generation, line: JSON.stringify({ id, method, params }) });
+    for (let i = 0; i < 50 && !stub.controlSocket.replies.slice(before).some((r) => r.connection === conn); i++) await tick();
+    const replies = stub.controlSocket.replies.slice(before).filter((r) => r.connection === conn);
+    assert.equal(replies.length, 1);
+    return JSON.parse(replies[0].line);
+  };
+  let nextReply = null;
+  globalThis.acTestTabDiagnostics = () => nextReply;
+  try {
+    nextReply = {
+      ok: true,
+      console: [{ seq: 1, time: 10, level: "error", message: 'plain token=supersecret123 {"authToken":"abc"}', source: "https://user:pw@a.example/app.js?k=1#h", line: 4, frame: "main" }],
+      network: [{ seq: 2, time: 11, method: "GET", url: "https://user:pw@a.example/api?q=secret#f", status: 404, type: "fetch", frame: "main", failed: true }],
+      nextSeq: 3,
+      clearedBefore: 1,
+      capacity: { console: 200, network: 250 },
+    };
+    const control = await socketCall("tabs.diagnostics", { tab });
+    assert.equal(control.error, undefined, "positive control reaches the socket sink");
+    assert.equal(control.result.console[0].message, 'plain token=[redacted] {"authToken":"[redacted]"}');
+    assert.equal(control.result.console[0].source, "https://a.example/app.js");
+    assert.equal(control.result.network[0].url, "https://a.example/api");
+
+    for (const value of strings) {
+      const part = value.isWellFormed() ? encodeURIComponent(value) : value;
+      nextReply = {
+        ok: true,
+        console: [{ seq: 1, time: 10, level: "error", message: `token=${value} ${value}`, source: `https://user:pw@a.example/${part}?q=${part}#${part}`, line: 1, frame: "main" }],
+        network: [{ seq: 2, time: 11, method: value, url: `https://user:pw@a.example/${part}?q=${part}#${part}`, status: 200, type: value, error: value, frame: "main", failed: false }],
+        nextSeq: 3,
+        clearedBefore: 1,
+        capacity: { console: 200, network: 250 },
+      };
+      const reply = await socketCall("tabs.diagnostics", { tab });
+      assert.equal(reply.error, undefined, show(value));
+      const row = reply.result.console[0];
+      const net = reply.result.network[0];
+      assert.equal(typeof row.message, "string", show(value));
+      assert.ok(row.message.length <= MAX_MESSAGE_LENGTH, show(value));
+      if (/^[\w.~+/-]+$/.test(value) && value !== "redacted") assert.ok(row.message.startsWith("token=[redacted]"), show(value));
+      for (const addr of [row.source, net.url]) assert.ok(addr.startsWith("https://a.example/") && !addr.includes("?") && !addr.includes("#") && !addr.includes("pw@"), show(value));
+      assert.ok(net.method.length <= 16 && net.type.length <= 32 && net.error.length <= 64, show(value));
+    }
+
+    for (const { id, value } of HOSTILE_VALUES) {
+      nextReply = {
+        ok: true,
+        console: [{ seq: 1, time: value, level: value, message: value, source: value, line: value, frame: value }],
+        network: [{ seq: 2, time: value, method: value, url: value, status: value, type: value, durationMs: value, error: value, frame: value, failed: value }],
+        nextSeq: 3,
+        clearedBefore: 1,
+        capacity: { console: 200, network: 250 },
+      };
+      const reply = await socketCall("tabs.diagnostics", { tab });
+      assert.equal(reply.error, undefined, id);
+      const row = reply.result.console[0];
+      const net = reply.result.network[0];
+      assert.ok(["debug", "info", "warning", "error"].includes(row.level), id);
+      assert.ok(typeof row.message === "string" && row.message.length <= MAX_MESSAGE_LENGTH, id);
+      assert.ok(typeof row.source === "string" && typeof net.url === "string", id);
+      assert.ok(Number.isFinite(row.time) && Number.isFinite(row.line) && Number.isFinite(net.status), id);
+      for (const field of ["since", "kind", "onlyErrors", "limit", "clear"]) {
+        const bad = await socketCall("tabs.diagnostics", { tab, [field]: value });
+        if (bad.error) assert.equal(bad.error.code, "bad_request", `${id} ${field}`);
+      }
+    }
+    assert.equal({}.ardiaPolluted, undefined);
+    assert.equal(Object.prototype.ardiaPolluted, undefined);
+  } finally {
+    delete globalThis.acTestTabDiagnostics;
+  }
 });

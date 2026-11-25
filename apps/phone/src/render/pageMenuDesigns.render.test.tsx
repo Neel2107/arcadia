@@ -7,7 +7,7 @@ import { PageMenu } from "../components/browsing/PageMenu";
 import { menuDetents } from "../components/browsing/SystemPageMenu";
 import { DesignProvider } from "../components/ui";
 import type { Design } from "../lib/design";
-import { openPageMenu } from "../state/page/actions";
+import { openPageMenu, pageMenuHidden } from "../state/page/actions";
 import { usePageUi } from "../state/page/store";
 import { setPageSummariesEnabled, usePageSummariesSwitch } from "../state/pageSummary/enabled";
 import { registerPageHandle, usePages } from "../state/pages/store";
@@ -340,11 +340,13 @@ test("a print asked for and then given up by reopening the menu doesn't run late
   unmount(root);
 });
 
-test("the redesign's Site Settings closes the menu and opens Settings at Site Settings, as main", async () => {
+test("the redesign's Site Settings closes the menu at once and opens Settings at Site Settings once the menu has gone, as main", async () => {
   const root = await openMenu("redesigned");
   await pressButton(root, "Site Settings");
   expect(usePageUi.getState().menuOpen).toBe(false);
   expect(usePageUi.getState().menuPage).toBe("main");
+  expect(useSettingsNav.getState().open).toBe(false);
+  act(() => pageMenuHidden());
   expect(useSettingsNav.getState().open).toBe(true);
   expect(useSettingsNav.getState().stack.at(-1)).toEqual({ page: "siteSettings" });
   unmount(root);

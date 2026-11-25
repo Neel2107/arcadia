@@ -21,6 +21,7 @@
 #include "ardia/core/ac_browser_internal.h"
 #include "ardia/core/ac_hooks.h"
 #include "ardia/core/ac_page_channel.h"
+#include "ardia/core/ac_tab_diagnostics.h"
 #include "ardia/core/ac_tab_info.h"
 #import "ardia/core/ardiacore_internal.h"
 #include "ui/gfx/image/image.h"
@@ -42,6 +43,7 @@ TabBridge::TabBridge(content::WebContents* contents)
   content::g_ardia_opacity_from_default_color = true;
   tab_ = [[ArdiaCoreTab alloc] initWithContents:contents];
   PageChannel::GetOrCreate(contents);
+  WatchTabDiagnostics(contents);
 }
 
 TabBridge::~TabBridge() = default;

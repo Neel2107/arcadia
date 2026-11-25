@@ -1,3 +1,4 @@
+import { asSecret } from "@ardia/core";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 const { useBrowser } = await import("../browser/store.ts");
@@ -7,12 +8,14 @@ const model = await import("../browser/model.ts");
 const { Clock, emptyScope, syncScope } = await import("@ardia/sync");
 const adapters = { ...(await import("./adapters.ts")), ...(await import("./historyAdapter.ts")) };
 const { useEditClock } = await import("./editClock.ts");
-const { settingsAdapter, settingsToReapply } = await import("./settingsAdapter.ts");
+const { settingsAdapter, settleSettingsFromSavedSync } = await import("./settingsAdapter.ts");
 const pinnedArea = await import("./pinned.ts");
 const { pinnedOrderAdapter } = await import("./pinnedOrderAdapter.ts");
 const { pinnedRowsAdapter } = await import("./pinnedRowsAdapter.ts");
 const stub = await import("../../test-native/index.ts");
-const { loadSession } = await import("../session/persist.ts");
+const { loadSession, SESSION_VERSION } = await import("../session/persist.ts");
+const { versionedJson } = await import("../../lib/savedDocument.ts");
+const { savedDocumentValue } = await import("../session/documentJson.ts");
 const passwords = await import("../../platform/passwords.ts");
 const history = await import("../../platform/history.ts");
 
@@ -29,7 +32,7 @@ const sealedLogins = (read = stub.readLogins) => ({
     const [o, u, password] = JSON.parse(Buffer.from(sealed, "base64").toString());
     if (o !== origin || u !== username) return false;
     if (replacing && !(await passwords.deletePassword(profile, origin, username))) return false;
-    return passwords.savePassword(profile, origin, username, password);
+    return passwords.savePassword(profile, origin, username, asSecret("password", password));
   },
 });
 
@@ -69,8 +72,8 @@ class Device {
     stub.passwordStores.set(id, new Map());
     this.passwords = adapters.passwordsAdapter("default", sealedLogins())(true);
   }
-  loadSaved() {
-    this.with(() => (this.scopes.app.unapplied = [...new Set([...this.scopes.app.unapplied, ...settingsToReapply(this.scopes.app.records)])]));
+  loadSaved({ settingsSynced = true } = {}) {
+    this.with(() => settleSettingsFromSavedSync(this.scopes.app, settingsSynced));
   }
   with(fn) {
     useEditClock(this.clock);
@@ -160,7 +163,7 @@ test("settings: what a Mac only has by default isn't sent; nulls from another Ma
   const b = new Device("B", folder);
   b.with(() => S().updateSettings({ cmdClickCreatesTabGroup: true, optShiftClickOpensInGroup: true, cleanUpInactiveTabsAfterMinutes: 720 }));
   relaunch(a, OLD_SESSION);
-  assert.equal(a.with(() => S().settings.cmdClickCreatesTabGroup), true, "filled in at launch");
+  assert.equal(a.with(() => S().settings.cmdClickCreatesTabGroup), false, "filled in at launch");
   const extraction = a.with(() => settingsAdapter.extract(() => undefined));
   assert.ok(!extraction.values.has("set:cmdClickCreatesTabGroup") && extraction.ignore("set:cmdClickCreatesTabGroup"), "a default filled in abstains");
   assert.ok(!extraction.values.has("set:cleanUpInactiveTabsAfterHours"), "an old session's Never, its default, never published: no say either");
@@ -173,6 +176,86 @@ test("settings: what a Mac only has by default isn't sent; nulls from another Ma
   });
   b.with(() => settingsAdapter.apply(new Map([["set:cmdClickCreatesTabGroup", { v: false }]]), ["set:cmdClickCreatesTabGroup"]));
   b.with(() => assert.equal(S().settings.cmdClickCreatesTabGroup, false, "an explicit off is taken"));
+});
+
+const GROUPING = "cmdClickCreatesTabGroup";
+const GROUPING_RETIRED = "cmdClickCreatesTabGroup:offByDefault";
+const grouping = (device) => device.with(() => ({ on: S().settings[GROUPING], chosen: S().settingsMeta.chosen.includes(GROUPING), retired: S().settingsMeta.inferred.includes(GROUPING_RETIRED) }));
+const relaunchUnretired = (device, overrides) =>
+  device.with(() => {
+    const { settingsMeta } = S();
+    const unretired = { chosen: settingsMeta.chosen, inferred: settingsMeta.inferred.filter((k) => k !== GROUPING_RETIRED) };
+    stub.docs.set("session.json", JSON.stringify({ version: SESSION_VERSION, profiles: S().profiles, profileOrder: S().profileOrder, settings: { ...S().settings }, settingsMeta: unretired, windows: [], windowOrder: [], tabs: [], groups: [], splits: [], closedTabs: [], closedWindows: [] }));
+    S().hydrate(loadSession(overrides));
+  });
+const relaunchSaved = (device) =>
+  device.with(() => {
+    stub.docs.set("session.json", versionedJson(savedDocumentValue("session.json", S()), SESSION_VERSION));
+    S().hydrate(loadSession());
+  });
+async function syncedGroupingOn() {
+  const folder = new Folder();
+  const a = new Device("A", folder);
+  const b = new Device("B", folder);
+  a.with(() => S().updateSettings({ [GROUPING]: true }));
+  await syncAll([a, b]);
+  assert.deepEqual(grouping(b), { on: true, chosen: false, retired: true }, "B took A's on without choosing it");
+  return { folder, b };
+}
+
+test("settings: with Settings sync on and its key still locked at launch, an unchosen ⌘-click grouping on waits: no flip, no marker", async () => {
+  const { b } = await syncedGroupingOn();
+  relaunchUnretired(b, { retiredDefaultsWaitForSync: true });
+  assert.deepEqual(grouping(b), { on: true, chosen: false, retired: false });
+  relaunchSaved(b);
+  assert.deepEqual(grouping(b), { on: false, chosen: false, retired: true }, "a launch with Settings sync off retires it at once");
+});
+
+test("settings: once sync unlocks, a grouping on its saved record holds stays on and is marked, even with the sync folder out of reach", async () => {
+  const { folder, b } = await syncedGroupingOn();
+  relaunchUnretired(b, { retiredDefaultsWaitForSync: true });
+  folder.transport = () => {
+    throw new Error("the sync folder is out of reach");
+  };
+  b.loadSaved();
+  assert.deepEqual(grouping(b), { on: true, chosen: false, retired: true });
+  assert.equal(b.with(() => settingsAdapter.extract(() => undefined)).values.has(`set:${GROUPING}`), false, "and B doesn't publish it as its own");
+  relaunchSaved(b);
+  assert.deepEqual(grouping(b), { on: true, chosen: false, retired: true }, "the next launch keeps it: the default retires once");
+});
+
+test("settings: once sync unlocks with no say on grouping in its saved record, the waiting on retires to off and is marked", async () => {
+  const c = new Device("C", new Folder());
+  c.with(() => S().updateSettings({ [GROUPING]: true }, { fromSync: true }));
+  relaunchUnretired(c, { retiredDefaultsWaitForSync: true });
+  assert.deepEqual(grouping(c), { on: true, chosen: false, retired: false });
+  c.loadSaved();
+  assert.deepEqual(grouping(c), { on: false, chosen: false, retired: true });
+});
+
+test("settings: with Settings sync turned off, the saved sync record never sets settings: a waiting on retires, and an off stays off", async () => {
+  const { b } = await syncedGroupingOn();
+  relaunchUnretired(b, { retiredDefaultsWaitForSync: true });
+  b.loadSaved({ settingsSynced: false });
+  assert.deepEqual(grouping(b), { on: false, chosen: false, retired: true });
+  b.with(() => S().updateSettings({ [GROUPING]: false }, { fromSync: true }));
+  relaunchUnretired(b, { retiredDefaultsWaitForSync: true });
+  b.loadSaved({ settingsSynced: false });
+  assert.deepEqual(grouping(b), { on: false, chosen: false, retired: true }, "the cached on doesn't override the local off");
+});
+
+test("settings: the saved sync record settles a waiting grouping only with an explicit value the user didn't overrule here", async () => {
+  const { b } = await syncedGroupingOn();
+  b.with(() => S().updateSettings({ [GROUPING]: false }));
+  relaunchUnretired(b, { retiredDefaultsWaitForSync: true });
+  b.loadSaved();
+  assert.deepEqual(grouping(b), { on: false, chosen: true, retired: true }, "an off chosen here wins over the saved record");
+  const c = new Device("C", new Folder());
+  c.with(() => S().updateSettings({ [GROUPING]: true }, { fromSync: true }));
+  relaunchUnretired(c, { retiredDefaultsWaitForSync: true });
+  c.scopes.app.records[`set:${GROUPING}`] = { v: { v: null } };
+  c.loadSaved();
+  assert.deepEqual(grouping(c), { on: false, chosen: false, retired: true }, "a record with no say retires the waiting on");
 });
 
 test("settings: the clean-up time goes out as hours, the key a Mac a version behind reads, and comes back as exact minutes", () => {
@@ -1097,7 +1180,7 @@ test("passwords: saved on one Mac, changed or deleted on another; the newer edit
   const folder = new Folder();
   const a = new Device("devA", folder);
   const b = new Device("devB", folder);
-  const save = (d, origin, user, password) => d.with(() => passwords.savePassword("", origin, user, password));
+  const save = (d, origin, user, password) => d.with(() => passwords.savePassword("", origin, user, asSecret("password", password)));
   const remove = (d, origin, user) => d.with(() => passwords.deletePassword("", origin, user));
   const list = (d) => [...stub.passwordStores.get(d.id).values()].map((l) => `${l.url} ${l.username}=${l.password}`).sort();
   await save(a, "https://bank.example", "alice", "hunter2");
@@ -1106,7 +1189,7 @@ test("passwords: saved on one Mac, changed or deleted on another; the newer edit
   await syncAll([a, b]);
   assert.deepEqual(list(a), list(b));
   assert.deepEqual(list(b), ["https://bank.example alice=hunter2", "https://mail.example alice=m41l", "https://shop.example bob=sh0p"]);
-  await b.with(() => passwords.updatePassword("", "https://bank.example", "alice", { password: "correct horse" }));
+  await b.with(() => passwords.updatePassword("", "https://bank.example", "alice", { password: asSecret("password", "correct horse") }));
   await remove(b, "https://mail.example", "alice");
   await syncAll([b, a]);
   assert.deepEqual(list(a), ["https://bank.example alice=correct horse", "https://shop.example bob=sh0p"]);
@@ -1118,7 +1201,7 @@ test("passwords: a login whose read is still out when quitting begins isn't save
   const folder = new Folder();
   const a = new Device("devA", folder);
   const b = new Device("devB", folder);
-  await a.with(() => passwords.savePassword("", "https://bank.example", "alice", "hunter2"));
+  await a.with(() => passwords.savePassword("", "https://bank.example", "alice", asSecret("password", "hunter2")));
   await a.sync();
   let quitting = false;
   let armed = false;
@@ -1143,8 +1226,8 @@ test("passwords: a remote change saved in Chrome as quitting begins isn't sent b
   const folder = new Folder();
   const a = new Device("devA", folder);
   const b = new Device("devB", folder);
-  const save = (d, password) => d.with(() => passwords.savePassword("", "https://bank.example", "alice", password));
-  const change = (d, password) => d.with(() => passwords.updatePassword("", "https://bank.example", "alice", { password }));
+  const save = (d, password) => d.with(() => passwords.savePassword("", "https://bank.example", "alice", asSecret("password", password)));
+  const change = (d, password) => d.with(() => passwords.updatePassword("", "https://bank.example", "alice", { password: asSecret("password", password) }));
   const list = (d) => [...stub.passwordStores.get(d.id).values()].map((l) => `${l.username}=${l.password}`);
   await save(a, "one");
   await syncAll([a, b]);

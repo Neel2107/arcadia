@@ -153,6 +153,8 @@ const PARAMS = (f) => ({
   "sites.reset": { origin: "https://site.example" },
   "sites.clearData": { site: "site.example" },
   "sites.setZoom": { host: "site.example", zoom: 1.5 },
+  "sites.allowAds": { site: "site.example" },
+  "sites.blockAds": { site: "site.example" },
   "extensions.setEnabled": { id: "a".repeat(32), enabled: false },
   "extensions.setPinned": { id: "a".repeat(32), pinned: true },
   "extensions.reload": { id: "a".repeat(32) },
@@ -194,6 +196,16 @@ const PARAMS = (f) => ({
   "autofill.respond": { tab: f.loose, id: 1, decision: "accept" },
   "menus.dismiss": { menu: "m1" },
   "menus.runBar": { path: [1, 0], ref: "cmd:newTab@File\u001fNew Tab", window: f.w2 },
+  "devtools.logpoint": { tab: f.one, url: "https://shop.example/app.js", line: 1, expression: "1" },
+  "devtools.clearLogpoint": {},
+  "files.armUpload": { tab: f.one, paths: ["/tmp/ardia-sweep-upload.txt"] },
+  "files.armDownload": { tab: f.one, path: "/tmp/ardia-sweep-download.bin" },
+  "files.disarm": {},
+  "devtools.send": { session: 1, method: "Runtime.evaluate" },
+  "devtools.batch": { session: 1, commands: [{ method: "Runtime.evaluate" }] },
+  "tabs.click": { tab: f.one, x: 1, y: 1 },
+  "tabs.diagnostics": { tab: f.one, clear: true },
+  "tabs.input": { tab: f.one, action: "click", x: 1, y: 1 },
 });
 
 const stores = () => [S(), useLive.getState(), useAirTraffic.getState()];

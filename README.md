@@ -117,7 +117,7 @@ packages/
 
 ## Run it
 
-The Linux desktop target is `apps/linux`, for x86-64 Linux on Wayland or X11. Releases ship it as a `.deb`
+The Linux desktop target is `apps/desktop`, for x86-64 Linux on Wayland or X11. Releases ship it as a `.deb`
 (`sudo apt install ./Ardia-<version>-linux-x64.deb`), an AppImage, a tarball and an Arch source package, and stables as
 `ardia-bin` on the AUR: [docs/linux-port.md › Installing on Linux](docs/linux-port.md#installing-on-linux). The same
 file has the source-build and packaging instructions. It builds against the dedicated Linux Chromium host.
@@ -230,6 +230,16 @@ Only math and colour values are reused. No Dia images, fonts or binaries are cop
 Feature parity with Dia (everything but its AI) is tracked row by row in
 [docs/dia-feature-parity.md](docs/dia-feature-parity.md); releases and their notes are at
 [ardia.dev/release-notes](https://ardia.dev/release-notes).
+
+## Sponsors
+
+Greptile reads every pull request before we do.
+
+<a href="https://www.greptile.com/?utm_source=oss_badge&utm_medium=readme&utm_campaign=greptile_for_open_source"><img src="https://www.greptile.com/badge.svg" alt="Greptile: The War on Bugs"></a>
+
+[Blacksmith](https://www.blacksmith.sh) runs our CI.
+
+Monthly donors who asked to be listed are on [ardia.dev](https://ardia.dev/#sponsors). [Chip in](https://ardia.dev/#donate) to join them.
 
 ## License
 

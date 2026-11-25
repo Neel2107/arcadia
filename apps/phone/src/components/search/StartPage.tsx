@@ -10,11 +10,12 @@ import { useSyncEnabled } from "../../state/sync/hooks";
 import { countUsage } from "../../state/telemetry/telemetry";
 import { useHasTabs, useIncognito } from "../../state/tabs/hooks";
 import { actionWords, destinationWords } from "../../lib/sharedWords";
-import { chromeLayout, controlSize, space, startLayout, startMotion, tabsCurve, tabsLayout, useReduceMotion, useTheme, type SymbolName } from "../ui";
+import { chromeLayout, controlSize, FrostSource, GlassSource, space, START_FROST, startLayout, startMotion, tabsCurve, tabsLayout, useReduceMotion, useTheme, type SymbolName } from "../ui";
 import { StartCircleButton } from "./StartBarButtons";
 import { PlusMenuButton } from "../tabs/ChromeButtons";
 import { StartMark, StartSpaces, startBarCenterY, type StartGeometry } from "./StartSpaces";
 import { useBottomBarLayout } from "../ui/useBottomBarLayout";
+import { prepareArchive } from "../../state/tabs/store";
 import { barSpanCenter, besideStrip, DUO_BAR } from "../../lib/bottomBarSpan";
 
 export function StartPage() {
@@ -41,7 +42,7 @@ export function StartPage() {
   const plusMenuLeft = Math.min(Math.max(barSpanCenter(width, barSpan) - tabsLayout.menuWidth / 2, space.l), width - tabsLayout.menuWidth - space.l);
   const stripX = strip ? strip.centerX - DUO_BAR.button / 2 : 0;
   const leading = useStartLeading(incognito);
-  const tabs = <StartCircleButton icon={leading.icon} label={leading.label} testID={leading.testID} dark={dark} incognito={incognito} onPress={leading.onPress} />;
+  const tabs = <StartCircleButton icon={leading.icon} label={leading.label} testID={leading.testID} dark={dark} incognito={incognito} onPress={leading.onPress} onPressIn={leading.onPressIn} />;
   const plus = (
     <PlusMenuButton
       width={strip ? DUO_BAR.button : startLayout.barPlus.width}
@@ -55,10 +56,13 @@ export function StartPage() {
   );
   return (
     <View testID="startPage" style={StyleSheet.absoluteFill}>
-      <StartSpaces geometry={geometry} dark={dark} incognito={incognito} interactive={!trayUp} />
-      <Animated.View testID="startContent" {...hidden} style={[styles.mark, { paddingBottom: height - barTop }, contentStyle]}>
-        <StartMark incognito={incognito} />
-      </Animated.View>
+      <FrostSource name={START_FROST} style={StyleSheet.absoluteFill} pointerEvents="box-none" collapsable={false}>
+        <StartSpaces geometry={geometry} dark={dark} incognito={incognito} interactive={!trayUp} />
+        <Animated.View testID="startContent" {...hidden} style={[styles.mark, { paddingBottom: height - barTop }, contentStyle]}>
+          <StartMark incognito={incognito} />
+        </Animated.View>
+      </FrostSource>
+      <GlassSource name={START_FROST}>
       <Animated.View testID="startBar" {...hidden} style={[styles.bar, { top: barTop, paddingLeft: barSpan.left, paddingRight: barSpan.right }, strip?.ends ? styles.barEnds : null, barStyle]}>
         {strip ? null : tabs}
         {strip ? null : plus}
@@ -74,11 +78,12 @@ export function StartPage() {
           </Animated.View>
         </>
       ) : null}
+      </GlassSource>
     </View>
   );
 }
 
-function useStartLeading(incognito: boolean): { icon: SymbolName; label: string; testID: string; onPress: () => void } {
+function useStartLeading(incognito: boolean): { icon: SymbolName; label: string; testID: string; onPress: () => void; onPressIn?: () => void } {
   const hasTabs = useHasTabs();
   const syncs = useSyncEnabled();
   if (hasTabs) return { icon: "squareOnSquare", label: "Tabs", testID: "startBarTabs", onPress: showDeck };
@@ -87,7 +92,7 @@ function useStartLeading(incognito: boolean): { icon: SymbolName; label: string;
     if (!incognito) countUsage("start_no_tabs_button_taps");
     open();
   };
-  return syncs ? { icon: "laptop", label: destinationWords.spaces, testID: "startBarSynced", onPress } : { icon: "archivebox", label: destinationWords.archive, testID: "startBarArchive", onPress };
+  return syncs ? { icon: "laptop", label: destinationWords.spaces, testID: "startBarSynced", onPress } : { icon: "archivebox", label: destinationWords.archive, testID: "startBarArchive", onPress, onPressIn: prepareArchive };
 }
 
 const styles = StyleSheet.create({

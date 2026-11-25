@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FlatList, Image, Pressable, StyleSheet, Text, View, type ViewInstance } from "react-native";
-import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown, useAnimatedStyle, useSharedValue, withSpring, type SharedValue } from "react-native-reanimated";
+import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useSystemBars } from "../../state/app/systemBars";
 import { closeReader, readableContent, setReaderSerif, setReaderStep, setReaderTheme, type ReadableContent } from "../../state/page/actions";
@@ -18,7 +18,7 @@ import {
 } from "../../state/page/pagePrompts";
 import { copy } from "../../lib/platformCopy";
 import { dismissWords, ELLIPSIS } from "../../lib/sharedWords";
-import { ChromeSurface, EmptyState, font, LoadingState, motionAliases, readerInk, readerLayout, smoothCorners, space, tabsMotion, TextSizeGlyph, useDesign, useModalOverlay, usePressStyle, useReduceMotion, type MenuItem } from "../ui";
+import { ChromeSurface, EmptyState, FrostSource, GlassSource, font, LoadingState, motionAliases, readerInk, readerLayout, smoothCorners, space, tabsMotion, TextSizeGlyph, useDesign, useModalOverlay, usePressStyle, useReduceMotion, type MenuItem } from "../ui";
 import { MaterialIconAction, MaterialTopBar } from "../ui/MaterialTopBar";
 import { MenuTrigger } from "../ui/MenuTrigger";
 import { pageMenuOpener } from "./pageMenuOpener";
@@ -67,6 +67,7 @@ export function ReaderView({ tabId, closing = false }: { tabId: string; closing?
   useEffect(() => {
     shownSize.value = reduceMotion ? size : withSpring(size, motionAliases.readerTextSize);
   }, [size, reduceMotion]);
+  const textScale = useAnimatedStyle(() => ({ transform: [{ scale: shownSize.value / size }] }), [size]);
   const family = settings.serif ? copy().readerSerif.family : copy().readerSans.family;
   const items: MenuItem[] = [
     { label: "Smaller Text", systemImage: "textformat.size.smaller", disabled: settings.step <= 0, onPress: () => setReaderStep(clampReaderStep(settings.step - 1)) },
@@ -83,6 +84,10 @@ export function ReaderView({ tabId, closing = false }: { tabId: string; closing?
   ];
   return (
     <Animated.View testID="readerView" entering={reduceMotion ? riseReduced : rise} exiting={reduceMotion ? fallReduced : fall} style={[StyleSheet.absoluteFill, { backgroundColor: ink.background }]}>
+      <FrostSource name={READER_FROST} style={StyleSheet.absoluteFill} pointerEvents="none" collapsable={false}>
+        <View testID="readerBackdrop" style={[StyleSheet.absoluteFill, { backgroundColor: ink.background }]} />
+      </FrostSource>
+      <GlassSource name={READER_FROST}>
       <View testID="readerOverlay" ref={overlayRef} collapsable={false} style={[styles.fill, { paddingTop: insets.top }]} {...overlay}>
       {material ? (
         <MaterialTopBar
@@ -100,7 +105,7 @@ export function ReaderView({ tabId, closing = false }: { tabId: string; closing?
       ) : (
       <View style={styles.top}>
         {load.kind === "loaded" ? (
-          <MenuTrigger items={items} trigger="tap" fixedOrder frost={null} dark={shown === "dark"} place={{ top: insets.top + readerLayout.chromeBand, left: readerLayout.chromeSide }}>
+          <MenuTrigger items={items} trigger="tap" fixedOrder frost={null} dark={shown === "dark"} previewRadius={readerLayout.chromeButton / 2} place={{ top: insets.top + readerLayout.chromeBand, left: readerLayout.chromeSide }}>
             {({ onPress }) => (
               <Pressable accessibilityRole="button" accessibilityLabel="Text Appearance" onPress={onPress} style={appearancePress}>
                 <ChromeSurface shape="circle" cornerRadius={readerLayout.chromeButton / 2} dark={shown === "dark"} style={styles.circle}>
@@ -127,16 +132,19 @@ export function ReaderView({ tabId, closing = false }: { tabId: string; closing?
           <EmptyState testID="readerNoArticle" title={NO_ARTICLE} glyph="docPlaintext" ink={{ label: ink.ink, secondary: ink.secondary }} />
         </View>
       ) : (
-        <FlatList
+        <AnimatedFlatList
+          testID="readerText"
+          style={[styles.text, textScale]}
           data={load.content.paragraphs}
           keyExtractor={(_, index) => String(index)}
           contentContainerStyle={{ paddingBottom: insets.bottom + space.huge }}
           ListHeaderComponent={<Header content={load.content} family={family} size={size} ink={ink} />}
-          renderItem={({ item }) => <Paragraph text={item} family={family} size={shownSize} color={ink.ink} />}
+          renderItem={({ item }) => <Paragraph text={item} family={family} size={size} color={ink.ink} />}
         />
       )}
       <View style={[styles.navigationBand, { height: insets.bottom, backgroundColor: ink.background }]} pointerEvents="none" />
       </View>
+      </GlassSource>
     </Animated.View>
   );
 }
@@ -162,16 +170,18 @@ function Header({ content, family, size, ink }: { content: ReadableContent; fami
   );
 }
 
-function Paragraph({ text, family, size, color }: { text: string; family: string; size: SharedValue<number>; color: string }) {
-  const sized = useAnimatedStyle(() => ({ fontSize: size.value, lineHeight: size.value * readerLayout.lineHeight, marginBottom: size.value * readerLayout.paragraphGap }));
+function Paragraph({ text, family, size, color }: { text: string; family: string; size: number; color: string }) {
   return (
-    <Animated.Text selectable style={[styles.paragraph, { fontFamily: family, color }, sized]}>
+    <Text selectable style={[styles.paragraph, { fontFamily: family, color, fontSize: size, lineHeight: size * readerLayout.lineHeight, marginBottom: size * readerLayout.paragraphGap }]}>
       {text}
-    </Animated.Text>
+    </Text>
   );
 }
 
+const AnimatedFlatList = Animated.createAnimatedComponent(FlatList<string>);
+
 const WEB_IMAGE = /^https?:\/\//i;
+const READER_FROST = "reader";
 const NO_ARTICLE = "No Article Found";
 
 const LOADING_ARTICLE = `Loading Article${ELLIPSIS}`;
@@ -197,6 +207,7 @@ const styles = StyleSheet.create({
   circle: { width: readerLayout.chromeButton, height: readerLayout.chromeButton, alignItems: "center", justifyContent: "center" },
   capsule: { height: readerLayout.chromeButton, paddingHorizontal: readerLayout.chromeCapsulePadding, alignItems: "center", justifyContent: "center" },
   fill: { flex: 1 },
+  text: { flex: 1, transformOrigin: "top" },
   bold: { fontWeight: "600" },
   medium: { fontWeight: "500" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },

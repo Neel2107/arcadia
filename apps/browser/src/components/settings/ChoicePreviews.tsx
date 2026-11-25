@@ -11,10 +11,25 @@ type FieldPlace = "side" | "toolbar";
 function useLook(): MiniWindowLook & { accent: string } {
   const theme = useTheme();
   const look = useSettingsColors();
-  return { window: look.miniWindow, bar: look.miniBar, page: look.miniPage, accent: theme.formAccent };
+  return { window: look.miniWindow, bar: look.miniBar, page: look.miniPage, accent: theme.formAccent, closed: look.dashedBorder };
 }
 
 const fieldPlaceOf = (addressBar: Settings["addressBar"]): FieldPlace => (addressBar === "sidebar" ? "side" : "toolbar");
+
+export function AfterClosingTabPreview({ mode, top, side }: { mode: Settings["afterClosingTab"]; top: boolean; side: Settings["sidebarSide"] }) {
+  const look = useLook();
+  return (
+    <MiniWindow
+      size="l"
+      layout={top ? "top" : "side"}
+      side={side}
+      bars={top ? P.topTabRows : P.tabRows}
+      accentBar={{ tabAbove: 1, tabBelow: 3, previouslyActive: 0 }[mode]}
+      closedBar={2}
+      look={look}
+    />
+  );
+}
 
 export function CtrlTabPreview({ preset }: { preset: CtrlTabPreset }) {
   const look = useLook();

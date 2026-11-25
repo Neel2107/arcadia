@@ -1,12 +1,13 @@
+import { asSecret, reveal, type Secret } from "@ardia/core";
 import { emptyScope, EXTENSION_PREFIX, folderTransport, syncScope, SyncNative, visible, type FolderInfo, type PhraseResult } from "../../platform/sync";
 import { create } from "zustand";
 import { useBrowser } from "../browser/store";
 import { engineProfile } from "../browser/model";
 import { historyExpired } from "./historyAdapter";
-import { settingsToReapply } from "./settingsAdapter";
+import { settleRetiredDefaultsWithoutSync, settleSettingsFromSavedSync } from "./settingsAdapter";
 import { watchExtensionIntents } from "./extensions";
 import { appAdapters, extensionsOf, forgetScopeAdapters, profileAdapters, typeSynced } from "./scopeAdapters";
-import { APP_SCOPE, emptyDoc, emptyUi, type DataType, type SendTarget, type SyncDoc, type SyncUi } from "./syncDoc";
+import { APP_SCOPE, emptyDoc, emptyUi, typeSyncedFor, type DataType, type SendTarget, type SyncDoc, type SyncUi } from "./syncDoc";
 import { syncFiles } from "./syncFiles";
 import { settleThemeAdoption, themeChosenHere } from "./syncThemes";
 import { editClock, startEditClock } from "./editClock";
@@ -34,6 +35,7 @@ const CYCLE_MS = 15_000;
 const AFTER_EDIT_MS = 3_000;
 
 export const useSync = create<SyncUi>()(() => emptyUi(SyncNative ? "off" : "unavailable"));
+export const whenSyncCore = <Consent>(consent: Consent, emit: (core: "rust" | "native", consent: Consent) => void) => emit(SyncNative?.core === "rust" ? "rust" : "native", consent);
 
 export const currentSyncFolder = () => useSync.getState().folder;
 
@@ -50,6 +52,7 @@ function load() {
 }
 
 function publishUi(patch: Partial<SyncUi> = {}) {
+  if (!doc.enabled || !typeSyncedFor(doc.types, "settings", true)) settleRetiredDefaultsWithoutSync();
   useSync.setState({
     enabled: doc.enabled,
     joining: doc.enabled && doc.joining,
@@ -202,11 +205,11 @@ export function adoptProfileTheme(profileId: string) {
 }
 
 async function loadSavedState() {
-  await loadState();
+  const loading = doc;
+  const installed = await loadState(loading);
   startEditClock(doc.deviceId ?? "", doc.clock);
-  const app = doc.scopes[APP_SCOPE];
-  if (app) app.unapplied = [...new Set([...app.unapplied, ...settingsToReapply(app.records)])];
-  settleThemeAdoption(doc.profiles, app, false);
+  settleSettingsFromSavedSync(doc.scopes[APP_SCOPE], installed && doc === loading && doc.enabled && !stopping && typeSyncedFor(doc.types, "settings", true));
+  settleThemeAdoption(doc.profiles, doc.scopes[APP_SCOPE], false);
 }
 
 async function resetFromElsewhere() {
@@ -271,12 +274,12 @@ export async function turnOnSync(folder: string, how?: TurnOnFolder): Promise<{ 
   return { ok: true };
 }
 
-export async function enterRecoveryPhrase(folder: string, text: string): Promise<PhraseResult | { error: "unavailable" }> {
+export async function enterRecoveryPhrase(folder: string, phrase: Secret<"syncPhrase">): Promise<PhraseResult | { error: "unavailable" }> {
   const native = SyncNative;
   if (!native) return { error: "unavailable" };
   await moveSettled();
   if (doc.enabled && doc.deviceId && useSync.getState().status === "locked") {
-    const result = await native.enterPhrase(doc.deviceId, text, doc.folder ?? folder);
+    const result = await native.enterPhrase(doc.deviceId, reveal(phrase), doc.folder ?? folder);
     if ("ok" in result) {
       await loadSavedState();
       publishUi({ status: "starting", error: null });
@@ -285,7 +288,7 @@ export async function enterRecoveryPhrase(folder: string, text: string): Promise
     return result;
   }
   const deviceId = native.newDeviceId();
-  const result = await native.enterPhrase(deviceId, text, folder);
+  const result = await native.enterPhrase(deviceId, reveal(phrase), folder);
   if ("ok" in result) begin(folder, deviceId, true);
   return result;
 }
@@ -393,5 +396,5 @@ export function startSync() {
     if (closed || (!cycle && (s.bookmarks !== prev.bookmarks || s.settings !== prev.settings || s.profiles !== prev.profiles || s.profileOrder !== prev.profileOrder || s.groups !== prev.groups))) scheduleSync();
   });
   if (__DEV__)
-    exposeDevSync({ useSync, syncNow, turnOnSync, enterRecoveryPhrase, stopSync, setTypeSynced, setProfileSynced, setOpenTabsSynced, addRemoteProfile, removeRemoteProfile, removeSyncedDevice, setSyncFolder, moveSyncFolder, folderInfo, doc: () => doc, native: SyncNative });
+    exposeDevSync({ useSync, syncNow, turnOnSync, enterRecoveryPhrase: (folder: string, text: string) => enterRecoveryPhrase(folder, asSecret("syncPhrase", text)), stopSync, setTypeSynced, setProfileSynced, setOpenTabsSynced, addRemoteProfile, removeRemoteProfile, removeSyncedDevice, setSyncFolder, moveSyncFolder, folderInfo, doc: () => doc, native: SyncNative });
 }

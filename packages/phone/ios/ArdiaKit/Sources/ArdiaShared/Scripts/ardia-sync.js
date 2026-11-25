@@ -187,7 +187,7 @@ __define("packages/sync/src/scope.ts", function (exports, __require) {
 const { canonical } = __require("packages/sync/src/canon.ts");
 const { hlcWall } = __require("packages/sync/src/hlc.ts");
 const { holdsBack, noteFileHealth } = __require("packages/sync/src/fileHealth.ts");
-const { baseKeysWith, dropBase, dropRecord, putBase, putRecord, visible, withBaseIndex } = __require("packages/sync/src/scopeKeys.ts");
+const { baseKeysWith, baseWritesUnder, dropBase, dropRecord, putBase, putRecord, visible } = __require("packages/sync/src/scopeKeys.ts");
 
 const { covered, isApplied, markApplied, raiseApplied } = __require("packages/sync/src/applied.ts");
                                                                                                                                  
@@ -284,8 +284,25 @@ function settleDurable(state            ) {
                                                             
                                                     
 
+                                                                         
+const extractedFrom = new WeakMap                                    ();
+
+function unchangedSinceExtracted(state            , adapter         , source                    ) {
+  const last = source && extractedFrom.get(state)?.get(adapter.prefix);
+  return !!last && last.source === source && last.joined === state.joined && last.baseWrites === baseWritesUnder(state, adapter.prefix);
+}
+
+function noteExtracted(state            , adapter         , source                    ) {
+  if (!source) return;
+  let byPrefix = extractedFrom.get(state);
+  if (!byPrefix) extractedFrom.set(state, (byPrefix = new Map()));
+  byPrefix.set(adapter.prefix, { source, baseWrites: baseWritesUnder(state, adapter.prefix), joined: state.joined });
+}
+
 async function changesOf(state            , adapter         , now        ) {
   if (adapter.adoptRemoteOnJoin && !state.joined) return null;
+  const source = adapter.extractsOnlyFrom?.();
+  if (unchangedSinceExtracted(state, adapter, source)) return { changes: [], settle: undefined, source: undefined };
   let pending                     = null;
   const queued = (key        ) => (pending ??= new Set([...state.outbox, ...(state.journal ?? []).flatMap((f) => f.ops)].map((op) => op.k))).has(key);
   const extraction = await adapter.extract((key) => parseBase(state.base[key]), queued, now, (key) => key in state.records, (key) => state.records[key]?.v, (key) => state.records[key]?.h, (key) => state.base[key]);
@@ -304,7 +321,7 @@ async function changesOf(state            , adapter         , now        ) {
     if (!(key in state.base) || values.has(key) || ignore?.(key)) continue;
     changes.push({ key, value: null, json: "null" });
   }
-  return { changes, settle: extraction.published };
+  return { changes, settle: extraction.published, source };
 }
 
 function stampOf(state            , adapter         , clock       , { key, value }        )      {
@@ -333,6 +350,7 @@ async function publishAdapter(state            , adapter         , clock       ,
     state.outbox.push({ k: key, h, v: value });
     published.add(key);
   }
+  noteExtracted(state, adapter, found.source);
   const { settle } = found;
   if (settle && published.size) settleWhenDurable(state, () => settle(published));
   return published;
@@ -408,7 +426,7 @@ async function pull(state            , transport           , scope        , cloc
   return changed;
 }
 
-async function applyAdapter(state            , adapter         , keys             , now        , horizon        , held               )                   {
+async function applyAdapter(state            , adapter         , keys             , now        , horizon        , held               , deferred             )                   {
   const mine = new Set([...keys].filter((k) => k.startsWith(adapter.prefix)));
   if (!mine.size) return true;
   const view = visible(state, adapter.prefix);
@@ -421,7 +439,15 @@ async function applyAdapter(state            , adapter         , keys           
   const landed = new Set        ();
   let ok                 = false;
   try {
-    const records = { known: (key        ) => key in state.records, now, horizon, joined: applyAs[adapter.prefix] === "joined", held, landed: (key        ) => void landed.add(key) };
+    const records = {
+      known: (key        ) => key in state.records,
+      now,
+      horizon,
+      joined: applyAs[adapter.prefix] === "joined",
+      held,
+      landed: (key        ) => void landed.add(key),
+      defer: (key        ) => void (mine.has(key) && deferred.add(key)),
+    };
     ok = await adapter.apply(view, mine, (key) => parseBase(state.base[key]), records);
   } catch (error) {
     console.warn(`[sync] applying ${adapter.prefix} failed`, error);
@@ -435,7 +461,7 @@ async function applyAdapter(state            , adapter         , keys           
     return false;
   }
   applyAs[adapter.prefix] = "joined";
-  for (const key of mine) settle(key);
+  for (const key of mine) if (!deferred.has(key)) settle(key);
   return true;
 }
 
@@ -508,7 +534,7 @@ async function compact(state            , transport           , scope        , d
   return true;
 }
 
-                                                                                                                             
+                                                                                                                      
 
 async function syncScope(args   
                 
@@ -520,10 +546,6 @@ async function syncScope(args
                      
                          
  )                       {
-  return withBaseIndex(args.state, () => syncScopeIndexed(args));
-}
-
-async function syncScopeIndexed(args                                 )                       {
   const { scope, state, transport, adapters, clock, device, options } = args;
   const now = args.now ?? Date.now;
   let published = 0;
@@ -544,9 +566,11 @@ async function syncScopeIndexed(args                                 )          
     published += late.size;
     for (const key of late) keys.delete(key);
     heldApply ||= applyHeld();
-    const applied = !heldApply && (await applyAdapter(state, adapter, keys, now(), 2 * (options?.tombstoneTTL ?? DEFAULTS.tombstoneTTL), applyHeld));
+    const deferred = new Set        ();
+    const applied = !heldApply && (await applyAdapter(state, adapter, keys, now(), 2 * (options?.tombstoneTTL ?? DEFAULTS.tombstoneTTL), applyHeld, deferred));
     heldApply ||= applyHeld();
     if (!applied) for (const key of keys) if (key.startsWith(adapter.prefix)) unapplied.push(key);
+    if (applied) for (const key of deferred) unapplied.push(key);
   }
   state.unapplied = [...unapplied, ...[...keys].filter((k) => !adapters.some((a) => k.startsWith(a.prefix)))];
   if (!heldApply && (!state.awaitRemote || Object.keys(state.seen).some((d) => d !== device))) {
@@ -564,12 +588,12 @@ __define("packages/sync/src/scopeKeys.ts", function (exports, __require) {
   __export(exports, "visible", () => visible);
   __export(exports, "recordsWith", () => recordsWith);
   __export(exports, "trackTouchedKeys", () => trackTouchedKeys);
+  __export(exports, "baseWritesUnder", () => baseWritesUnder);
   __export(exports, "putRecord", () => putRecord);
   __export(exports, "dropRecord", () => dropRecord);
   __export(exports, "baseKeysWith", () => baseKeysWith);
   __export(exports, "putBase", () => putBase);
   __export(exports, "dropBase", () => dropBase);
-  __export(exports, "withBaseIndex", () => withBaseIndex);
                                                               
 
 function visible(state            , prefix        )                       {
@@ -590,7 +614,7 @@ function recordsWith(state            , prefix        )                         
   return out;
 }
 
-                                                                      
+                                                               
 const touching = new WeakMap                              ();
 
 function trackTouchedKeys(state            )                                             {
@@ -612,6 +636,23 @@ function touch(state            , kind                   , key        ) {
   if (all) for (const touched of all) touched[kind].add(key);
 }
 
+const baseWrites = new WeakMap                                 ();
+
+function baseWritesUnder(state            , prefix        )         {
+  let counts = baseWrites.get(state);
+  if (!counts) baseWrites.set(state, (counts = new Map()));
+  const count = counts.get(prefix);
+  if (count !== undefined) return count;
+  counts.set(prefix, 0);
+  return 0;
+}
+
+function countBaseWrite(state            , key        ) {
+  baseWrites.get(state)?.forEach((count, prefix, counts) => {
+    if (key.startsWith(prefix)) counts.set(prefix, count + 1);
+  });
+}
+
 function putRecord(state            , key        , record            ) {
   state.records[key] = record;
   touch(state, "records", key);
@@ -623,32 +664,32 @@ function dropRecord(state            , key        ) {
   touch(state, "records", key);
 }
 
-                                                                     
-const baseIndexes = new WeakMap                       ();
+                                                                 
+const baseIndexes = new WeakMap                                     ();
 
 function baseKeysWith(state            , prefix        )                    {
-  const index = baseIndexes.get(state);
-  if (!index) return Object.keys(state.base).filter((key) => key.startsWith(prefix));
-  let keys = index.byPrefix.get(prefix);
+  let byPrefix = baseIndexes.get(state);
+  if (!byPrefix) baseIndexes.set(state, (byPrefix = new Map()));
+  let keys = byPrefix.get(prefix);
   if (!keys) {
-    keys = [];
-    const all = index.keys;
-    for (let i = 0; i < all.length; i++) if (all[i] .startsWith(prefix)) keys.push(all[i] );
-    index.byPrefix.set(prefix, keys);
+    const live = new Set        ();
+    for (const key in state.base) if (key.startsWith(prefix)) live.add(key);
+    byPrefix.set(prefix, (keys = { live, listed: null }));
   }
-  return keys;
+  return (keys.listed ??= [...keys.live]);
 }
 
 function putBase(state            , key        , json        ) {
   const known = state.base[key];
   if (known === json) return;
-  const index = known === undefined ? baseIndexes.get(state) : undefined;
   state.base[key] = json;
   touch(state, "base", key);
-  if (!index) return;
-  index.keys.push(key);
-  index.byPrefix.forEach((keys, prefix) => {
-    if (key.startsWith(prefix)) keys.push(key);
+  countBaseWrite(state, key);
+  if (known !== undefined) return;
+  baseIndexes.get(state)?.forEach((keys, prefix) => {
+    if (!key.startsWith(prefix)) return;
+    keys.live.add(key);
+    keys.listed = null;
   });
 }
 
@@ -656,15 +697,10 @@ function dropBase(state            , key        ) {
   if (!(key in state.base)) return;
   delete state.base[key];
   touch(state, "base", key);
-}
-
-async function withBaseIndex   (state            , run                  )             {
-  baseIndexes.set(state, { keys: Object.keys(state.base), byPrefix: new Map() });
-  try {
-    return await run();
-  } finally {
-    baseIndexes.delete(state);
-  }
+  countBaseWrite(state, key);
+  baseIndexes.get(state)?.forEach((keys) => {
+    if (keys.live.delete(key)) keys.listed = null;
+  });
 }
 
 });
@@ -674,7 +710,7 @@ __define("packages/sync/src/fileHealth.ts", function (exports, __require) {
   __export(exports, "pullSettled", () => pullSettled);
                                                   
 
-                                                                                                            
+                                                                                                     
 
 function noteFileHealth(state            , files             , now        , giveUp        ) {
   const setAside = (id        ) => state.files[id]?.k === "bad";
@@ -761,7 +797,7 @@ __define("packages/sync/src/scopeState.ts", function (exports, __require) {
 
                                                    
                                                            
-                                                   
+                                            
 
                                                                                                 
                             
@@ -841,6 +877,7 @@ const emptyScope = ()             => ({
                   
                   
                             
+                           
   
 
                           
@@ -856,6 +893,7 @@ const emptyScope = ()             => ({
                                                     
                                                                                                                                                               
                                                 
+                                          
                               
                              
  
@@ -1028,7 +1066,7 @@ const { fromLegacyUrl } = __require("packages/sync/src/companion/legacy.ts");
 const { buildView, dataOwner, defaultProfileId, liveProfiles } = __require("packages/sync/src/companion/view.ts");
 const { host, loaded, save, viewIsNew } = __require("packages/sync/src/companion/state.ts");
 
-                                                           
+                                                    
 
                           
                
@@ -1039,10 +1077,10 @@ const { host, loaded, save, viewIsNew } = __require("packages/sync/src/companion
                         
   
 
-                                                                                                                                 
-                                                                               
+                                                                                                                          
+                                                                        
 
-                           
+                    
                       
               
                        
@@ -1432,7 +1470,7 @@ function unionTimes(a          , b          )           {
 
 const keptTimes = (times          )           => (times.length > MAX_VISIT_TIMES ? unionTimes(times.filter((t) => Number.isFinite(t)), []) : times);
 
-                              
+                       
                                          
                      
                     
@@ -1520,7 +1558,7 @@ function historyAdapter(ctx                )          {
   };
 }
 
-                           
+                    
                 
                              
                     
@@ -1560,7 +1598,7 @@ function sendsAdapter(ctx             )          {
   };
 }
 
-                               
+                        
                 
                     
                           
@@ -1682,7 +1720,7 @@ const { folderChildren } = __require("packages/sync/src/folders.ts");
 const { lastVisitOf } = __require("packages/sync/src/companion/adapters.ts");
 const { themeOf } = __require("packages/sync/src/companion/theme.ts");
 
-                                                                                            
+                                            
 
 const MAX_HISTORY_ITEMS = 2_000;
 const MAX_BOOKMARK_DEPTH = 100;
@@ -1690,15 +1728,15 @@ const MAX_BOOKMARK_DEPTH = 100;
                             
                                                                                           
 
-                                                                                                                                        
-                                                                                                                          
-                                                                                             
-                                                                                
-                                                                                    
-                                                                                                                                   
+                                                                                                                                 
+                                                                                                                   
+                                                                                      
+                                                                         
+                                                                             
+                                                                                                                            
                                                                                                                                                             
-                                                                                            
-                           
+                                                                                     
+                    
                  
                
                        
@@ -1711,8 +1749,8 @@ const MAX_BOOKMARK_DEPTH = 100;
                             
                          
   
-                                                                                                                                                     
-                                                                                                                    
+                                                                                                                                              
+                                                                                                             
                                                                                                                         
 
 const str = (v         , fallback = "") => (typeof v === "string" ? v : fallback);
@@ -2087,9 +2125,9 @@ __define("packages/sync/src/companion/theme.ts", function (exports, __require) {
   __export(exports, "themeOf", () => themeOf);
                                                    
 
-                                                                                                            
-                                                                    
-                                                                                                                                                         
+                                                                                                     
+                                                             
+                                                                                                                                                  
                                                                                                                                                             
 
 function hex(n         ) {

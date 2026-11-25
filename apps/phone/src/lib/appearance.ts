@@ -48,6 +48,14 @@ const TELEMETRY_SCHEME = { matchMac: "match_mac", system: "system", light: "ligh
 
 export const colorChoiceTelemetry = (choice: string | null): "match_mac" | "preset" | "custom" => (choice === null ? "match_mac" : choice === "custom" ? "custom" : "preset");
 
+export type GlassRender = "lens" | "frost" | "clear" | "solid" | "classic" | "native" | "none";
+
+export function glassRenderTelemetry(os: string, design: Design, chrome: ChromeStyle, nativeRender: "lens" | "frost" | "clear" | "solid" | null): GlassRender {
+  if (design === "material") return "none";
+  if (chrome === "classic") return "classic";
+  return nativeRender ?? (os === "ios" ? "native" : "solid");
+}
+
 export const appearanceTelemetry = (style: InterfaceStyleChoice, scheme: SchemeChoice) => ({ interface_style: TELEMETRY_STYLE[style], color_scheme: TELEMETRY_SCHEME[scheme] });
 
 export const TABS_STYLE_FOOTER = "How your open tabs are laid out. Swipe up on the bottom bar to see them.";

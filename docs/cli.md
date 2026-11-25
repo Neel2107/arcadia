@@ -40,13 +40,16 @@ Plugins, "On your PATH. It can control Ardia.", or why it isn't on PATH, with Tr
 the signed digest), and runs its after-update actions once per version (`ardia skills install --auto`,
 `ardia skills refresh`, `ardia computer refresh`). **Installed means control is on**: installing turns `cliControl` on
 (the sheet says so), and each launch turns it back on while Command Line is installed. The control pill's Stop turns
-it off until the next launch. An `ardia` installed the old way (`~/Library/Application Support/Ardia/CLI/current`) is
-adopted on update with no click when control was on: the plugin counts as installed, the link moves to the new copy,
-and `CLI/current` points into the store, so paths saved through it keep working. When control was off, it isn't
-adopted (`ADOPT_WITH_CONTROL_OFF` in `state/plugins/programs.ts` is false): the old `ardia` stays on PATH, untouched,
-control stays off, and Command Line shows as available, its row in Settings › Plugins saying "An older ardia is installed. Install Command Line to update it." The old command then reports Ardia unreachable with its own
-old wording until the user installs Command Line, which adopts it and turns control on as the sheet says
-(`usage_counts.plugin_adoptions_waiting` counts these). There's no uninstall from
+it off until the next launch. An install you approved moves to the version this Ardia pins by itself when the new version asks
+for nothing you hadn't approved (`docs/plugins.md` › Official plugins, #3868), and Command Line's page in Settings ›
+Plugins then says "Updated by itself" and lists what's new. Python 0.4.0 to Bun 0.6.0 is such a move, and so is any later
+pin with the same surface: the same control and `ardia` with the same after-update steps, plus a sandboxed, offline
+`main` that first starts from the Show Status command. Its note says it added that code. The 0.4.0 daemon keeps running
+beside the new one until Ardia quits (#3472). An `ardia` installed the old way (`~/Library/Application Support/Ardia/CLI/current`) that was never approved
+in Ardia isn't adopted by itself: there's no approval to compare with. It stays on PATH, untouched, and Command Line
+shows as available, its row in Settings › Plugins saying "An older ardia is installed. Install Command Line to update
+it." Installing it moves the link to the new copy and points `CLI/current` into the store, so paths saved through it
+keep working (`usage_counts.plugin_adoptions_waiting` counts these). There's no uninstall from
 Settings; removing the link brings it back at the next launch.
 
 On Linux, Settings › Advanced › Command line installs it from the package (`install.sh --version <app version> --sha256
@@ -56,7 +59,9 @@ On Linux, Settings › Advanced › Command line installs it from the package (`
 older data folders it means what it always did; Linux keeps its switch in Settings › Advanced. While it is on, `ardia`
 reaches Ardia two ways (`docs/automation.md`, `docs/control-socket.md`):
 - **The control socket** (`ArdiaControl.sock`, mode 0600) carries the owner's methods. It has no token: the server
-  only checks that the peer runs as the same user (`getpeereid`), so every process of that user is admitted.
+  checks that the peer runs as the same user (`getpeereid`) and, on macOS, who the program is: a hardened program
+  signed with Ardia's Team ID (the bundled `ardia` and anything else Ardia ships) gets in at once, and any other
+  program waits for you to allow it in the doorbell Ardia shows (`docs/automation.md` › Who the program is). Linux and test instances admit every process of the user.
 - **The engine's token connection** carries `ardia browse`. It listens on loopback with a token written to
   `ArdiaControl.json`, which the user's own processes can read. It is a full DevTools client of the browser, the same
   as a `--remote-debugging-port` client (the owner's decision, #2807): every CDP domain and method, every target
@@ -65,9 +70,24 @@ reaches Ardia two ways (`docs/automation.md`, `docs/control-socket.md`):
   (`Browser.setDownloadBehavior`), emulation on any tab, cookies, storage, request interception, screencasts and the
   debugger all work. Events and replies pass through unchanged.
 
+  The control socket's `control.devtoolsEndpoint` hands out the port and token, only to programs the socket admitted
+  (the doorbell's rule, `docs/control-socket.md` › The DevTools token). The command doesn't use it yet. Next it will,
+  falling back to `ArdiaControl.json` only on an `unknown_method` reply to that request; after that the engine stops
+  writing the token into the file, so the file no longer lets a program skip the doorbell.
+
   What still guards it is what keeps other users and web pages off the connection, not what a process running as
-  you may do: the token (32 random bytes per start, compared in constant time, only in the 0600 `ArdiaControl.json`),
-  loopback only, no `Origin` header (so no web page can open the socket), and the `RemoteDebuggingAllowed` policy. The
+  you may do: the token (32 random bytes per start, compared in constant time, kept in the 0600 `ArdiaControl.json` and handed by
+  the control socket's `control.devtoolsEndpoint` to programs it admitted, which keep it until the token connection
+  restarts),
+  loopback only, and nothing a browser sends: a request with an `Origin`, `Sec-Fetch-Site` or `Sec-Fetch-Dest` header, or
+  a `Host` other than `127.0.0.1:<port>` or `localhost:<port>`, is refused before the token is read. So no web page,
+  extension page, service worker or DNS-rebound name in a browser that sends Fetch Metadata (Chromium, Firefox 90 and
+  later, Safari 16.4 and later) can open the socket or ask `/ardia/active`, even holding the token; a top-level GET from
+  an older Safari still needs the token and can't read the answer. Then the `RemoteDebuggingAllowed` policy, and a data
+  folder only you can write to: the engine opens the folder once, checks it belongs to you, that no one else can write
+  to it, that no macOS access list lets anyone else in, that its disk doesn't ignore ownership, and on Linux that it isn't a mount that skips permission checks for other users (FUSE `allow_other` without `default_permissions`, SMB `noperm`), and creates, checks
+  (0600, owned by you, any inherited macOS ACL removed) and renames the file through that same open folder, so a folder
+  swapped meanwhile is never written to. The
   engine also keeps its bookkeeping: a command must be a JSON object with an integer `id` and a string `method`
   (`params`, if present, an object; `sessionId` naming a session this connection attached), one command per
   (session, id) until its reply, and at most 4096 waiting replies before the connection is closed. Showing a saved
@@ -80,6 +100,55 @@ reaches Ardia two ways (`docs/automation.md`, `docs/control-socket.md`):
   `Target.getTargetInfo`. It never closes a tab on its own: off-screen tabs are closed by the app, through ArdiaCore's
   normal close, 5 s after the last connection ends (`state/automation/offscreen.ts`). `ac_cli_control`'s status
   counts commands by domain (`tokenCommands`), sent as `usage_counts.cli_cdp_commands_<domain>`.
+
+  Three methods on the token connection are answered by the engine and never reach a page's DevTools agent
+  (`ac_cli_page_signals.cc`). Each is taken only on a session attached to a tab (a `page` or `tab` target), so it
+  goes through the same inspection checks as that attach: the browser session, an iframe's session and a `targetId`
+  parameter are refused, and each answer checks Chrome's DevTools availability policy for the tab again
+  (`IsInspectionAllowed`):
+  - `Ardia.consoleDelta {after?, generation?, limit?}` → `{entries, generation, reset, next, last, dropped, withheld,
+    errors, more}`: the tab's console warnings, errors and uncaught exceptions, from a ring of the last 200 the engine
+    keeps from the moment the tab joins a tab strip (`ac_cli_console_ring.cc`), so an action's receipt can show what
+    the page logged during it without having turned on `Runtime` or `Log` first. Pass the reply's `next` as `after`
+    and its `generation` as `generation`: when the tab's contents were replaced (a new ring) or the watermark is past
+    the ring's end, the read starts over with `reset: true` instead of skipping entries. `withheld` counts entries
+    from frames the policy says DevTools may not inspect, which are never returned.
+  - `Ardia.focusedFrameOrigin {expectedOrigin?}` → `{focused, origin, opaque, secure, frameId, documentId, mainFrame,
+    precursorOrigin?, matches?}`: the focused frame's committed origin as the browser process knows it, never what the
+    page says, with `matches` against `expectedOrigin`, which must be a bare http or https origin (an opaque origin never matches). It is a check at one moment,
+    not a binding: focus can move or the frame can navigate before the next input arrives. Reading it again after
+    typing and comparing `frameId` and `documentId` (a new document in the same frame gets a new id) detects a change:
+    a mismatch means focus or the document moved. Matching samples don't prove nothing happened in between, since focus
+    can leave and come back while the keys are delivered. A frame the policy won't let DevTools inspect is refused.
+  - `Ardia.hitTest {x, y, backendNodeId?}` → `{hit, occluded?, blockedBy?, targetInOtherFrame?, hasClickListener,
+    listener?, delegated, delegatedTo?, ancestorsChecked}`: hit-tests a point in CSS pixels from the viewport's top left
+    in paint order (the node a real click there reaches), says whether `backendNodeId` is that node or holds it (first checking Chrome's DevTools policy for every frame the
+    tab's session could reach, then comparing the node's document with the hit frame's in an isolated world, so a node
+    of a same-origin iframe counts as another frame: `targetInOtherFrame`; a node that resolves nowhere is an error), and
+    walks up at most 32 elements for the nearest click, pointer or touch listener from Blink's own listener registry
+    (`ac_cli_hit_probe.cc`); a listener only on `html` or `body` counts as delegated, not as the element's own. A point
+    over a cross-site iframe in its own process answers `{hit, remoteFrame: {frameId}, unsupported: "remote-frame"}`
+    instead of calling the iframe a blocker: the hit test can't look inside a frame in another process yet, and iframe
+    sessions don't take page signals. Before touching anything, the hit test checks that the policy lets DevTools
+    inspect the frame at the point. It reads the scroll position before and after hit-testing and starts again (at most
+    3 times) when the page scrolled in between. That is a consistency check, not a lock: a page that scrolls away
+    and back between the two reads goes unnoticed, so on a page that is scrolling the answer is best effort. The walk up to
+    listeners follows the flat tree (a slotted element's slot, then a shadow root's host). At most 4 hit tests run at
+    once (more are refused), each has 3 s, one stops with an error if the page or the frame at the point navigates
+    meanwhile, and one still running when its session detaches or its connection closes is called off.
+
+  Background tabs the command attaches to keep drawing while its session is attached (`ac_cli_visible_tabs.cc`), and
+  every engine-side state of a connection (sessions, visible holds, running hit tests, pending `Ardia.*` replies)
+  goes the moment the connection closes, so a command that crashes or is killed leaves nothing behind. The control socket's
+  `tabs.hold {untilDisconnect: true, live: true}` gives a tab the same lifetime from a control connection, owned by that
+  connection, so another connection using the same session name can't replace or release it
+  (`docs/control-socket.md`).
+
+- **The control socket drives tabs too** (macOS and Linux, #4055). `devtools.attach`, `send`, `batch` and `detach`
+  give a control connection a full DevTools session on a tab with its events pushed back, and `tabs.snapshot`,
+  `tabs.waitSettled`, `tabs.hitTest`, `tabs.click` and `tabs.screenshot` are answered by the engine in the browser
+  process (`docs/control-socket.md` › Driving a tab from the engine), so `ardia browse` can work against a normal running
+  Ardia without the token connection or `--remote-debugging-port`, and with no approval prompt per tab.
 
 ## The contract
 

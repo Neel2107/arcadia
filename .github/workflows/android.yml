@@ -31,7 +31,7 @@ concurrency:
 jobs:
   gate:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
       contents: read
@@ -55,7 +55,7 @@ jobs:
   app:
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'skipped' || (needs.gate.result == 'success' && needs.gate.outputs.run == 'true')) }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -79,12 +79,15 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ steps.gradle-key.outputs.key }}
-          restore-keys: gradle-phone-
+          key: ${{ steps.gradle-key.outputs.key }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.gradle-key.outputs.key }}-
+            gradle-phone-
       - name: The Android SDK parts the build pins
         run: |
           set -euo pipefail
           manager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$manager" ] || manager=$(command -v sdkmanager)
           yes | "$manager" --licenses > /dev/null || true
           "$manager" --install "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
       - name: The phone app's dependencies
@@ -94,14 +97,14 @@ jobs:
         env:
           ARDIA_LAB: "1"
           EXPO_PUBLIC_ARDIA_LAB: "true"
-        run: ./gradlew -PardiaLab=true --no-daemon :ardia-phone-native:testDebugUnitTest :app:testDebugUnitTest :ardia-design:testDebugUnitTest --continue --console=plain
+        run: ./gradlew -PardiaLab=true --no-daemon --build-cache :ardia-phone-native:testDebugUnitTest :app:testDebugUnitTest :ardia-design:testDebugUnitTest --continue --console=plain
       - if: ${{ !cancelled() && github.event_name == 'push' && steps.gradle.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ steps.gradle-key.outputs.key }}
+          key: ${{ steps.gradle-key.outputs.key }}-${{ github.sha }}
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:

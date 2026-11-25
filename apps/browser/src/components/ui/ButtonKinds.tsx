@@ -5,7 +5,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useHover } from "./useHover";
 import { HoverFill, HoverSwap } from "./HoverFill";
 import { hex, useTheme, type Theme } from "./theme";
-import { capsule, closeOnArt, opacity, pillHeight, radius as radii, space, stepperSize, font as typeScale, weight as weights } from "./tokens";
+import { capsule, closeOnArt, clippedContinuousCorners, continuousCorners, opacity, pillHeight, radius as radii, space, stepperSize, font as typeScale, weight as weights } from "./tokens";
 import { buttonMotion, usePressScaleMotion } from "./motion";
 import type { CloseProps, PillProps, PushProps, StepperProps } from "./Button";
 
@@ -36,7 +36,7 @@ export function StepperButtonView({ icon, onPress, width = stepperSize.width, he
             style={{
               width,
               height,
-              borderRadius: radii.control,
+              ...clippedContinuousCorners(radii.control),
               alignItems: "center",
               justifyContent: "center",
               borderWidth: StyleSheet.hairlineWidth * 2,
@@ -65,7 +65,16 @@ export function PillButtonView(props: PillProps) {
     const chipHeight = props.height ?? pillHeight[size ?? "m"];
     return (
       <View {...hoverProps}>
-        <Pressable onPress={onPress} onPressIn={pressMotion.onPressIn} onPressOut={pressMotion.onPressOut}>
+        <Pressable
+          onPress={onPress}
+          onPressIn={pressMotion.onPressIn}
+          onPressOut={pressMotion.onPressOut}
+          accessibilityRole="button"
+          accessibilityLabel={title}
+          onAccessibilityTap={onPress}
+          onFocus={props.onFocusChange ? () => props.onFocusChange?.(true) : undefined}
+          onBlur={props.onFocusChange ? () => props.onFocusChange?.(false) : undefined}
+        >
           {({ pressed }) => {
             const look = pillLook(theme, tone, primary, pressed, hovered);
             const rest = pillLook(theme, tone, primary, false, false);
@@ -199,7 +208,7 @@ export function PushButtonView({ title, onPress, kind = "default", disabled, ico
           <Animated.View
             style={[{
               height: plain ? undefined : 22,
-              borderRadius: radii.control,
+              ...(plain || primary ? continuousCorners(radii.control) : clippedContinuousCorners(radii.control)),
               paddingHorizontal: plain ? 0 : space.ml,
               flexDirection: "row",
               alignItems: "center",

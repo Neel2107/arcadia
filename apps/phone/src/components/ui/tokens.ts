@@ -710,9 +710,7 @@ const appIconElevation = { y: 4, blur: 20, light: "rgba(0,0,0,0.12)", dark: "rgb
 export const appIconLayout = {
   maxScale: 1.4,
   corner: 0.225,
-  fill: "#FFFFFF",
-  edge: stroke.chrome,
-  edgeAlpha: 0.08,
+  fill: "#F8F3E1",
   shadow: cssShadowOf(appIconElevation, false),
   about: 72,
   welcome: 104,
@@ -796,6 +794,7 @@ export const accentGlowCss = (accent: string) => {
 const dynamicColor = (light: string, dark: string) => ({ dynamic: { light, dark } });
 
 export const nativeClassicChrome = {
+  fill: dynamicColor(chromeInk.light.surface, chromeInk.dark.surface),
   edgeWidth: stroke.chrome,
   edge: dynamicColor(chromeInk.light.edge, chromeInk.dark.edge),
   shadowRadius: nativeShadowRadius("control"),

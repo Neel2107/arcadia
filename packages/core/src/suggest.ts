@@ -6,7 +6,7 @@ import { BUILT_IN_ENGINES, searchUrl } from "./engines.ts";
 import { matchActions } from "./fuzzy.ts";
 import { fixupUrl, hostOf, sameAddress, searchUrlFor, spacedAddressGuess } from "./omnibox.ts";
 import { leadingRows, matchScore, matchScoreWord, narrowing, parseQuery, remember, TabList, TopList, type Ranked } from "./pageMatch.ts";
-import { hostLowerOfPage, hostOfPage, hostPart, originOfPage, pageKey, type PageText, withRootSlash } from "./pageText.ts";
+import { documentKey, hostLowerOfPage, hostOfPage, hostPart, originOfPage, pageKey, type PageText, routeOf, withRootSlash } from "./pageText.ts";
 import { globalProviderRows, providerUrl, safeProviderRows, type ProviderSection, type ProviderSuggestion } from "./providerRows.ts";
 import { matchQuickCreate } from "./quickCreate.ts";
 import { scopedSearchUrl, type SearchScope } from "./siteSearch.ts";
@@ -16,11 +16,20 @@ import { actionRow, createRow, dedupeSuggestions, Output, pageSuggestion, sugges
 export type { CommandAction, Suggestion, SuggestionResult, SuggestionSource, SuggestionVia, SuggestOptions } from "./suggestion.ts";
 export { displayUrl } from "./pageText.ts";
 export { prepareSuggestions } from "./candidatePool.ts";
-export { suggestionKey } from "./suggestionRows.ts";
+export { dedupeSuggestions, listsRoutesApart, suggestionKey } from "./suggestionRows.ts";
 
 const DAY = 86_400_000;
 const lowerOrigin = (url: string) => url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, (origin) => origin.toLowerCase());
 const withoutFragment = (url: string) => url.replace(/#.*$/, "");
+function withoutLead(listed: readonly Ranked[], lead: readonly Ranked[]): Ranked[] {
+  const rest: Ranked[] = [];
+  for (const x of listed) {
+    let inLead = false;
+    for (const y of lead) if (y === x) inLead = true;
+    if (!inLead) rest[rest.length] = x;
+  }
+  return rest;
+}
 
 export function buildSuggestions(raw: string, source: SuggestionSource, options: SuggestOptions = {}): SuggestionResult {
   const { limit = 8, now = Date.now(), engine = BUILT_IN_ENGINES[0]!, preference = "website", remote = [], actions = [], scope, preventInline = false } = options;
@@ -44,7 +53,8 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   }
 
   const pool = poolFor(source.history, source.bookmarks ?? NO_BOOKMARKS);
-  const { tabIds, extra, renamed } = tabsOver(pool, source.tabs, options.currentTabId);
+  const tabsNow = tabsOver(pool, source.tabs, options.currentTabId);
+  const { tabIds, extra, renamed } = tabsNow;
   const currentKey = options.currentUrl ? pageKey(options.currentUrl) : null;
   const via = new Map<Suggestion, SuggestionVia>();
   const tag = (s: Suggestion, as: SuggestionVia | false | undefined): Suggestion => {
@@ -53,7 +63,11 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   };
   const known = (url: string) => {
     const key = pageKey(url);
-    const c = pool.byKey.get(key) ?? extra.find((x) => x.text.key === key);
+    let c = pool.byKey.get(key) ?? extra.find((x) => x.text.key === key);
+    if (!c && !routeOf(url)) {
+      const document = documentKey(url);
+      c = pool.byDocument.get(document) ?? extra.find((x) => x.text.document === document);
+    }
     if (!c) return undefined;
     const shown = { ...c, title: c.pageTitle ?? c.title };
     const opened = withRootSlash(url);
@@ -68,7 +82,12 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
     if (!options.switchToOpenTab) return undefined;
     const opened = withRootSlash(lowerOrigin(url));
     if (!tabIds.has(pageKey(opened))) return undefined;
-    const tab = source.tabs.find((t) => t.url && t.id !== options.currentTabId && withoutFragment(withRootSlash(lowerOrigin(t.url))) === withoutFragment(opened));
+    const route = routeOf(opened);
+    const tab = source.tabs.find((t) => {
+      if (!t.url || t.id === options.currentTabId) return false;
+      const at = withRootSlash(lowerOrigin(t.url));
+      return withoutFragment(at) === withoutFragment(opened) && routeOf(at) === route;
+    });
     if (!tab) return undefined;
     const visit = savedVisit(source.history, opened);
     const bookmark = savedBookmark(source.bookmarks ?? NO_BOOKMARKS, opened);
@@ -119,12 +138,15 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
         age = d < 0 ? 0 : d > 30 ? 30 : d;
       }
       const base = c.logVisits - age + (c.bookmarked ? 20 : 0);
-      const tabId = c.tabId ?? tabIds.get(key);
-      if (!bound && !tabId && top.floor >= m + base - derank + 7) {
-        if (!completes) continue;
-        if (inline === null ? false : inline.s >= m + base - derank + 7) continue;
-        if (c.visits <= 0 || !c.text.shownLower.startsWith(q)) continue;
+      const upper = m + base - derank + 7;
+      const belowTop = !bound && top.floor >= upper;
+      let cannotLead: boolean | undefined;
+      if (belowTop && !tabTop.takes(m, upper)) {
+        cannotLead = !completes || (inline !== null && inline.s >= upper) || c.visits <= 0 || !c.text.shownLower.startsWith(q);
+        if (cannotLead) continue;
       }
+      const tabId = c.tabId ?? (c.openIn === tabsNow.mark ? c.openTabId : undefined);
+      if (belowTop && !tabId && (cannotLead ?? (!completes || (inline !== null && inline.s >= upper) || c.visits <= 0 || !c.text.shownLower.startsWith(q)))) continue;
       const s = m + (base + (tabId ? 6 : 0)) - derank;
       let r: Ranked | undefined;
       if (top.floor < s || top.items.length < limit + 1) {
@@ -152,7 +174,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
     const scopedUrl = (text: string) => scopedSearchUrl(scope, text, engine);
     out.push({ kind: "search", query, url: scopedUrl(query), engine: scope.name });
     out.push(...remoteRows(scopedUrl, scope.name));
-    out.push(...onSite!.items.map((x) => pageSuggestion(x.c, x.tabId)));
+    if (!options.remotePending) out.push(...onSite!.items.map((x) => pageSuggestion(x.c, x.tabId)));
     return { items: out.items, completion: "" };
   }
 
@@ -197,8 +219,10 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   out.push(...remoteSites.map((site): Suggestion => known(site.url) ?? tag({ kind: "page", url: site.url, title: site.title, favicon: null }, "engine_site")));
   const providerAt = out.items.length;
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
-  out.push(...listed.filter((x) => !lead.includes(x)).map((x) => rowOf(x)));
-  const providerRows = options.providers?.length ? globalProviderRows(options.providers, out.items) : [];
+  const trailing = withoutLead(listed, lead);
+  const providerRows = options.providers?.length ? globalProviderRows(options.providers, [...out.items, ...trailing.filter((x) => x.tabId).map((x) => rowOf(x))]) : [];
+  const offered = providerRows.length ? new Set(providerRows.map((row) => pageKey(row.url))) : null;
+  if (!options.remotePending) out.push(...(offered ? trailing.filter((x) => x.tabId || !offered.has(pageKey(x.c.url))) : trailing).map((x) => rowOf(x)));
   const items = providerRows.length ? [...out.items.slice(0, providerAt), ...providerRows, ...out.items.slice(providerAt)] : out.items;
   if (guessRow && out.items.includes(guessRow)) tag(guessRow, "spaced_address");
   const shownVia = via.size ? viaOf(items, via) : undefined;

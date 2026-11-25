@@ -3,6 +3,7 @@ import type { ViewProps } from "react-native";
 import { nativeModule } from "./nativeModules";
 import type { MiddleClickEvent } from "./system";
 import type { PluginPageProps } from "./plugins";
+import type { DockSelectionNative, FieldGlowNative, GlassEffectNative } from "./generated/native";
 
 export type WindowProfileSwapped = { selection?: string; switchId?: number; profileLoaded?: boolean; activeMs?: number; swapMs?: number; heldTimedOut?: boolean };
 export type WindowProfileProps = ViewProps & {
@@ -57,6 +58,10 @@ export type ActivitySpinnerProps = ViewProps;
 
 export const ActivitySpinner = requireNativeViewManager<ActivitySpinnerProps>("ArdiaActivitySpinner");
 
+export type BreatheProps = ViewProps & { running: boolean; cycleMs: number; opacityRange: readonly [number, number]; scaleRange: readonly [number, number] };
+
+export const Breathe = requireNativeViewManager<BreatheProps>("ArdiaBreathe");
+
 export type FolderIconProps = ViewProps & {
   open: boolean;
   stroke?: string;
@@ -66,6 +71,16 @@ export type FolderIconProps = ViewProps & {
 };
 
 export const FolderIcon = requireNativeViewManager<FolderIconProps>("ArdiaFolderIcon");
+
+export type WheelStep = 1 | -1;
+export type WheelAreaProps = ViewProps & { onStep?: (direction: WheelStep) => void };
+export type NativeWheelAreaProps = Omit<WheelAreaProps, "onStep"> & { onStep?: (e: { nativeEvent: { direction: WheelStep } }) => void };
+
+const NativeWheelArea = requireNativeViewManager<NativeWheelAreaProps>("ArdiaWheelArea");
+
+export function WheelArea({ onStep, ...props }: WheelAreaProps) {
+  return <NativeWheelArea onStep={onStep && ((e) => onStep(e.nativeEvent.direction))} {...props} />;
+}
 
 export type ContextMenuAreaProps = ViewProps & {
   onContextMenu?: () => void;
@@ -137,7 +152,7 @@ export type GlassEffectProps = ViewProps & {
   dark?: boolean;
 };
 
-export type GlassEffectNative = { isLiquidGlass(): boolean };
+export type { GlassEffectNative };
 
 const GlassEffectModule = nativeModule("ArdiaGlassEffect");
 
@@ -180,10 +195,7 @@ export function PopoverBubble({ shadowOpacity, shadowRadius, shadowOffsetY, ...p
 
 export type IconTheme = { kind: "blur" } | { kind: "template"; fill: string; stroke?: string };
 
-export type DockSelectionNative = {
-  iconTheme(uri: string | null, emoji: string | null): Promise<IconTheme | null>;
-  iconAccent(uri: string): Promise<string | null>;
-};
+export type { DockSelectionNative };
 
 const DockSelectionModule = nativeModule("ArdiaDockSelection");
 
@@ -223,13 +235,8 @@ export type FieldGlowLook = {
   line: number;
   floor: number;
 };
-export type FieldGlowProps = ViewProps & { glowId: string; radius: number; look: FieldGlowLook };
-export type FieldGlowNative = {
-  show(id: string, timings: number[]): void;
-  progress(id: string, progress: number, still: boolean): void;
-  finish(id: string, still: boolean): void;
-  reset(id: string): void;
-};
+type FieldGlowProps = ViewProps & { glowId: string; radius: number; look: FieldGlowLook };
+export type { FieldGlowNative };
 
 let fieldGlowView: ReturnType<typeof requireNativeViewManager<FieldGlowProps>> | null = null;
 export const FieldGlowView = () => (fieldGlowView ??= requireNativeViewManager<FieldGlowProps>("ArdiaFieldGlow"));

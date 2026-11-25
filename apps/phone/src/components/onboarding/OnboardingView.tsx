@@ -180,7 +180,7 @@ export function OnboardingView() {
     const content = (
       <StepFocus live={showing && !shown.closing}>
         {scrolls ? (
-          <ScrollView contentContainerStyle={styles.scrolled} keyboardShouldPersistTaps="handled">
+          <ScrollView bounces={false} overScrollMode="never" contentContainerStyle={styles.scrolled} keyboardShouldPersistTaps="handled">
             <StepContent step={shown.step} />
           </ScrollView>
         ) : (

@@ -3,6 +3,8 @@ name: Linux
 on:
   pull_request:
     paths: &linux
+      - "apps/desktop/**"
+      - "apps/linux"
       - "apps/linux/**"
       - "apps/browser/src/**"
       - "apps/browser/assets/**"
@@ -31,15 +33,18 @@ on:
       - "packages/shell/ios/ReportFiles.swift"
       - "packages/shell/ios/ReportUploader.swift"
       - "packages/shell/ios/ShellModule.swift"
+      - "packages/shell/ios/ShellNative.swift"
       - "packages/shell/ios/SystemModule.swift"
       - "packages/shell/ios/WindowManager.swift"
       - "packages/sync/ios/Core/Wordlist.swift"
       - "packages/sync/tests/fixtures/**"
+      - "packages/core-rs/**"
       - "packages/ardiacore/prebuilt-engines-linux.tsv"
       - "packages/ardiacore/tests/ubo-scriptlets.test.mjs"
       - "packages/shaders/ios/Meadow/**"
       - "packages/shaders/windows/**"
       - "engine/ardiacore-linux/**"
+      - "engine/ardiacore-desktop/**"
       - "engine/ardiacore/src/**"
       - "engine/chromium/**"
       - "engine/patches/**"
@@ -50,6 +55,11 @@ on:
       - "scripts/release/official-plugins.py"
       - ".claude/skills/release/scripts/publish.sh"
       - "docs/linux-port.md"
+      - "docs/engine-build.md"
+      - "docs/engine-build-windows.md"
+      - "scripts/windows/engine/series-win"
+      - "scripts/windows/engine/series_win.py"
+      - "scripts/windows/engine/patches/**"
       - "infra/feedback/lib/**"
       - "patches/**"
       - "package.json"
@@ -58,8 +68,15 @@ on:
       - "turbo.json"
       - "tsconfig.base.json"
       - ".nvmrc"
+      - "packages/core-rs/Cargo.toml"
+      - "packages/core-rs/Cargo.lock"
+      - "packages/core-rs/rust-toolchain.toml"
+      - "packages/core-rs/crates/ardia-crypto/**"
+      - "packages/core-rs/crates/ardia-update-core/**"
+      - "packages/core-rs/crates/ardia-update-verify/**"
       - ".github/workflows/linux.yml"
       - ".github/actions/linux-setup/**"
+      - ".github/actions/linux-update-verify/**"
   push:
     branches: [main]
     paths: *linux
@@ -85,7 +102,7 @@ env:
 jobs:
   gate:
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:
       contents: read
@@ -110,7 +127,7 @@ jobs:
     name: checks (${{ matrix.name }})
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'skipped' || (needs.gate.result == 'success' && needs.gate.outputs.run == 'true')) }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -123,8 +140,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/linux-setup
+      - name: The Rust sync core the host tests link
+        if: matrix.part == 'engine'
+        run: |
+          if ! command -v rustup >/dev/null && [ ! -x "$HOME/.cargo/bin/rustup" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
+          fi
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          cd packages/core-rs
+          PATH="$HOME/.cargo/bin:$PATH" rustup toolchain install
+          PATH="$HOME/.cargo/bin:$PATH" cargo build --locked -p ardia-ffi
       - name: Stock Chromium
-        run: echo "$(readlink -f /usr/bin/chromium) $(/usr/bin/chromium --version)"
+        run: |
+          chromium=/usr/bin/chromium
+          echo "$(readlink -f "$chromium") $("$chromium" --version)"
       - run: scripts/linux/ci-checks.sh --part ${{ matrix.part }} --shard ${{ matrix.shard }} --logs "$RUNNER_TEMP/checks"
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -137,7 +166,7 @@ jobs:
   package:
     needs: gate
     if: ${{ !cancelled() && (needs.gate.result == 'skipped' || (needs.gate.result == 'success' && needs.gate.outputs.run == 'true')) }}
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45
     env:
       ENGINE_MODE: ${{ inputs.engine || 'nearest' }}
@@ -156,7 +185,8 @@ jobs:
           set -euo pipefail
           full=true
           if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$FULL_CI" != true ]; then
-            if git diff --quiet "$BASE" HEAD -- scripts/linux .github/workflows/linux.yml .github/actions/linux-setup; then full=false; fi
+            if git diff --quiet "$BASE" HEAD -- scripts/linux packages/core-rs/crates/ardia-update-core packages/core-rs/crates/ardia-update-verify \
+              .github/workflows/linux.yml .github/actions/linux-setup .github/actions/linux-update-verify; then full=false; fi
           fi
           echo "FULL=$full" >> "$GITHUB_ENV"
           if [ "$full" = true ]; then
@@ -180,6 +210,7 @@ jobs:
             libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 libxkbcommon0
             libgbm1 libdrm2 libexpat1 libcairo2 libpango-1.0-0 libudev1 libasound2t64 libglib2.0-0t64
             libgtk-3-0t64 libsecret-1-0
+      - uses: ./.github/actions/linux-update-verify
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: apps/browser/build-ardiacore/prebuilt-linux-x86_64
@@ -211,7 +242,7 @@ jobs:
             echo "### Linux engine ${selected:0:12} (older than this commit's ${ENGINE_KEY:0:12})" >> "$GITHUB_STEP_SUMMARY"
           fi
           { echo "ENGINE=$engine"; echo "PACKAGE_NAME=Ardia-linux-x64-$label"; } >> "$GITHUB_ENV"
-      - run: pnpm --filter @ardia/linux build
+      - run: pnpm --filter @ardia/desktop build
       - name: ardia command (pinned)
         run: |
           set -euo pipefail
@@ -227,14 +258,15 @@ jobs:
         run: |
           set -euo pipefail
           blocker=$(scripts/linux/fetch-ubo.sh)
+          update_verify=$(scripts/linux/update-verify.sh)
           formats=(tar.xz)
           extra=()
           if [ "$FULL" = true ]; then
             formats+=(deb AppImage)
             extra+=(--deb "$RUNNER_TEMP/dist/$PACKAGE_NAME.deb" --appimage "$RUNNER_TEMP/dist/$PACKAGE_NAME.AppImage")
           fi
-          python3 scripts/linux/package.py --out "$ENGINE" --ui apps/linux/dist --content-blocker "$blocker" \
-            --version "$VERSION" $CLI_ARGS --destination "$RUNNER_TEMP/dist/$PACKAGE_NAME.tar.xz" "${extra[@]}"
+          python3 scripts/linux/package.py --out "$ENGINE" --ui apps/desktop/dist/linux --content-blocker "$blocker" \
+            --version "$VERSION" $CLI_ARGS --update-verify "$update_verify" --destination "$RUNNER_TEMP/dist/$PACKAGE_NAME.tar.xz" "${extra[@]}"
           for built in "${formats[@]}"; do
             (cd "$RUNNER_TEMP/dist" && sha256sum "$PACKAGE_NAME.$built" > "$PACKAGE_NAME.$built.sha256")
           done

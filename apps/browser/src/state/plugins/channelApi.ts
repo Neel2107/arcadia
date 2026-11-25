@@ -19,13 +19,15 @@ import { valuesFor } from "./values";
 import { netFetch, readActivePage, secretsMethod, storageMethod } from "./channelData";
 import { UI_METHODS, uiMethod } from "./channelUi";
 import { programsStatus, relinkOwnPrograms } from "./programs";
+import { subscribeState } from "./stateEvents";
+import { runIntent } from "./stateIntents";
 
-export const CHANNEL_PROTOCOL = 2;
-export const LEGACY_CHANNEL_PROTOCOL = 1;
-export const MAX_OPEN_URLS = 10;
-export const TAB_APPLY_OPS = ["open", "tab.close", "tab.activate"] as const;
+const CHANNEL_PROTOCOL = 2;
+const LEGACY_CHANNEL_PROTOCOL = 1;
+const MAX_OPEN_URLS = 10;
+const TAB_APPLY_OPS = ["open", "tab.close", "tab.activate"] as const;
 
-export type ChannelCaller = { name: string; run: number };
+type ChannelCaller = { name: string; run: number };
 
 function minimizedWindows(full: boolean) {
   const windows = automationWindows(useBrowser.getState());
@@ -118,6 +120,10 @@ export function answerMethod(c: ChannelCaller, m: PluginManifest, method: string
     case "workspace":
     case "apply":
       return workspace(c, m, method, params);
+    case "state.subscribe":
+      return subscribeState(c, m, params);
+    case "state.intent":
+      return runIntent(c, m, params);
     case "tabs.readActivePage":
       return readActivePage(c, m);
     case "page.open":

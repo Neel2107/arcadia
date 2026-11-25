@@ -32,12 +32,14 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const page = (design: Design, tab = currentTabs().open[0]!) =>
-  renderSurface(
+const page = (design: Design, tab = currentTabs().open[0]!) => {
+  useTabs.setState((state) => ({ open: state.open.map((other) => (other.id === tab.id ? tab : other)) }));
+  return renderSurface(
     <DesignProvider design={design}>
-      <BrowsingScreen tab={tab} />
+      <BrowsingScreen tabId={tab.id} />
     </DesignProvider>,
   );
+};
 
 const host = (root: ReturnType<typeof renderSurface>, testID: string) => root.root.findAll((node) => node.props.testID === testID && typeof node.type === "string")[0];
 

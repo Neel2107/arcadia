@@ -1,10 +1,9 @@
 import { linkPluginPrograms, setAfterUpdateQuitConsent, sweepPluginPrograms, takeAfterUpdateQuitStops, unlinkPluginPrograms, type PluginProgramsResult } from "../../platform/plugins";
 import { errorText } from "../../lib/errors";
-import { notePlugin, notePluginTimes } from "../telemetry/pluginCounts";
+import { notePlugin, notePluginTimes, programLinkCause } from "../telemetry/pluginCounts";
 import { consentToken, type ConsentToken } from "../telemetry/consentPeriod";
 import { onConsentPeriodChange } from "../telemetry/choice";
 import { warnFor } from "../telemetry/consoleConsent";
-import { userTurnedControlOff } from "../app/programControlSetting";
 import { programsBlocked, refreshLegacyInstalls, REGISTRY_UNREADABLE } from "./programRegistry";
 import { activeManifest, currentPlugins, usePlugins, type ProgramsState } from "./store";
 
@@ -24,8 +23,6 @@ function setPrograms(name: string, state: ProgramsState | null) {
 function programNames(name: string): string[] {
   return requested.get(name) ?? currentPlugins().listings[name]?.manifest?.programs.map((p) => p.name) ?? [];
 }
-
-export const userRefusedControl = userTurnedControlOff;
 
 async function link(name: string, consent?: ConsentToken | null) {
   const s = currentPlugins();
@@ -49,10 +46,12 @@ async function link(name: string, consent?: ConsentToken | null) {
   if (now?.state !== "linking" || now.request !== request || (!result.ok && result.stale)) return;
   if (!result.ok) {
     notePlugin("program_link_failures", consent);
+    notePlugin(programLinkCause(null), consent);
     setPrograms(name, { state: "failed", hash, reason: result.reason ?? "its commands couldn't go on PATH" });
     return;
   }
   notePlugin(Object.keys(result.refused).length ? "program_link_failures" : "program_links", consent);
+  for (const program of Object.keys(result.refused)) notePlugin(programLinkCause(result.causes?.[program]), consent);
   if (result.kept && Object.keys(result.refused).length) notePlugin("program_links_kept", consent);
   const adoption = adoptionOf(result);
   if (adoption === "adopted") notePlugin("program_adoptions", consent);
@@ -148,10 +147,6 @@ function retryAdoption(name: string, consent: ConsentToken | null): "retrying" |
   return "retrying";
 }
 
-export function resetAdoptionForTests() {
-  adoptionChecked = false;
-}
-
 export async function adoptLegacyInstalls(consent: ConsentToken | null): Promise<boolean> {
   const s = currentPlugins();
   if (adoptionChecked || !s.order.length) return false;
@@ -163,7 +158,7 @@ export async function adoptLegacyInstalls(consent: ConsentToken | null): Promise
   return false;
 }
 
-export type OwnProgramsStatus = { state: "none" | "linking" | "linked" | "failed"; linked: string[]; failed: { name: string; reason: string }[]; binDir: string | null };
+type OwnProgramsStatus = { state: "none" | "linking" | "linked" | "failed"; linked: string[]; failed: { name: string; reason: string }[]; binDir: string | null };
 
 export function programsStatus(name: string): OwnProgramsStatus {
   const s = currentPlugins();

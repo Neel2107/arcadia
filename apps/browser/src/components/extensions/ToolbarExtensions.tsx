@@ -37,7 +37,6 @@ const GLYPH = 14;
 const GLYPH_BOX = 18;
 const IMAGE = TOOLBAR_TRAILING.extensionIcon;
 const GAP = TOOLBAR_TRAILING.itemGap;
-const PITCH = BUTTON + GAP;
 
 function useToolbarExtensions(windowId: string, limit: number) {
   const shown = useWindowExtensions(windowId);
@@ -48,11 +47,11 @@ function useToolbarExtensions(windowId: string, limit: number) {
     const room = Math.max(0, limit - (casting ? 1 : 0));
     const overflow = all.length > room;
     const pinned = overflow ? all.slice(0, Math.max(0, room - 1)) : all;
-    return { pinned, hidden: pinned.length ? all.slice(pinned.length) : [], overflow, casting, routes };
+    return { pinned, overflow, casting, routes };
   }, [shown, routes, casting, limit]);
 }
 
-export const extensionsFitting = (room: number) => Math.max(1, Math.floor((room + GAP) / PITCH));
+export const extensionsFitting = (room: number, button = BUTTON) => Math.max(1, Math.floor((room + GAP) / (button + GAP)));
 
 export function useToolbarExtensionsWidth(windowId: string, limit = Infinity): number {
   const { pinned, overflow, casting } = useToolbarExtensions(windowId, limit);
@@ -84,7 +83,7 @@ function TabToolbarExtensions({
   limit = Infinity,
   onActivate,
 }: ToolbarExtensionsProps) {
-  const { pinned, hidden, overflow, routes } = useToolbarExtensions(windowId, limit);
+  const { pinned, overflow, routes } = useToolbarExtensions(windowId, limit);
   const ready = usePages((p) => !!p.ready[tabId]);
   const pitch = useToolbarRowContext().extensionButton + GAP;
   const reorderable = useToolbarReorderable(windowId);
@@ -116,7 +115,7 @@ function TabToolbarExtensions({
           ))}
         </View>
       ) : null}
-      {overflow && <OverflowButton windowId={windowId} tabId={tabId} hidden={reorderable ? hidden : []} palette={palette} onActivate={onActivate} />}
+      {overflow && <OverflowButton windowId={windowId} tabId={tabId} palette={palette} onActivate={onActivate} />}
     </View>
   );
 }
@@ -283,7 +282,6 @@ function CastButton({ windowId, tabId, routes, palette }: { windowId: string; ta
 export function OverflowButton({
   windowId,
   tabId,
-  hidden,
   palette,
   onActivate,
   mayActivate,
@@ -293,7 +291,6 @@ export function OverflowButton({
 }: {
   windowId: string;
   tabId: string;
-  hidden: InstalledExtension[];
   palette: ToolbarPalette;
   onActivate?: () => void;
   mayActivate?: () => boolean;
@@ -305,14 +302,12 @@ export function OverflowButton({
   const onPress = async () => {
     const anchor = await measure();
     const enabled = currentWindowExtensions(windowId);
-    const choice = await chooseFromMenu(extensionOverflowItems(enabled, hidden));
-    if (choice && typeof choice === "object" && "front" in choice) void moveToolbarExtension(windowId, choice.front.id, 0, "menu");
-    else if (choice && typeof choice === "object") {
+    const choice = await chooseFromMenu(extensionOverflowItems(enabled));
+    if (choice && typeof choice === "object") {
       if (mayActivate && !mayActivate()) return;
       onActivate?.();
       void activateExtension(windowId, choice, anchor, undefined, tabId);
-    }
-    else if (choice !== "front") runExtensionListChoice(choice, windowId);
+    } else runExtensionListChoice(choice, windowId);
   };
   return (
     <View ref={ref} onLayout={() => void measure()}>

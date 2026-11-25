@@ -46,6 +46,7 @@ export type SuggestOptions = {
   scope?: SearchScope | null;
   preventInline?: boolean;
   switchToOpenTab?: boolean;
+  remotePending?: boolean;
   bangs?: BangTable | null;
 };
 
@@ -54,7 +55,9 @@ export function displayUrl(url: string): string {
 }
 
 const DAY = 86_400_000;
-const pageKey = (url: string) => url.replace(/#.*$/, "").replace(/\/$/, "");
+const documentKey = (url: string) => url.replace(/#.*$/, "").replace(/\/$/, "");
+const routeOf = (url: string) => /^[^#]*(#!?\/.*)/.exec(url)?.[1] ?? "";
+const pageKey = (url: string) => documentKey(url) + routeOf(url);
 const withRootSlash = (url: string) => url.replace(/^(https?:\/\/[^/?#]*)(?=[?#]|$)/i, "$1/");
 
 type HistoryRow = SuggestionSource["history"][number];
@@ -373,7 +376,11 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   const currentKey = options.currentUrl ? pageKey(options.currentUrl) : null;
   const known = (url: string) => {
     const key = pageKey(url);
-    const c = pool.byKey.get(key) ?? extra.find((x) => x.text.key === key);
+    let c = pool.byKey.get(key) ?? extra.find((x) => x.text.key === key);
+    if (!c && !routeOf(url)) {
+      const document = documentKey(url);
+      c = pool.list.find((x) => documentKey(x.url) === document) ?? extra.find((x) => documentKey(x.url) === document);
+    }
     if (!c) return undefined;
     const shown = { ...c, title: c.pageTitle ?? c.title };
     const opened = withRootSlash(url);
@@ -389,7 +396,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
     const opened = lower(url);
     const key = pageKey(opened);
     if (!options.switchToOpenTab || !tabIds.has(key)) return undefined;
-    const tab = source.tabs.find((t) => t.url && t.id !== options.currentTabId && lower(t.url).replace(/#.*$/, "") === opened.replace(/#.*$/, ""));
+    const tab = source.tabs.find((t) => t.url && t.id !== options.currentTabId && lower(t.url).replace(/#.*$/, "") === opened.replace(/#.*$/, "") && routeOf(lower(t.url)) === routeOf(opened));
     if (!tab) return undefined;
     const isOpened = (saved: { url: string }) => withRootSlash(saved.url) === opened;
     const visit = source.history.find(isOpened);
@@ -442,7 +449,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
     const scopedUrl = (text: string) => scopedSearchUrl(scope, text, engine);
     out.push({ kind: "search", query, url: scopedUrl(query), engine: scope.name });
     out.push(...remoteRows(scopedUrl, scope.name));
-    out.push(...onSite!.items.map((x) => pageSuggestion(x.c, x.tabId)));
+    if (!options.remotePending) out.push(...onSite!.items.map((x) => pageSuggestion(x.c, x.tabId)));
     return { items: out.items, completion: "" };
   }
 
@@ -490,7 +497,7 @@ export function buildSuggestions(raw: string, source: SuggestionSource, options:
   for (const t of tabsByMatch) if (lead.length < 5 && t.m >= bar && !lead.some((x) => x.c.text.key === t.c.text.key)) lead.push(t);
   out.push(...lead.map(rowOf));
   out.push(...remoteRows((text) => searchUrl(engine, text), engine.name));
-  out.push(...listed.filter((x) => !lead.includes(x)).map(rowOf));
+  if (!options.remotePending) out.push(...listed.filter((x) => !lead.includes(x)).map(rowOf));
   return { items: out.items, completion };
 }
 

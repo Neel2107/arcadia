@@ -33,7 +33,6 @@ ArdiaCoreTab *_Nullable TabWithBrowserId(int browserId);
 NSString *_Nullable AppTabIdOf(ArdiaCoreTab *_Nullable tab);
 id AppTabIdValue(ArdiaCoreTab *_Nullable tab);
 ArdiaCoreTab *_Nullable TabWithAppTabId(NSString *_Nullable tabId);
-NSString *_Nullable AppTabIdContaining(NSView *_Nullable view);
 void HoldUntilHosted(ArdiaCoreTab *tab, NSString *event, NSDictionary *payload);
 void ReleaseHeldEvents(ArdiaCoreTab *tab);
 void DropHeldEvent(NSString *event, NSString *eventId);
@@ -41,6 +40,9 @@ void DropHeldEvent(NSString *event, NSString *eventId);
 NSString *AppDisposition(NSString *chromeDisposition);
 
 void InstallActivationGuardsEarly();
+bool HasArmedPanels();
+void SweepFileArmsAtLaunch();
+NSArray<NSURL *> *_Nullable ArmedPanelPicks(NSSavePanel *panel, NSWindow *_Nullable parent, bool *handled, NSString *_Nullable *_Nonnull armId);
 void InstallActivationGuardsLate();
 bool Background();
 void LogActivation(NSString *what);

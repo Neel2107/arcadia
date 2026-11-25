@@ -39,10 +39,12 @@ the start unless noted. All clocks are epoch ms on the same Mac: JS's `Date.now(
 | | `rn_ms` | → React Native starts loading the bundle (`launchApp`, after the early window and its first commit; from 0.2.46-nightly.7). `js_ms - rn_ms` is the bundle load, `rn_ms - engine_ms` the early window |
 | | `js_ms` | → the bundle's first module runs (`state/telemetry/jsStart.ts`) |
 | | `commit_ms` | → the first window's first React commit |
+| | `first_commit_ms` | the first window root's first render → that commit: how long the first commit took to build and mount (launch's first commit, `launch.firstCommitMounts` in the ratchet; from the release after 0.2.48) |
 | | `launch_ms` | → the first window's root effect (**unchanged** since 0.2.x, so old data stays comparable) |
 | | `content_ms` | → that first commit on screen |
 | | `usable_ms` | → the app answers at once: the first timer after the first commit that runs within 50 ms of being set (both the main and JS threads free), and not before `content_ms` |
 | | `tab_request_ms`, `tab_commit_ms`, `tab_paint_ms` | → the restored active tab's load asked for, committed, first contentful paint |
+| | `sidebar_rows_later`, `sidebar_rows_ms`, `sidebar_rows_release` | sidebar rows still unmounted when the launch's first content reached the screen (rows grow as usual until then; 0 for a short list), that moment → all of them mounted (null when a window closed first), and what let the first restored window's rows in: `loaded` (its restored page finished loading), `nopage` (250 ms; no web page to wait for, such as History), `deadline` (1 s), `scroll`, `drag`, `profile` (its profile changed), `reveal` (a tab picked by shortcut or search was revealed), `late` (a sidebar first shown 3 s or more after JS started holds nothing). `state/sidebar/launchRows.ts`; from the first nightly after #3768 |
 | J2 new tab (`perf_journeys`) | `j2_js` | ⌘T (or the New Tab button) → JS has the new tab |
 | | `j2_commit` | → the new tab's command bar committed |
 | | `j2_shown` | → that commit on screen |

@@ -16,10 +16,13 @@ import { PinnedFace } from "./PinnedFace";
 import { dockWidth, dropIndex, type DragGeometry } from "./stripGroups";
 import { TabChip } from "./TabChip";
 import { CHIP_HAIRLINE, DOCK_GAP, GAP, ITEM_HEIGHT, ITEM_TOP, MAX_CHIP, PINNED_CELL, PINNED_FACE_INSET, pinnedFaceRadius, PINNED_SPACING, tabRadius, TOP_STRIP_HEIGHT } from "./tokens";
+import { clippedContinuousCorners, continuousCorners } from "../ui";
 import { useStripDrag } from "./useStripDrag";
+import { useStripPick } from "./stripPick";
 import { useStripCardHover } from "./StripHoverCard";
 import { useChipHover, useChipHovered } from "./reachableHover";
 import { TabPressArea } from "../sidebar/TabPressArea";
+import { refreshShownTile } from "../../state/sidebar/actions";
 
 export function PinnedDock({ tabIds }: { tabIds: string[] }) {
   const theme = useTheme();
@@ -39,7 +42,7 @@ export function PinnedDock({ tabIds }: { tabIds: string[] }) {
           height: ITEM_HEIGHT,
           width: box.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolateLeft: "clamp" }),
           opacity: box.interpolate({ inputRange: [0, PINNED_CELL / 2], outputRange: [0, 1], extrapolate: "clamp" }),
-          borderRadius: tabRadius(),
+          ...(glass ? continuousCorners(tabRadius()) : clippedContinuousCorners(tabRadius())),
           borderWidth: glass ? 0 : CHIP_HAIRLINE,
           borderColor: theme.pinnedRestingStroke,
           backgroundColor: glass ? undefined : theme.pinnedResting,
@@ -63,6 +66,7 @@ export function PinnedDock({ tabIds }: { tabIds: string[] }) {
 
 function PinnedCell({ tabId, geometry, from }: { tabId: string; geometry: DragGeometry; from: number }) {
   const windowId = useWindowId();
+  const pick = useStripPick();
   const tab = useTab(tabId);
   const active = useIsActiveTab(tabId);
   const hover = useChipHover();
@@ -103,7 +107,7 @@ function PinnedCell({ tabId, geometry, from }: { tabId: string; geometry: DragGe
           opacity: drag.crossed ? 0 : 1,
         }}
       >
-        <TabPressArea windowId={windowId} tab={tab}>
+        <TabPressArea windowId={windowId} tab={tab} onSwitch={pick} onDoubleClick={(wasShown) => refreshShownTile(windowId, tabId, wasShown)}>
           {({ pressed }) => <PinnedFace tabId={tabId} active={active} hovered={hovered} pressed={pressed} frame="face" />}
         </TabPressArea>
       </View>
@@ -160,7 +164,7 @@ function FolderCell({ folderId, tabIds, geometry, from }: { folderId: string; ta
             {({ pressed }) => (
               <View style={{ width: PINNED_CELL - PINNED_FACE_INSET * 2, height: ITEM_HEIGHT - 1 - PINNED_FACE_INSET * 2, alignItems: "center", justifyContent: "center" }}>
                 {(hovered || pressed) && (
-                  <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, borderRadius: pinnedFaceRadius(), backgroundColor: glass ? undefined : pressed ? theme.tabPressed : theme.tabHover }}>
+                  <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, ...continuousCorners(pinnedFaceRadius()), backgroundColor: glass ? undefined : pressed ? theme.tabPressed : theme.tabHover }}>
                     {glass ? <GlassFill radius={pinnedFaceRadius()} state={pressed ? "pressed" : "lit"} /> : null}
                   </View>
                 )}

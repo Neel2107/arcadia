@@ -98,7 +98,7 @@ type NativeEvents = {
   onFieldProviderHint: { state?: string };
   onVerificationCodeFound: VerificationCodeFound;
 };
-export type Handlers = keyof NativeEvents;
+type Handlers = keyof NativeEvents;
 export type PageEvent = { name: string; data: unknown };
 export type NativeProps = Omit<WebViewProps, Handlers> & { pageEvents: string[]; onPageEvent: (e: NativeSyntheticEvent<PageEvent>) => void };
 
@@ -191,7 +191,7 @@ const unwrap: { [K in Handlers]: (e: NativeEvents[K]) => Parameters<NonNullable<
   onPictureInPictureDragged: (e) => [{ offCursor: !!e.offCursor, slowMove: !!e.slowMove, epoch: e.epoch }],
   onPictureInPictureResized: (e) => [{ inside: !!e.inside, cursorShown: !!e.cursorShown, epoch: e.epoch }],
   onPictureInPictureSkip: (e) => [{ seconds: e.seconds, epoch: e.epoch }],
-  onPictureInPictureStandIn: (e) => [{ pinch: !!e.pinch, timedOut: !!e.timedOut, epoch: e.epoch }],
+  onPictureInPictureStandIn: (e) => [{ pinch: !!e.pinch, timedOut: !!e.timedOut, unfocused: !!e.unfocused, fromOtherApp: !!e.fromOtherApp, epoch: e.epoch }],
   onPictureInPictureUnstashed: (e) => [{ epoch: e.epoch }],
   onPictureInPictureReleased: (e) => [{ outcome: e.outcome, epoch: e.epoch }],
   onPictureInPictureActivated: (e) => [{ move: !!e.move, activated: !!e.activated, epoch: e.epoch }],

@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import re
@@ -7,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'src'
+DESKTOP_SOURCE = SOURCE.parents[1] / 'ardiacore-desktop' / 'src'
 LINUX = SOURCE / 'ardia/linux'
 REPO = ROOT.parents[1]
 
@@ -21,7 +23,7 @@ class CastTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='ardia-cast-') as directory:
             binary = Path(directory) / 'cast'
             subprocess.run([os.environ.get('CXX', 'c++'), '-std=c++20', '-Wall', '-Wextra', '-Werror', '-g',
-                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-I', str(SOURCE),
+                            '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-I', str(SOURCE), '-I', str(DESKTOP_SOURCE),
                             str(ROOT / 'tests/cast_core_test.cc'), '-o', str(binary)], check=True, text=True, timeout=180)
             result = subprocess.run([str(binary)], text=True, timeout=60, capture_output=True,
                                     env={**os.environ, 'UBSAN_OPTIONS': 'halt_on_error=1'})
@@ -34,12 +36,14 @@ class CastTests(unittest.TestCase):
         shell = (REPO / 'apps/linux/src/hostCast.ts').read_text()
         verbs = re.search(r'const CAST_VERBS = \[([^\]]*)\];', shell).group(1)
         self.assertEqual(sorted(calls), sorted(f'media.{verb}' for verb in re.findall(r'"(\w+)"', verbs)))
-        api = (REPO / 'packages/ardiacore/src/engine/api.ts').read_text()
+        media = json.loads((REPO / 'packages/ardiacore/src/engine/generated/manifest.json').read_text())['domains']['media']
         for call in calls:
-            self.assertIn(f'"{call}":', api)
+            row = media['calls'][call.removeprefix('media.')]
+            self.assertEqual((row['mac'], row['desktop']), ('custom', 'custom'), call)
         for event in ('media.castDialog', 'media.castRoutes'):
             self.assertIn(f'"{event}"', core)
-            self.assertIn(f'"{event}":', api)
+            row = media['events'][event.removeprefix('media.')]
+            self.assertEqual((row['mac'], row['desktop']), ('custom', 'custom'), event)
 
     def test_the_port_keeps_the_macs_dialog_and_route_logic(self):
         linux = (LINUX / 'ac_linux_cast.cc').read_text()

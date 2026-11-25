@@ -2,9 +2,33 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const NOT_BUILT_BY_GN: [&str; 2] = [
+const NOT_BUILT_BY_GN: [&str; 26] = [
+    "crates/ardia-apple-ffi/src/lib.rs",
     "crates/ardia-crypto/src/rustcrypto.rs",
     "crates/ardia-sync-vectors/src/lib.rs",
+    "crates/ardia-update-core/src/error.rs",
+    "crates/ardia-update-core/src/lib.rs",
+    "crates/ardia-update-core/src/manifest.rs",
+    "crates/ardia-update-core/src/version.rs",
+    "crates/ardia-update-core/src/windows.rs",
+    "crates/ardia-update-ffi/src/lib.rs",
+    "crates/ardia-update-verify/src/main.rs",
+    "crates/ardia-import-core/src/bookmark.rs",
+    "crates/ardia-import-core/src/chromium_bookmarks.rs",
+    "crates/ardia-import-core/src/error.rs",
+    "crates/ardia-import-core/src/html.rs",
+    "crates/ardia-import-core/src/json.rs",
+    "crates/ardia-import-core/src/lib.rs",
+    "crates/ardia-import-core/src/netscape_bookmarks.rs",
+    "crates/ardia-import-ffi/src/lib.rs",
+    "crates/ardia-shell-migration/src/cli.rs",
+    "crates/ardia-shell-migration/src/credentials.rs",
+    "crates/ardia-shell-migration/src/fsafe.rs",
+    "crates/ardia-shell-migration/src/lib.rs",
+    "crates/ardia-shell-migration/src/main.rs",
+    "crates/ardia-shell-migration/src/migrate.rs",
+    "crates/ardia-shell-migration/src/names.rs",
+    "crates/ardia-shell-migration/src/windows.rs",
 ];
 
 fn core_rs() -> PathBuf {

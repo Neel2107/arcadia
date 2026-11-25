@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BackHandler, FlatList, Keyboard, Pressable, SectionList, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from "react-native";
+import { BackHandler, FlatList, Keyboard, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, type PressableEvent } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { predictiveBack } from "@ardia/phone-native";
@@ -301,7 +302,7 @@ function LibraryTabs({ section }: { section: LibrarySection }) {
   );
 }
 
-type ListItemProps = { testID?: string; leading: ReactNode; headline: string; supporting?: string | null; trailing?: string | null; label?: string; hint?: string; onPress: () => void; onLongPress?: (event: GestureResponderEvent) => void };
+type ListItemProps = { testID?: string; leading: ReactNode; headline: string; supporting?: string | null; trailing?: string | null; label?: string; hint?: string; onPress: () => void; onLongPress?: (event: PressableEvent) => void };
 
 function ListItem({ testID, leading, headline, supporting, trailing, label, hint, onPress, onLongPress }: ListItemProps) {
   const { scheme } = useMaterialTheme();
@@ -380,7 +381,7 @@ function HistoryList({ open, query, showMenu }: { open: boolean; query: string; 
   if (!entries.length) return <EmptyState icon="clockArrow" title="No History" message="Pages you visit here and on your Mac show up here." />;
   if (!shown.length) return noResults(query);
   return (
-    <SectionList
+    <SectionList bounces={false} overScrollMode="never"
       testID="materialLibraryHistory"
       sections={sections}
       keyExtractor={(entry) => entry.url}
@@ -447,7 +448,7 @@ function BookmarkList({ query, folderKey, showMenu }: { query: string; folderKey
   if (!bookmarks.length) return <EmptyState icon="star" title="No Bookmarks" message={enabled ? "Bookmarks you save on your Mac show up here." : "Sync with your Mac to see its bookmarks here."} />;
   if (!groups) return trimmed ? noResults(trimmed) : <EmptyState icon="folderFill" title="Empty Folder" />;
   return (
-    <SectionList
+    <SectionList bounces={false} overScrollMode="never"
       testID="materialLibraryBookmarks"
       sections={groups}
       keyExtractor={(item) => item.key}
@@ -503,7 +504,7 @@ function DownloadList({ open, showMenu }: { open: boolean; showMenu: ShowMenu })
   }, [open]);
   const renderItem = useCallback(({ item }: { item: DownloadedFile }) => <DownloadRow file={item} showMenu={showMenu} />, [showMenu]);
   if (loaded && !files.length) return <EmptyState icon="arrowDownCircle" title="No Downloads" message="Files you download show up here." />;
-  return <FlatList testID="materialLibraryDownloads" data={files} keyExtractor={(file) => file.uri} renderItem={renderItem} initialNumToRender={14} windowSize={9} />;
+  return <FlatList bounces={false} overScrollMode="never" testID="materialLibraryDownloads" data={files} keyExtractor={(file) => file.uri} renderItem={renderItem} initialNumToRender={14} windowSize={9} />;
 }
 
 function DownloadRow({ file, showMenu }: { file: DownloadedFile; showMenu: ShowMenu }) {

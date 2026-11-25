@@ -15,7 +15,7 @@ import { runBarAction, runBarExtension } from "../../state/omnibox/runBar";
 import { createBangSubmitter, mayBeBang } from "../../state/omnibox/bangs";
 import { traceOmnibox, useOmniboxDriver } from "./devDriver";
 import { claimFocusTag, commandBarFocus, heroBarFocus } from "../../state/focus/focusClaims";
-import { registerHeroBar, saveNtpQuery, type BarDismissal, type BarSnapshot } from "../../state/omnibox/barState";
+import { registerHeroBar, saveNtpQuery, type BarDismissal, type BarSnapshot, type HeroBarFocus } from "../../state/omnibox/barState";
 import { barSplitsFrom, openFromBar, otherOpenTabs, switchFromBar, type Disposition } from "../../state/omnibox/openFromBar";
 import { openFromNewTabBar } from "../../state/omnibox/newTabBar";
 import { isBookmarklet, runBookmarklet } from "../../state/bookmarks/bookmarklets";
@@ -39,7 +39,6 @@ import { markNewTabBar } from "../../state/omnibox/newTabMarks";
 import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
 import { usePreviewSelection } from "./usePreviewSelection";
 
-export { PANEL_TEXT_LEFT } from "./tokens";
 
 type Variant = "panel" | "hero" | "sidebar";
 
@@ -77,6 +76,9 @@ export function Omnibox({
   useEffect(() => () => bangEnter.cancel(), [bangEnter]);
   useEffect(() => bangEnter.cancel(), [bangEnter, typed, selected, scope]);
   const root = useRef<View>(null);
+  const panelOpen = useWindowUiOf(windowId, (ui) => hero && !!ui?.panel.open);
+  const [listAway, setListAway] = useState(false);
+  if (panelOpen && !listAway) setListAway(true);
   const { items, completion, via, inline, shownCompletion, value, selectedIndex, current, tabScope, previewing, rowsHover, rowsHeld, releaseRows, shownUrl } = useBarItems({
     input,
     caret: () => selection.current,
@@ -88,6 +90,7 @@ export function Omnibox({
     dropdown,
     opensTab: !!opensTab,
     switchToOpenTab: !!opensTab || hero,
+    listShown: !listAway,
     windowId,
     profileId,
     tabId,
@@ -103,18 +106,15 @@ export function Omnibox({
   fieldText.current = value;
   const editing = useRef(false);
   const focusEcho = useRef(false);
-  const panelOpen = useWindowUiOf(windowId, (ui) => hero && !!ui?.panel.open);
-  const [listAway, setListAway] = useState(false);
-  if (panelOpen && !listAway) setListAway(true);
   const focusField = () => {
     if (!editing.current && fieldText.current) focusEcho.current = true;
     input.current?.focus();
   };
   useEffect(() => {
     if (!hero) return;
-    const focus = () => {
+    const focus = (mode: HeroBarFocus) => {
       focusField();
-      dispatch({ kind: "select", selection: { start: 0, end: fieldText.current.length } });
+      dispatch({ kind: "select", selection: mode === "restore" ? selection.current : { start: 0, end: fieldText.current.length } });
     };
     const unregister = registerHeroBar(windowId, tabId, focus);
     return () => {

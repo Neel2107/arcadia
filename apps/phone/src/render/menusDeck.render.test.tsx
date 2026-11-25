@@ -2,14 +2,16 @@ import { Platform, StyleSheet } from "react-native";
 import { getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import { act, type ReactTestInstance } from "react-test-renderer";
 import { renderSurface, someTabs, unmount } from "../../test/render/harness";
+import type { Design } from "../lib/design";
 import { idOf, itemOf, mockNative, resetNativeMenus, titles, type NativeItem } from "./nativeMenusMock";
 
 jest.mock("@ardia/phone-native", () => require("./nativeMenusMock").nativeMenusModule(jest.requireActual("@ardia/phone-native")));
 
 const { TabDeck } = require("../components/tabs/TabDeck") as typeof import("../components/tabs/TabDeck");
-const { DesignProvider, menuLook } = require("../components/ui") as typeof import("../components/ui");
+const { DesignProvider, menuLook, onDrawnMenuActionChosen } = require("../components/ui") as typeof import("../components/ui");
 const { haptics } = require("../state/app/haptics") as typeof import("../state/app/haptics");
 const { useArchiveCard } = require("../state/browse/archiveCard") as typeof import("../state/browse/archiveCard");
+const { countDrawnMenuAction } = require("../state/browse/menuCounts") as typeof import("../state/browse/menuCounts");
 const browse = require("../state/browse/store") as typeof import("../state/browse/store");
 const settingsNav = require("../state/settings/nav") as typeof import("../state/settings/nav");
 const syncActions = require("../state/sync/actions") as typeof import("../state/sync/actions");
@@ -74,9 +76,9 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-const deck = () =>
+const deck = (design: Design = "redesigned") =>
   renderSurface(
-    <DesignProvider design="redesigned">
+    <DesignProvider design={design}>
       <TabDeck />
     </DesignProvider>,
   );
@@ -203,7 +205,7 @@ nativeTest("holding the Incognito switch offers Close Incognito Tabs, which asks
   const root = deck();
   const pill = menuAround(root, "Incognito");
   expect(pill.props.trigger).toBe("longPress");
-  expect(items(pill)).toEqual([{ id: "0", title: "Close Incognito Tabs", destructive: true }]);
+  expect(items(pill)).toEqual([{ id: "0", title: "Close Incognito Tabs", systemImage: "xmark", destructive: true }]);
   choose(pill, "Close Incognito Tabs");
   await act(async () => undefined);
   expect(mockNative.sheets[0]).toMatchObject({ title: "Close Incognito Tabs?", message: "Their pages, cookies and history are cleared." });
@@ -339,6 +341,29 @@ drawnTest("on Android the space switcher and holding the Incognito switch are dr
   act(() => root.root.findAll((node) => node.props.testID === "drawnConfirmationOutside" && typeof node.props.onPress === "function")[0]!.props.onPress());
   expect(leave).not.toHaveBeenCalled();
   unmount(root);
+});
+
+drawnTest.each(["original", "redesigned", "material"] as const)("the %s deck's Close Incognito Tabs menu keeps the regular overview's look and counts the choice once, as its opens are counted", (design) => {
+  act(() => tabStore.useTabs.setState({ privates: someTabs(2, true) }));
+  const root = deck(design);
+  onDrawnMenuActionChosen(countDrawnMenuAction);
+  try {
+    if (design === "original") press(root, "Incognito, 2 tabs");
+    else act(() => root.root.findAll((node) => node.props.accessibilityLabel === "Incognito" && typeof node.props.onLongPress === "function")[0]!.props.onLongPress());
+    if (design === "material") {
+      const { materialMenuFill } = require("../components/ui/MaterialSurfaces") as typeof import("../components/ui/MaterialSurfaces");
+      const { SEEDED_SCHEMES } = require("../lib/material/schemes") as typeof import("../lib/material/schemes");
+      const group = root.root.findAll((node) => node.props.testID === "materialMenuGroup" && typeof node.type === "string")[0]!;
+      const { StyleSheet } = require("react-native") as typeof import("react-native");
+      expect(StyleSheet.flatten(group.props.style).backgroundColor).toBe(materialMenuFill(SEEDED_SCHEMES.ardia.light, false));
+    }
+    pick(root, "Close Incognito Tabs");
+    expect(root.root.findAll((node) => node.props.testID === "drawnConfirmationOutside" && typeof node.props.onPress === "function")).not.toHaveLength(0);
+    expect((telemetry.countUsage as jest.Mock).mock.calls.filter((call) => call[0] === "drawn_menu_actions_chosen")).toHaveLength(1);
+  } finally {
+    onDrawnMenuActionChosen(() => undefined);
+    unmount(root);
+  }
 });
 
 drawnTest("on Android holding the plus opens main's PlusButton menu at the finger", () => {
@@ -570,5 +595,16 @@ drawnTest("a Tab Options measurement asked before the deck went away opens nothi
   act(() => withMenu()[1]!.props.onAccessibilityAction({ nativeEvent: { actionName: "menu" } }));
   await act(async () => pending[pending.length - 1]!({ x: 60, y: 200, width: 280, height: 520 }));
   expect(menuitems(root).length).toBeGreaterThan(0);
+  unmount(root);
+});
+
+const leavesWithoutImage = (list: NativeItem[]): string[] => list.flatMap((item) => (item.children ? (item.inline || item.systemImage ? leavesWithoutImage(item.children) : [item.title, ...leavesWithoutImage(item.children)]) : item.systemImage ? [] : [item.title]));
+
+nativeTest("every row of every deck menu has its icon, New Incognito Tab's eyes included", () => {
+  const root = deck();
+  const menus = contextMenus(root);
+  expect(menus.length).toBeGreaterThan(2);
+  for (const menu of menus) expect(leavesWithoutImage(items(menu))).toEqual([]);
+  expect(menus.flatMap((menu) => items(menu)).some((item) => JSON.stringify(item).includes('"systemImage":"eyes"'))).toBe(true);
   unmount(root);
 });

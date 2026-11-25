@@ -15,7 +15,8 @@
 //         --runs <n>           launches, one per run (default 5)
 //         --scenarios <a,b>    of: startup, persistence, idle, typing, switchTabs, openClose, scroll, pageLoad, hover,
 //                              profileSwipe, storeUpdate, idleLate (default all, in that order; startup must stay first)
-//         --port <n>           the test page server's port (default 47817); instance CDP ports are 9500 + run + …
+//         --port <n>           the test page server's port (default 47817)
+//         --cdp-port <n>       the first run's remote-debugging port; run r gets n + r (default 9500 + run + 10 × label length)
 //         --out <dir>          default $AC_PERF_OUT or /tmp/ac-perf-js
 //         --append 1           add these runs to an existing <label>.json (to interleave two builds' runs: alternate
 //                              `run --runs 1 --append 1` between them)
@@ -57,8 +58,9 @@ import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareApp } from "../../../../scripts/lib/app-copy.mjs";
-import { appEnv, binaryOf } from "../../../../scripts/lib/instance.mjs";
+import { appEnv, binaryOf, sleep } from "../../../../scripts/lib/instance.mjs";
 import { writeSeed } from "./seed.mjs";
+import { medianOrNull as median } from "./median.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const appDir = resolve(here, "../..");
@@ -75,18 +77,11 @@ for (let i = 0; i < rest.length; i++) {
   else positional.push(rest[i]);
 }
 
-const median = (xs) => {
-  const s = xs.filter((x) => typeof x === "number" && Number.isFinite(x)).sort((a, b) => a - b);
-  if (!s.length) return null;
-  const m = s.length >> 1;
-  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-};
 const pct = (xs, p) => {
   const s = xs.filter(Number.isFinite).sort((a, b) => a - b);
   return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : null;
 };
 const sum = (o) => Object.values(o ?? {}).reduce((a, b) => a + b, 0);
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export function bundle(outDir, { profiling = false } = {}) {
   mkdirSync(outDir, { recursive: true });
@@ -102,7 +97,8 @@ export function bundle(outDir, { profiling = false } = {}) {
     ],
     { cwd: appDir, stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, ...(profiling ? { AC_REACT_PROFILING: "1" } : {}) } },
   );
-  const hermesc = join(appDir, "macos/Pods/hermes-engine/destroot/bin/hermesc");
+  const hermesc = [join(appDir, "macos/Pods/hermes-engine/destroot/bin/hermesc"), join(repo, "node_modules/react-native/sdks/hermesc/osx-bin/hermesc")].find(existsSync);
+  if (!hermesc) throw new Error("no hermesc: run pod install in apps/browser/macos, or link node_modules with scripts/agent/worktree-setup");
   execFileSync(hermesc, ["-emit-binary", "-max-diagnostic-width=80", "-O", "-out", hbc, js], { stdio: "inherit" });
   const sizes = { js: statSync(js).size, hbc: statSync(hbc).size, packages: packageSizes(js) };
   writeFileSync(join(outDir, "sizes.json"), JSON.stringify(sizes, null, 2));
@@ -253,7 +249,7 @@ export function writeSwitches(dataDir, text) {
   writeFileSync(join(dataDir, "switches-cache.json"), JSON.stringify({ version: 1, switches }));
 }
 
-export async function launch(app, dataDir, port) {
+export async function launch(app, dataDir, port, extraEnv = {}) {
   const binary = binaryOf(realpathSync(app));
   writeSwitches(dataDir, process.env.ARDIA_SWITCHES);
   if (pidsOf(binary).length) throw new Error(`an instance of ${app} is already running`);
@@ -261,17 +257,34 @@ export async function launch(app, dataDir, port) {
   const env = appEnv(app, {
     ARDIA_BACKGROUND: "1", ARDIA_DATA_DIR: dataDir, ARDIA_REMOTE_DEBUGGING_PORT: String(port),
     ...(process.env.ARDIA_SWITCHES ? { ARDIA_SWITCHES: process.env.ARDIA_SWITCHES } : {}),
+    ...extraEnv,
   });
   execFileSync("open", ["-g", "-n", ...Object.entries(env).flatMap(([k, v]) => ["--env", `${k}=${v}`]), app]);
   for (let i = 0; i < 200; i++) {
     const [pid] = pidsOf(binary);
-    if (pid) return { pid, launchedAt };
+    if (pid) {
+      launched.add(pid);
+      return { pid, launchedAt };
+    }
     await sleep(50);
   }
   throw new Error("app did not start");
 }
 
+const launched = new Set();
+
+function quitOnSignals(...closers) {
+  for (const [sig, code] of [["SIGINT", 130], ["SIGTERM", 143]])
+    process.once(sig, async () => {
+      process.stderr.write(`js-bench: ${sig}: quitting ${launched.size} instance(s)\n`);
+      for (const pid of [...launched]) await quit(pid).catch(() => {});
+      for (const close of closers) await Promise.resolve(close()).catch(() => {});
+      process.exit(code);
+    });
+}
+
 export async function quit(pid) {
+  launched.delete(pid);
   if (!alive(pid)) return;
   process.kill(pid, "SIGTERM");
   for (let i = 0; i < 150 && alive(pid); i++) await sleep(100);
@@ -336,6 +349,7 @@ async function run() {
   const version = execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print CFBundleShortVersionString", join(clone, "Contents/Info.plist")], { encoding: "utf8" }).trim();
   const origin = `http://127.0.0.1:${port}`;
   const server = await startServer(Number(port));
+  quitOnSignals(() => server.close());
   const libs = (flags.lib ? flags.lib.split(",") : [join(here, "bench-app.js")]).map((file) => readFileSync(file, "utf8"));
   const results = [];
   try {
@@ -345,7 +359,7 @@ async function run() {
       writeSeed(dataDir, origin, version, { tabsOrigin: `http://[::1]:${port}`, activeDelayMs: ACTIVE_PAGE_DELAY_MS });
       if (flags.seed === "small") smallSession(dataDir);
       if (flags.probe) writeFileSync(join(dataDir, "perf-probe"), flags.probe);
-      const { pid, launchedAt } = await launch(clone, dataDir, 9500 + r + (label.length % 50) * 10);
+      const { pid, launchedAt } = await launch(clone, dataDir, flags["cdp-port"] ? Number(flags["cdp-port"]) + r : 9500 + r + (label.length % 50) * 10);
       const result = { run: r, launchedAt };
       try {
         let ready = false;

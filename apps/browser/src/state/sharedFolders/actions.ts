@@ -1,3 +1,5 @@
+import { cleanLinkTitle, cleanUrl } from "@ardia/core";
+import { withEntry } from "../browser/changes";
 import { confirm, pickFolder } from "../../platform/dialogs";
 import { sharePage } from "../../platform/share";
 import { createSharedFolder, discardSharedFolder, identityOf, resolveSharedFolder, revealSharedFolder, sharedFoldersAvailable, sharedLocation } from "../../platform/sharedFolders";
@@ -46,7 +48,7 @@ export function withSharedGroup(s: BrowserState, windowId: string, name: string)
     ...s.groups,
     [id]: { id, windowId, profileId, name, icon: null, color: null, collapsed: false, pinned: true, tabIds: [tab.id], createdAt: Date.now() },
   });
-  const tabs = { ...s.tabs, [tab.id]: tab };
+  const tabs = withEntry(s.tabs, tab.id, tab);
   const pinnedArea = pinnedGroupMembers(s.groups);
   const ids = [...w.tabIds];
   insertAll(ids, w.tabIds.reduce((last, t, i) => (s.tabs[t]?.pin || pinnedArea.has(t) ? i + 1 : last), 0), [tab.id]);
@@ -109,7 +111,8 @@ export async function shareFolder(windowId: string, groupId: string) {
       return showToast(windowId, "Couldn’t share this folder yet", reason, { icon: "exclamationmark.icloud" });
     }
     const anchor = await measureRow(windowId, groupId);
-    await sharePage(fileUrlOf(folder.path), groupLabel(store(), g) || null, windowId, anchor ? [anchor.x, anchor.y, anchor.width, anchor.height] : null);
+    const url = fileUrlOf(folder.path);
+    await sharePage(cleanUrl(url), cleanLinkTitle(groupLabel(store(), g), url) || null, windowId, anchor ? [anchor.x, anchor.y, anchor.width, anchor.height] : null);
   } catch (error) {
     showToast(windowId, "Couldn’t share this folder", error instanceof Error ? error.message : String(error), { icon: "exclamationmark.icloud" });
   }

@@ -14,34 +14,8 @@ export const profileRows = {
         profiles: {
           title: "Profiles",
           explained: true,
-          description: `Pick a profile in the bar to change its settings. Drag to reorder. ${keyText("⌃1")}–${keyText("⌃9")} switch between them.`,
-          keywords: ["create profile", "new profile", "delete profile", "reorder", "work", "personal"],
-        },
-      },
-    },
-    {
-      section: "For all profiles",
-      rows: {
-        defaultProfile: {
-          title: "Default profile",
-          description: "Used for new windows.",
-          keywords: ["new window"],
-        },
-        showProfileDots: {
-          title: "Show the profile switcher in the sidebar",
-          explained: true,
-          description: "A dot for each profile, or its icon if you gave it one.",
-          keywords: ["dots", "pager", "profile switcher", "page dots", "sidebar footer", "hide", "show profile dots", "spaces", "space icons", "profile dots", "switcher", "emoji", "symbol", "arc", "show profile icons instead of dots", "profile icons", "switcher in the sidebar shows", "nothing"],
-        },
-        shareTopApps: {
-          title: "Share Top Apps",
-          keywords: ["pinned tabs", "favorites", "essentials", "spaces", "shared"],
-        },
-        spacesFollowAppearance: {
-          title: "Profile colors follow the theme",
-          explained: true,
-          description: "Every profile follows this, whatever its theme says.",
-          keywords: ["space", "profile theme", "arc theme", "follow system", "profile themes follow this appearance"],
+          description: `Pick one to edit it; drag to reorder. ${keyText("⌃1")}–${keyText("⌃9")} switch.`,
+          keywords: ["create profile", "new profile", "delete profile", "reorder", "work", "personal", "drag", "switch profiles", "profile settings"],
         },
       },
     },
@@ -110,8 +84,8 @@ export const profileRows = {
       rows: {
         passwordManager: {
           title: "Password manager",
-          description: "Ardia's own, a password manager plugin, or none when an extension handles logins.",
-          keywords: ["password manager", "passwords app", "passkeys", "verification codes", "2fa", "one time code", "autofill passwords"],
+          description: "Ardia's own, a plugin, or none for an extension.",
+          keywords: ["password manager", "passwords app", "passkeys", "verification codes", "2fa", "one time code", "autofill passwords", "password manager plugin", "extension", "logins", "none"],
           shown: () => PLATFORM_FEATURES.systemPasswordManagers && PLATFORM_FEATURES.plugins,
         },
         offerToSavePasswords: {
@@ -174,6 +148,32 @@ export const profileRows = {
         clearBrowsingData: {
           title: "Clear browsing data",
           keywords: ["clear history", "cookies", "cache", "delete data"],
+        },
+      },
+    },
+    {
+      section: "For all profiles",
+      rows: {
+        defaultProfile: {
+          title: "Default profile",
+          description: "Used for new windows.",
+          keywords: ["new window"],
+        },
+        showProfileDots: {
+          title: "Show the profile switcher in the sidebar",
+          explained: true,
+          description: "A dot for each profile, or its icon if you gave it one.",
+          keywords: ["dots", "pager", "profile switcher", "page dots", "sidebar footer", "hide", "show profile dots", "spaces", "space icons", "profile dots", "switcher", "emoji", "symbol", "arc", "show profile icons instead of dots", "profile icons", "switcher in the sidebar shows", "nothing"],
+        },
+        shareTopApps: {
+          title: "Share Top Apps",
+          keywords: ["pinned tabs", "favorites", "essentials", "spaces", "shared"],
+        },
+        spacesFollowAppearance: {
+          title: "Profile colors follow the theme",
+          explained: true,
+          description: "Every profile follows this, whatever its theme says.",
+          keywords: ["space", "profile theme", "arc theme", "follow system", "profile themes follow this appearance"],
         },
       },
     },

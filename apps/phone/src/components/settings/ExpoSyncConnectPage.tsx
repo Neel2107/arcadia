@@ -12,7 +12,7 @@ import { setConnectPhrase, useConnectDraft } from "../../state/sync/connectDraft
 import { IDLE_CONNECT, type ConnectState } from "../../state/sync/connectSession";
 import { canScanCodes } from "../../state/sync/scan";
 import { chooseFolderTitle, connectMessage, MAC_HINT } from "../../state/sync/syncRules";
-import { legibleInk, modifierList, navigationBarBackButtonHidden, settingsPage, useReduceMotion, useTheme } from "../ui";
+import { legibleInk, modifierList, navigationBarBackButtonHidden, neverBounces, settingsPage, useReduceMotion, useTheme } from "../ui";
 import { SyncScan } from "../sync/SyncScan";
 import { ExpoSettingsAction } from "./ExpoSettingsParts";
 import { brand } from "../onboarding/onboardingTokens";
@@ -131,7 +131,7 @@ export function ExpoSyncConnectPage() {
   const look = isRoot ? ONBOARDING_ACTION : undefined;
 
   const page = (
-    <Form modifiers={modifierList(settingsPage(syncWords.connect), tint(accent), isRoot ? preferredColorScheme("dark") : null, isRoot ? scrollContentBackground("hidden") : null, interactiveDismissDisabled(busy), isRoot ? null : navigationBarBackButtonHidden(busy))}>
+    <Form modifiers={modifierList(settingsPage(syncWords.connect), tint(accent), isRoot ? preferredColorScheme("dark") : null, isRoot ? scrollContentBackground("hidden") : null, neverBounces(), interactiveDismissDisabled(busy), isRoot ? null : navigationBarBackButtonHidden(busy))}>
       <Section modifiers={[listRowBackground("clear"), listRowInsets({ top: CONNECT_LAYOUT.top, leading: CONNECT_LAYOUT.inset, bottom: 0, trailing: CONNECT_LAYOUT.inset })]}>
         <VStack spacing={CONNECT_LAYOUT.wordsGap} modifiers={[frame({ maxWidth: FILL }), animation(Animation.smooth({ duration: CONNECT_LAYOUT.swapS }), choosesFolder)]}>
           <Text modifiers={[font({ textStyle: "title2", weight: "bold" }), multilineTextAlignment("center"), accessibilityAddTraits(["isHeader"]), frame({ maxWidth: FILL })]}>{title}</Text>

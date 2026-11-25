@@ -36,6 +36,11 @@ export function chooseCommandBarPlacement(commandBarPlacement: Settings["command
   noteSettingsPick("commandBar", commandBarPlacement === "field" ? "field" : "centred");
 }
 
+export function chooseAfterClosingTab(afterClosingTab: Settings["afterClosingTab"]) {
+  useBrowser.getState().updateSettings({ afterClosingTab });
+  noteSettingsPick("afterClosingTab", ({ tabAbove: "above", tabBelow: "below", previouslyActive: "recent" } as const)[afterClosingTab]);
+}
+
 export function setMouseShortcut(id: string, button: Shortcut | null) {
   const next = { ...useBrowser.getState().settings.mouseShortcuts };
   if (button) next[id] = [button.key, ...button.modifiers];

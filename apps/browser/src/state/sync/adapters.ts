@@ -2,11 +2,10 @@ import { deletePassword } from "../../platform/passwords";
 import { orWarn } from "../../lib/fallback";
 import { assignPositions, folderChildren, SyncNative, type Adapter, type SealedLogin } from "../../platform/sync";
 import { bookmarkRoots, bookmarkUuidFor, ensureRoots, isBookmarkUuid } from "../bookmarks/bookmarks";
-import { useBrowser } from "../browser/store";
+import { useBrowser, type BrowserState } from "../browser/store";
 import { engineProfile } from "../browser/model";
 import { profileOpened } from "../profiles/profileLoading";
 import { isPeekTab } from "../peek/peek";
-import { fromSync } from "../pins/pinOrderChoices";
 import { fromLegacy } from "../../lib/legacy";
 import { thisDeviceDetails } from "./deviceDetails";
 import type { BookmarkNode } from "../browser/types";
@@ -60,10 +59,24 @@ export function deviceAdapter(deviceId: string, name: () => string, retired = fa
   };
 }
 
+const bookmarkTokens = new WeakMap<BrowserState["bookmarks"], Map<string, object>>();
+
+function bookmarksToken(profileId: string): object {
+  const s = store();
+  const engine = engineProfile(s, profileId);
+  const key = `${profileId}\n${engine}\n${s.bookmarksReady[engine] ? 1 : 0}`;
+  let byKey = bookmarkTokens.get(s.bookmarks);
+  if (!byKey) bookmarkTokens.set(s.bookmarks, (byKey = new Map()));
+  let token = byKey.get(key);
+  if (!token) byKey.set(key, (token = {}));
+  return token;
+}
+
 export function bookmarksAdapter(profileId: string): Adapter {
   const ready = () => !!store().bookmarksReady[engineProfile(store(), profileId)];
   return withSyncWorkCounts("bookmark", {
     prefix: BOOKMARK,
+    extractsOnlyFrom: () => bookmarksToken(profileId),
     extract: (base) => {
       if (!ready()) return null;
       const b = store().bookmarks;
@@ -189,7 +202,7 @@ export function deviceTabsAdapter(profileId: string, deviceId: string, name: () 
 
 const PASSWORD_READ_INTERVAL = 30_000;
 
-export type SealedPasswords = {
+type SealedPasswords = {
   read: (engineProfile: string) => Promise<SealedLogin[] | null | undefined>;
   save: (engineProfile: string, origin: string, username: string, sealed: string, replacing: boolean) => Promise<boolean>;
 };
@@ -235,7 +248,10 @@ export function passwordsAdapter(profileId: string, logins: SealedPasswords = na
       let ok = true;
       for (const key of changed) {
         if (records.held()) return false;
-        if (passwordless.has(key)) continue;
+        if (passwordless.has(key)) {
+          records.defer(key);
+          continue;
+        }
         const v = passwordValue(visible.get(key));
         if (visible.has(key) && !v) return false;
         const have = local.get(key);

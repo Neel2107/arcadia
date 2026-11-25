@@ -1,10 +1,11 @@
 import { onWindowEvent } from "../../platform/windows";
 import { everySlowly } from "../../platform/slowTimers";
 import { useBrowser, type BrowserState } from "../browser/store";
-import { activeTabId, inPinnedContainer, viewTabIds } from "../browser/model";
+import { inPinnedContainer, viewTabIds } from "../browser/model";
 import { awayFromPin } from "../pins/organize";
 import { pinnedGroupMembers } from "../browser/structure";
 import { shownTabIds } from "../tabs/shownTabs";
+import { tabsLeftInOpenWindows } from "../windows/frontTabs";
 import { repoKey } from "./rows";
 import { hideNewRepos } from "./repoFilter";
 import { SOURCES } from "./sources";
@@ -19,6 +20,8 @@ import { usePages } from "../tabs/pageState";
 import { liveOf, onLiveChange } from "../tabs/tabLive";
 import { capturing, whenCaptureEndsUnderHiddenCompleted } from "./captureEnds";
 import { during } from "../app/jobActivity";
+import { scrubTokens } from "../telemetry/sanitize";
+import { userClose, type ByUser } from "../tabs/closeActivation";
 
 const INTERVAL_MS: Record<LiveFolderKind, number> = { pullRequests: 3 * 60_000, documents: 10 * 60_000 };
 const STALE_ON_FOCUS_MS = 60_000;
@@ -186,8 +189,8 @@ async function run(folderId: string, interactive: boolean, allowed: () => boolea
 }
 
 function describe(source: LiveSourceId, error: unknown) {
-  if (error instanceof LiveError) return { kind: error.kind, message: error.message, source };
-  return { kind: "other" as const, message: String((error as Error)?.message ?? error), source };
+  if (error instanceof LiveError) return { kind: error.kind, message: scrubTokens(error.message), source };
+  return { kind: "other" as const, message: "Something went wrong", source };
 }
 
 export function statusText(folderId: string, now = Date.now()): string {
@@ -278,10 +281,10 @@ export function returnLiveTab(tabId: string) {
   useBrowser.getState().returnToPinnedUrl(tabId);
 }
 
-export function deleteLiveFolder(folderId: string) {
+export function deleteLiveFolder(folderId: string, user?: ByUser) {
   const s = useBrowser.getState();
   const tabs = Object.values(s.tabs).filter((t) => t.liveItem?.folderId === folderId).map((t) => t.id);
-  if (tabs.length) s.closeTabs(tabs);
+  if (tabs.length) s.closeTabs(tabs, user ? userClose(tabs, user) : {});
   removeFolder(folderId);
 }
 
@@ -330,6 +333,16 @@ function closeCompletedTabs() {
 let started = false;
 const lastNudge = new Map<string, number>();
 
+function nudgeFoldersOfTabsLeft(prev: BrowserState) {
+  const s = useBrowser.getState();
+  for (const id of tabsLeftInOpenWindows(prev, s)) {
+    const folderId = s.tabs[id]?.liveItem?.folderId;
+    if (!folderId || Date.now() - (lastNudge.get(folderId) ?? 0) < 20_000) continue;
+    lastNudge.set(folderId, Date.now());
+    setTimeout(() => void refreshFolder(folderId), 3000);
+  }
+}
+
 export function startLiveEngine() {
   if (started) return;
   started = true;
@@ -374,6 +387,7 @@ export function startLiveEngine() {
 
   useBrowser.subscribeTo(["windows", "splits", "peeks"], (s, prev) => {
     if (s.windows !== prev.windows || s.splits !== prev.splits || s.peeks !== prev.peeks) closeCompletedTabs();
+    nudgeFoldersOfTabsLeft(prev);
   });
   onLiveChange((id, now, was) => {
     if (was.playingAudio && !now.playingAudio && useBrowser.getState().tabs[id]) closeCompletedTabs();
@@ -383,15 +397,4 @@ export function startLiveEngine() {
     if (m.pipOpen !== prev.pipOpen || m.sessions !== prev.sessions || m.tabShares !== prev.tabShares) closeCompletedTabs();
   });
 
-  useBrowser.subscribeTo(["windows"], (s, prev) => {
-    if (s.windows === prev.windows) return;
-    for (const windowId of s.windowOrder) {
-      const before = activeTabId(prev, windowId);
-      if (!before || before === activeTabId(s, windowId)) continue;
-      const folderId = s.tabs[before]?.liveItem?.folderId;
-      if (!folderId || Date.now() - (lastNudge.get(folderId) ?? 0) < 20_000) continue;
-      lastNudge.set(folderId, Date.now());
-      setTimeout(() => void refreshFolder(folderId), 3000);
-    }
-  });
 }

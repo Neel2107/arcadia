@@ -70,35 +70,45 @@ holds the rest.
 
 - `checks.yml` starts only on the paths one of its jobs reads, and a `which checks run` job (`dorny/paths-filter`)
   picks the jobs from the change: `typecheck, tests and Mac bundle` (typecheck, the portable tests, the store
-  simulator and the Mac bundle, Metro then Hermes) for the workspace code; the browser's tests in three shares
-  (`--test-shard=I/3`) for what those tests read, which reaches past `apps/browser` into every package, the engine
-  sources, `apps/linux/src`, `scripts/{lib,security,windows}`, `tests/` and two docs; and `repository, vouch and
-  stale tests` (`test:root`, no install) for `scripts/`, `engine/`, `.github/`, `.claude/`, the site and the release
-  notes. A
-  docs-only, phone-app, dashboard or videos change starts none of them. When the filter can't tell (an API error, a
+  simulator and the Mac bundle, Metro then Hermes) for the workspace code; the browser's tests in six shares
+  (`--test-shard=I/6`) for what those tests read, which reaches past `apps/browser` into every package, the engine
+  sources, `apps/desktop/src`, `scripts/{lib,security,windows}`, `tests/` and two docs; and `repository, vouch and
+  stale tests` (`test:root`, no install) for `scripts/`, `engine/`, `.github/`, `.claude/`, the site, the release
+  notes, `docs/dia-feature-parity.md` and any test file (for the promises lock and the parity citations). A
+  docs-only change (other than the parity doc), phone-app, dashboard or videos change starts none of them, unless it
+  touches a test file. When the filter can't tell (an API error, a
   force push it can't diff, a pull request of 3,000 files or more) or the `which checks run` job fails, every job
   runs. `scripts/ci/workflow-paths.test.mjs` keeps the trigger paths and the filters in step, follows the meadow
-  check's site imports, and fails when a Linux fixture or a root test names a file its job doesn't start on. Each share restores the TSX it transpiled last time (`ardia-test-tsx-I-of-3-…`); only pushes to
+  check's site imports, and fails when a Linux fixture or a root test names a file its job doesn't start on. Each share restores the TSX it transpiled last time (`ardia-test-tsx-I-of-6-…`); only pushes to
   `main` save it, so pull requests add no caches. A newer push cancels the run before it, on `main` too.
-- `linux.yml` starts on what the Linux build and its fixture suites read (`apps/linux`, the shared UI and the desktop
+- `conventions.yml` runs the conventions check (`docs/conventions.md` › The check) on every pull request and every
+  push to `main`, with no paths filter and no install, so a file in a folder no other workflow watches is checked
+  too. `expiring-skips.yml` runs its expiry part every Monday and lists skips past their date, as warnings, in the
+  run's summary.
+- CI runs on Blacksmith's Linux and macOS runners; only the Windows jobs stay on GitHub's
+  ([ci-runners.md](ci-runners.md)).
+- `linux.yml` starts on what the Linux build and its fixture suites read (`apps/desktop`, the shared UI and the desktop
   packages' sources, the engine sources, its scripts, and the few Mac files the parity fixtures compare against,
   which `workflow-paths.test.mjs` finds in the suites and checks), not on the rest of the Mac, iPhone, Android or
   Windows native code; `windows.yml`
   leaves out `packages/phone`; `windows-engine-inputs.yml` starts on the engine inputs `check_inputs.py` reads;
   `deploy.yml` starts on `main` only for paths one of its services deploys from.
-- `mac.yml` compiles the Mac app (Debug, unsigned, `xcode-27`) on pull requests and pushes that touch its native code:
+- `mac.yml` compiles the Mac app (Debug, unsigned, on Blacksmith's macOS 27 with Xcode 27.1) on pull requests and pushes that touch its native code:
   `apps/browser/macos`, the packages' `ios` folders, the Dock tile and plugin host, the engine's public headers, the
   workspace manifests, the patches and the lockfile. It builds against this commit's engine, or the nearest published
   one before it, and any compiler error fails it. When `engine/ardiacore/src/ardia/core/public` changed since that
   engine it also fails after the build, asking for the engine to be published first.
-- The heavy workflows (`ios.yml`, `android.yml`, `linux.yml`, `windows.yml`, `mac.yml`, `rust.yml`) run their vouch
+- The heavy workflows (`ios.yml`, `android.yml`, `linux.yml`, `windows.yml`, `mac.yml`, `rust.yml`, `engine-series.yml`) run their vouch
   `gate` job only for pull requests from forks. Pushes, manual runs and branches of this repository skip it and start
-  the build at once. A newer push or pull request run cancels the one before it; manual and release runs each have their own
-  group and are never cancelled. `windows.yml` reads the `full-ci` label in its `identity` job, live, so adding the
-  label and re-running all jobs gives the full run.
-- Caches that would fill the 10 GB limit are saved on pushes to `main` only and pruned to the newest per branch by
-  `caches.yml`: Gradle (`gradle-phone-`, which `--main-only` also deletes from every other branch), Xcode compilation
-  caches (`xcode-cas-`), Pods (`pods-`, shared by `mac.yml` and the Release workflow, and `phone-pods-`).
+  the build at once. A newer push or pull request run cancels the one before it (`engine-series.yml` cancels only
+  superseded pull request runs: each push runs on its own); manual and release runs each have their own
+  group and are never cancelled. `windows.yml` reads the `full-ci` label in its `identity` job: from the event on a
+  first attempt, with no API call, and live on a re-run, so adding the label and re-running all jobs gives the full run.
+- Jobs on Blacksmith keep their `actions/cache` entries in Blacksmith's cache (25 GB per repo, least recently used
+  entries over 7 days old evicted; `blacksmith cache list` or the Blacksmith dashboard shows them). GitHub's cache
+  REST API doesn't see those, so `caches.yml` prunes only what GitHub's runners save (the Windows jobs). Caches that
+  would fill a limit are saved on pushes to `main` only, and `caches.yml`'s sweep covers Gradle (`gradle-phone-`,
+  which `--main-only` also deletes from every other branch), Xcode compilation caches (`xcode-cas-`), Pods (`pods-`, shared by `mac.yml` and the Release workflow, and `phone-pods-`).
 
 ## ArdiaCore acceptance
 
@@ -135,6 +145,12 @@ Test hygiene the run keeps (each was a real failure):
 - A check that needs a page on screen (permission prompts, choosers, context menus) shows it first: Chrome holds
   those for hidden tabs. Checks that need "no user activation" reload the page first (CDP's `userGesture` leaves
   one behind).
+
+`node packages/ardiacore/scripts/token-signals-check.mjs <app> [metro host:port] [scratch dir]` runs the engine-answered
+`Ardia.*` DevTools methods and `tabs.hold {untilDisconnect, live}` over the real token connection and control socket in
+one hidden instance (no DevTools port): the console ring, watermarks and generations, hit tests (listeners, cover,
+delegation, a cross-site iframe as a remote frame, cancellation on disconnect, the 4-probe cap), the focused frame's
+origin and document id, refusals off a tab session and for bad parameters, and SIGKILL ending a live hold.
 
 `node packages/ardiacore/scripts/drag-end-check.mjs <Debug app> [scratch dir]` checks that a page keeps taking clicks and keys
 after a drag nobody ends (`chromium-drag-always-ends.patch`, `docs/engine-build.md`): a DevTools session that took a drag and went
@@ -312,6 +328,41 @@ lose or leak data, or when the bug is invisible by eye and has shipped before.
 | `packages/sync` | The 9 convergence cases above, and the crypto's 5 (`docs/sync.md` › Tests) | Sync correctness and encryption |
 | `packages/import/tests/ImportTests.swift` | Importing never writes to the source profile, never leaves its data folder, decrypts logins only with the right key and only after consent | Another browser's data and secrets |
 | `extras/raycast-ardia` | Tab and profile ids, and what's typed into New Tab, are quoted in the AppleScript it sends; its answer reads back into the right tabs and profiles; a profile name matches whole, then by a start only one profile has, ignoring case, and a start several share names them instead of picking one | Script injection; New Window opening the wrong profile |
+
+## Promises: the tests that guard closed bugs
+
+`scripts/ci/promises.lock` holds each regression test that guards a closed bug to what it was when the bug closed.
+One tab-separated line per promise: the closed issue, a hash, the test file and the test's name (its describe path,
+`outer › inner`, when the name alone isn't unique in the file; a name is found with its whitespace changed too). The
+hash covers the test's source, a Swift test's attributes, and the head of every block it sits in: a loop and the
+list it walks, a `describe.skip`, an `if` around it, a Swift `@Suite(.disabled())`. Also covered: a guard in front of the test
+(`if (…) test(…)`), a suite's options (`describe("…", { skip: true }, …)`) and a Swift `#if` around it. Not
+covered: data a test reads from outside those (a table defined above the loop), `before`/`beforeEach` hooks and
+other setup, and the code that runs before a test registers (a `try` around it); an edit there needs no `--update`,
+so a reviewer reads those changes by eye. Whitespace, comments, trailing commas and quote style don't
+count, so reformatting is free; semicolons do, and a line break after `return`, `break`, `continue` or `throw`
+counts as one. node:test `test(…)` and `it(…)` in JavaScript, TypeScript and TSX, XCTest `func test…` and Swift
+Testing `@Test` functions can be locked.
+
+`scripts/ci/promises.test.mjs` (the repository job, which runs on any test file change) fails when a locked test is
+deleted, renamed or its body changes. To change one on purpose:
+
+- the test still guards the bug: `node scripts/ci/promises.mjs --update <issue>` records the new hash, and the
+  lock's diff shows the reviewer which promise moved;
+- it moved or was renamed: fix its file or name in the lock, then `--update <issue>`;
+- it no longer holds (the feature went): delete its line and say why in the pull request.
+
+A fix for a bug adds its regression test with `node scripts/ci/promises.mjs --add <issue> <file> "<test name>"`
+once the issue closes. The seed (2026-11-22) is 168 tests for 85 closed bugs: the #857 rows above, every test
+whose name cites a closed bug's issue (the store simulator's #2175 case too, whose body also pins three open bugs
+and so changes when they're fixed), and the tests a closing commit added for its bug, without the telemetry counts,
+perf harnesses and incidental tests those commits also brought. `node scripts/ci/promises.mjs` checks
+the lock in about 0.2 s.
+
+`docs/dia-feature-parity.md` cites tests the same checked way: a code span holding the test file's repo path, or
+`path#test name` for one test in it (Python `test_*.py` files by path only). `scripts/ci/parity-tests.test.mjs` fails when a cited file or test is gone or a
+test file is named any other way (a bare name, outside a code span), and `node scripts/ci/parity-tests.mjs --list`
+prints each row with its tests.
 
 ## What went, and why
 

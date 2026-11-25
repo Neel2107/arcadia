@@ -21,7 +21,7 @@ final class PhonePages {
   var blockingSink: EventSink?
 
   private let container: ModelContainer
-  private var tabIDs: [String: UUID] = [:]
+  private(set) var tabIDs: [String: UUID] = [:]
   private var pageIDs: [UUID: String] = [:]
   private var watchers: [String: PageWatcher] = [:]
   private let visuals = PageVisuals.shared
@@ -30,6 +30,7 @@ final class PhonePages {
   private var finds: [String: PageFind] = [:]
   private var blockingGeneration = 0
   private var shareGeneration = 0
+  private var videoFloat: WebVideoFloat?
 
   private struct PendingPopup {
     var tabID: UUID?
@@ -73,6 +74,7 @@ final class PhonePages {
     engine.onPopup = { [weak self] opener, popup in self?.popupOpened(from: opener, popup: popup) }
     engine.onOpenLink = { [weak self] url, opener, inBackground in self?.linkOpened(url, from: opener, inBackground: inBackground) }
     engine.onPrivateBrowsingEnded = { [weak self] in self?.privateBrowsingEnded() }
+    videoFloat = WebVideoFloat(liveWebViews: { [weak self] in self?.liveWebViews() ?? [] }) { [weak self] outcome in self?.webVideoLeftForeground(outcome) }
     engine.downloads.onStart = { [weak self] start, webView in self?.downloadStarted(start, in: webView) }
     engine.downloads.onProgress = { [weak self] list in
       self?.downloadSink?(["name": "downloads.progress", "downloads": list.map(PagePayloads.download)])
@@ -80,6 +82,7 @@ final class PhonePages {
     engine.downloads.onOutcome = { [weak self] outcome in self?.downloadFinished(outcome) }
     watchBlocking(generation: 0)
     watchShareRequests(generation: 0)
+    PageSnapshots.sweepPrivateLeftovers()
     Task {
       await blocker.prepare()
       await blocker.refreshIfDue()
@@ -298,10 +301,12 @@ final class PhonePages {
     await find.end()
   }
 
-  func snapshot(_ pageID: String, maxWidth: Int?, quality: Int?) async throws -> [String: Any]? {
+  func snapshot(_ pageID: String, maxWidth: Int?, quality: Int?, quiet: Bool = false) async throws -> [String: Any]? {
     let page = try require(pageID)
     guard let webView = page.webView, !webView.bounds.isEmpty else { return nil }
     guard PageSnapshots.isOnScreen(webView) else { return ["refused": "hidden"] }
+    let ticket = PageSnapshots.nextTicket()
+    let session = PageSnapshots.currentPrivateSession()
     let generation = visuals.generation(pageID)
     let hostBounds = webView.superview?.bounds ?? webView.bounds
     let pageFrame = Self.restingFrame(of: webView)
@@ -310,7 +315,15 @@ final class PhonePages {
     let width = min(margined ? wanted * pageFrame.width / hostBounds.width : wanted, pageFrame.width)
     let shot: UIImage
     let route: String
-    if let copied = PageSnapshots.screenCopy(of: webView, width: width), !PageSnapshots.isFlat(copied) {
+    if quiet {
+      guard let taken = await Self.quietCopy(of: webView, width: width) else { return nil }
+      guard Self.restingFrame(of: webView) == pageFrame, (webView.superview?.bounds ?? webView.bounds) == hostBounds else { return nil }
+      guard PageSnapshots.isOnScreen(webView) else { return ["refused": "hidden"] }
+      let flat = await PageSnapshots.isFlatAwayFromMain(taken)
+      guard !flat else { return ["refused": "blank"] }
+      shot = taken
+      route = "quiet"
+    } else if let copied = PageSnapshots.screenCopy(of: webView, width: width), !PageSnapshots.isFlat(copied) {
       shot = copied
       route = "screenCopy"
     } else {
@@ -325,10 +338,19 @@ final class PhonePages {
       route = "engine"
     }
     let image = margined ? Self.withSideMargins(shot, page: pageFrame, screen: hostBounds.size, color: page.underPageBackgroundColor ?? webView.underPageBackgroundColor ?? .black) : shot
-    guard var written = await PageSnapshots.write(pageID, image: image, isPrivate: page.isPrivate, quality: quality ?? 82) else { return nil }
+    guard tabIDs[pageID] == page.id, !quiet || visuals.generation(pageID) == generation else { return nil }
+    guard var written = await PageSnapshots.write(pageID, image: image, isPrivate: page.isPrivate, quality: quality ?? 82, ticket: ticket, session: session, priority: quiet ? .utility : .userInitiated) else { return nil }
     if tabIDs[pageID] == page.id { visuals.captured(pageID, generation: generation) }
     written["route"] = route
     return written
+  }
+
+  static func quietCopy(of webView: WKWebView, width: CGFloat) async -> UIImage? {
+    let configuration = WKSnapshotConfiguration()
+    configuration.afterScreenUpdates = false
+    let displayScale = max(webView.traitCollection.displayScale, 1)
+    configuration.snapshotWidth = NSNumber(value: Double(width * PageSnapshots.screenCopyScale / displayScale))
+    return try? await webView.takeSnapshot(configuration: configuration)
   }
 
   static func restingFrame(of view: UIView) -> CGRect {

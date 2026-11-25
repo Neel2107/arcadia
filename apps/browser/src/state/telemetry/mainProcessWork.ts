@@ -1,12 +1,13 @@
 import type { DiagnosticsSample } from "../../platform/app";
+import { menuSyncTotals } from "../app/menuSyncTotals";
 
-type Totals = { at: number; cpuMs: number; wakeups: number; rebuilds: number; stalePresses: number; scrollWaits: number; activatingPresses: number };
+type Totals = { at: number; cpuMs: number; wakeups: number; rebuilds: number; stalePresses: number; scrollWaits: number; activatingPresses: number; menuBuilds: number; menuSends: number };
 
 let last: Totals | null = null;
 
 const totalsOf = (sample: DiagnosticsSample, at: number): Totals | null =>
   typeof sample.cpuMs === "number" && typeof sample.wakeups === "number"
-    ? { at, cpuMs: sample.cpuMs, wakeups: sample.wakeups, rebuilds: sample.dragRegionRebuilds ?? 0, stalePresses: sample.dragRegionStalePresses ?? 0, scrollWaits: sample.dragRegionScrollWaits ?? 0, activatingPresses: sample.dragRegionActivatingPresses ?? 0 }
+    ? { at, cpuMs: sample.cpuMs, wakeups: sample.wakeups, rebuilds: sample.dragRegionRebuilds ?? 0, stalePresses: sample.dragRegionStalePresses ?? 0, scrollWaits: sample.dragRegionScrollWaits ?? 0, activatingPresses: sample.dragRegionActivatingPresses ?? 0, menuBuilds: menuSyncTotals.builds, menuSends: menuSyncTotals.sends }
     : null;
 
 export function mainProcessWork(sample: DiagnosticsSample, at: number) {
@@ -22,6 +23,8 @@ export function mainProcessWork(sample: DiagnosticsSample, at: number) {
     drag_region_stale_presses: now.stalePresses - before.stalePresses,
     drag_region_scroll_waits: now.scrollWaits - before.scrollWaits,
     drag_region_activating_presses: now.activatingPresses - before.activatingPresses,
+    menu_state_builds: now.menuBuilds - before.menuBuilds,
+    menu_state_sends: now.menuSends - before.menuSends,
   };
 }
 

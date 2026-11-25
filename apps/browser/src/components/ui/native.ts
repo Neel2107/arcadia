@@ -1,5 +1,6 @@
 export {
   ActivitySpinner,
+  Breathe,
   ClipView,
   ContextMenuArea,
   DockSelection,
@@ -10,6 +11,7 @@ export {
   PeekStage,
   MouseArea,
   OutsidePressArea,
+  WheelArea,
   PageCoverGate,
   PluginPageView,
   PopoverBubble,

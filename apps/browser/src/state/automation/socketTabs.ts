@@ -7,16 +7,22 @@ import { splitOf } from "../splits/splits";
 import { withLivePage } from "../tabs/livePage";
 import { goBackAsking, goForwardAsking } from "../tabs/navigation";
 import { liveOf } from "../tabs/tabLive";
+import { CLI_HOLD_DEFAULT_S, CLI_HOLD_MAX_S, CLI_HOLD_MAX_TABS, heldByCli, holdForCli, releaseFromCli } from "../tabs/cliHolds";
+import type { JsonSchema } from "../../lib/jsonSchema";
+import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
+import { noteCliTabsHeld } from "../telemetry/tabSleepCounts";
+import { controlConsoleDelta } from "../../platform/control";
 import { recentlyClosedIn } from "../windows/recentlyClosedList";
 import { eligibleKind, isEligibleTab, shownPage, windowTabIds } from "./automationWindows";
 import type { MethodSpec, SocketCall } from "./socketCatalog";
+import { cliHoldsPushed } from "./cliHoldsEngine";
 import { askWhereSeen } from "./socketAsk";
-import { bool, id, obj, PROFILE, TAB, text, WINDOW } from "./socketSchema";
+import { bool, id, ids, int, obj, PROFILE, TAB, text, WINDOW } from "./socketSchema";
 import { expect, now, profileArg, tabOf, windowOf, windowOrFocused } from "./socketTargets";
 import { openableUrl } from "./workspaceOps";
 import { OpError } from "./workspaceTargets";
 
-export function tabRow(s: BrowserState, tabId: string) {
+function tabRow(s: BrowserState, tabId: string) {
   const t = s.tabs[tabId]!;
   const live = liveOf(tabId);
   return {
@@ -135,8 +141,79 @@ function closedClear(params: Record<string, unknown>) {
   return { cleared: listed };
 }
 
+async function holdTabs(params: Record<string, unknown>, call?: SocketCall) {
+  const s = now();
+  const asked = [...new Set(params.tabs as string[])];
+  const held = asked.filter((tab) => isEligibleTab(s, tab));
+  const untilDisconnect = params.untilDisconnect === true;
+  const live = params.live === true && PLATFORM_FEATURES.vetoesChromeDiscardsForCli;
+  if (untilDisconnect && !(call && call.connection > 0)) throw new OpError("refused", "untilDisconnect needs a socket connection that stays open.");
+  const seconds = untilDisconnect ? null : ((params.seconds as number | undefined) ?? CLI_HOLD_DEFAULT_S);
+  const outcome = holdForCli(params.session as string, held, seconds ?? CLI_HOLD_DEFAULT_S, { connection: untilDisconnect ? call!.connection : undefined, live });
+  if ("refused" in outcome) throw new OpError("refused", outcome.refused);
+  noteCliTabsHeld(outcome.started.length, undefined, { liveTabs: outcome.liveStarted.length, untilDisconnect });
+  const gone = asked.filter((tab) => !held.includes(tab));
+  const shape = { held, gone, seconds, ...(untilDisconnect ? { untilDisconnect } : {}), ...(params.live === true ? { live } : {}) };
+  if (!PLATFORM_FEATURES.vetoesChromeDiscardsForCli) return shape;
+  const marked = await cliHoldsPushed();
+  return { ...shape, engineKeeps: marked !== null && held.every((tab) => marked.has(tab) && heldByCli(tab)) };
+}
+
+const CONSOLE_DELTA_MAX = 200;
+
+async function consoleDelta(params: Record<string, unknown>) {
+  const tab = tabOf(params.tab).id;
+  return await controlConsoleDelta(tab, { after: params.after as number | undefined, generation: params.generation as number | undefined, limit: params.limit as number | undefined });
+}
+
+async function releaseTabs(params: Record<string, unknown>, call?: SocketCall) {
+  const released = releaseFromCli(params.session as string, call?.connection);
+  if (PLATFORM_FEATURES.vetoesChromeDiscardsForCli) await cliHoldsPushed();
+  return { released };
+}
+
+const HOLD_SESSION: JsonSchema = { type: "string", pattern: "^[A-Za-z0-9._-]{1,64}$", description: "The holding session's own name; each session's holds are its own" };
+
 export const TAB_METHODS: MethodSpec[] = [
   { name: "tabs.list", mutates: false, description: "Every tab the command may use, with its pin, group, split, page state and times", params: obj({ window: WINDOW, profile: PROFILE }), result: "[tab]", run: listTabs },
+  {
+    name: "tabs.hold",
+    mutates: false,
+    description: `Keep tabs an ardia command session is using loaded: Ardia's own tab budget doesn't put them to sleep and their profile isn't unloaded as idle for the next seconds (default ${CLI_HOLD_DEFAULT_S}, at most ${CLI_HOLD_MAX_S}); on macOS Chromium's own discarding keeps them too, and elsewhere only while a debugger is attached. Each call replaces the session's held tabs; call again before the time ends to keep holding, and tabs.release ends it sooner. With untilDisconnect the hold has no timer and lasts until tabs.release from the same connection or until this connection closes, however the command ends (a crash or kill included), so it needs no renewing; it belongs to this connection, so another connection using the same session name can't replace or release it. With live, on macOS, held tabs keep drawing and laying out while in the background, so screenshots, hover and hit tests work without showing them; that ends with the hold`,
+    params: obj(
+      {
+        session: HOLD_SESSION,
+        tabs: ids("Tab ids from windows or tabs.list; they replace what this session held", CLI_HOLD_MAX_TABS),
+        seconds: int("How long to hold them; ignored with untilDisconnect", 1, CLI_HOLD_MAX_S),
+        untilDisconnect: bool("Hold until this connection closes or tabs.release, with no timer to renew"),
+        live: bool("Keep the held tabs drawing in the background (macOS)"),
+      },
+      ["session", "tabs"],
+    ),
+    result: "{held, gone, seconds, untilDisconnect?, live?, engineKeeps?}",
+    run: holdTabs,
+  },
+  ...(PLATFORM_FEATURES.readsCliConsole
+    ? [
+        {
+          name: "tabs.consoleDelta",
+          mutates: false,
+          description: `Console warnings and errors and uncaught page exceptions a tab logged since a watermark, from a ring of its last ${CONSOLE_DELTA_MAX} that the engine keeps from the tab's creation. Pass the reply's next as after and its generation as generation on the following call; reset says the ring was replaced (the tab's page was swapped) and the read started over, dropped counts entries that left the ring before they were read, and withheld counts entries from frames DevTools may not inspect`,
+          params: obj(
+            {
+              tab: TAB,
+              after: int("The next of the previous reply; 0 or absent reads the whole ring", 0, Number.MAX_SAFE_INTEGER),
+              generation: int("The generation of the previous reply", 0, Number.MAX_SAFE_INTEGER),
+              limit: int("At most this many entries", 1, CONSOLE_DELTA_MAX),
+            },
+            ["tab"],
+          ),
+          result: "{entries, generation, reset, next, last, dropped, withheld, errors, more}",
+          run: consoleDelta,
+        } satisfies MethodSpec,
+      ]
+    : []),
+  { name: "tabs.release", mutates: false, description: "Let the tabs a session held with tabs.hold sleep again as Memory Saver decides", params: obj({ session: HOLD_SESSION }, ["session"]), result: "{released}", run: releaseTabs },
   { name: "tabs.get", mutates: false, description: "One tab", params: obj({ tab: TAB }, ["tab"]), result: "tab", run: (p) => tabRow(now(), tabOf(p.tab).id) },
   { name: "tabs.navigate", mutates: true, description: "Load a URL in a tab, as typing it in the address bar does", params: obj({ tab: TAB, url: text("http, https or file URL, about:blank or ardia://history, bookmarks, downloads, newtab") }, ["tab", "url"]), result: "tab", run: navigate },
   { name: "tabs.reload", mutates: true, description: "Reload a tab's page", params: obj({ tab: TAB, bypassCache: bool("Reload without the cache") }, ["tab"]), result: "{ok}", run: reload },

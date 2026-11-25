@@ -43,8 +43,8 @@
   },
   "missing": {
     "autofill": ["settings", "setSettings", "showSuggestions"],
-    "contentBlocker": ["state", "setEnabled", "setListEnabled", "isAllowed", "setAllowed", "hiddenElements", "hideElements", "restoreElements", "addList", "removeList", "devFailNextMessage", "devDelayNextLoad"],
-    "engine": ["beginTracing", "endTracing", "isTracing", "cliTabTargets", "cliOwnsTab", "cliMoveOffscreen", "cliCloseOffscreenTabs"],
+    "contentBlocker": ["state", "setEnabled", "setListEnabled", "isAllowed", "setAllowed", "removeAllowed", "hiddenElements", "hideElements", "restoreElements", "addList", "removeList", "devFailNextMessage", "devDelayNextLoad"],
+    "engine": ["beginTracing", "endTracing", "isTracing", "cliTabTargets", "cliOwnsTab", "cliConsoleDelta", "cliDevToolsOpen", "cliDevToolsSend", "cliDevToolsClose", "cliCancel", "cliSnapshot", "cliWaitSettled", "cliHitTest", "cliClick", "cliScreenshot", "cliMoveOffscreen", "cliCloseOffscreenTabs", "setCliHeldTabs", "childProcessCpu"],
     "extensions": ["resolveInstallPrompt", "actionStates", "sidePanelUrl"],
     "media": [
       "displayMediaSources",
@@ -75,6 +75,8 @@
       "routeLinkTabs",
       "stripCommand",
       "strips",
+      "diagnostics",
+      "input",
       "reportCommits",
       "devBrowserId",
       "devEvents",
@@ -106,6 +108,6 @@
     "bookmarks.changed": "bookmarks.changed",
     "extensions.action": "extensions.action",
     "extensions.sync": "extensions.sync",
-    "cliControl": "engine.cliControl"
+    "cliControl": "engine.cliControl", "cliDevTools": "engine.cliDevTools"
   }
 }
