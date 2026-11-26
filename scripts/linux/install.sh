@@ -68,6 +68,8 @@ staged="$target/lib/ardia.new-$$"
 retired="$target/lib/ardia.old-$$"
 launcher=""
 
+pid_alive() { local why; [[ "$1" =~ ^[1-9][0-9]{0,9}$ ]] && (( $1 <= 2147483647 )) || return 1; why=$(LC_ALL=C; kill -0 "$1" 2>&1) || [[ "$why" == *"Operation not permitted"* ]]; }
+
 finish() {
   if [[ -e "$retired" && ! -e "$installed" && ! -L "$installed" ]]; then
     mv -T -- "$retired" "$installed" || true
@@ -81,7 +83,7 @@ install -d -m 0755 "$target/lib" "$target/bin" "$target/share/applications"
 for leftover in "$target"/lib/ardia.new-* "$target"/lib/ardia.old-*; do
   [[ -e "$leftover" || -L "$leftover" ]] || continue
   owner_pid=${leftover##*-}
-  if [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+  if [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! pid_alive "$owner_pid"; then
     if [[ "$leftover" == */ardia.old-* && ! -e "$installed" && ! -L "$installed" ]]; then
       mv -T -- "$leftover" "$installed"
       continue

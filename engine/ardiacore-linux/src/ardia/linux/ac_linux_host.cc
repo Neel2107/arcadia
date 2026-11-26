@@ -108,6 +108,7 @@
 #include "ardia/linux/ac_linux_tab_bindings.h"
 #include "ardia/linux/ac_linux_telemetry.h"
 #include "ardia/desktop/ac_desktop_telemetry_policy.h"
+#include "ardia/desktop/ac_desktop_webui_process_policy.h"
 #include "ardia/linux/ac_linux_self_update.h"
 #include "ardia/linux/ac_linux_updates.h"
 #include "ardia/linux/ac_linux_system_signals.h"
@@ -161,6 +162,7 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/download/download_core_service.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
+#include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/picture_in_picture/auto_picture_in_picture_tab_helper.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
@@ -405,6 +407,100 @@ class ShellTransparency : public content::WebContentsObserver {
     web_contents()->SetPageBaseBackgroundColor(SK_ColorTRANSPARENT);
     if (auto* view = web_contents()->GetRenderWidgetHostView()) view->SetBackgroundColor(SK_ColorTRANSPARENT);
   }
+};
+
+std::unique_ptr<content::WebContents> CreateShellContents(Profile* profile, bool private_window) {
+  content::WebContents::CreateParams params(profile);
+  if (const auto feature = desktop_webui_process::SharedRendererFeature(
+          {.private_window = private_window, .off_the_record_profile = profile->IsOffTheRecord()})) {
+    params.privileged_params = content::WebContents::PrivilegedParams{.feature_id = *feature};
+  }
+  return content::WebContents::Create(params);
+}
+
+class ShellRecovery : public content::WebContentsObserver {
+ public:
+  ShellRecovery(content::WebContents* shell,
+                base::RepeatingCallback<desktop_webui_process::WindowState()> window_state,
+                base::RepeatingClosure before_recovery,
+                base::RepeatingCallback<void(desktop_webui_process::RecoveryOutcome)> note_outcome)
+      : content::WebContentsObserver(shell),
+        window_state_(std::move(window_state)),
+        before_recovery_(std::move(before_recovery)),
+        note_outcome_(std::move(note_outcome)) {
+    state_.InitialLoadStarted();
+    quit_cancelled_ = chrome::AddClosingAllBrowsersCallback(base::BindRepeating(
+        [](base::WeakPtr<ShellRecovery> recovery, bool closing) {
+          if (recovery && !closing) recovery->Resume();
+        },
+        weak_factory_.GetWeakPtr()));
+  }
+
+  void PrimaryMainFrameRenderProcessGone(base::TerminationStatus status) override {
+    state_.RendererGone(status == base::TERMINATION_STATUS_NORMAL_TERMINATION ||
+                        status == base::TERMINATION_STATUS_STILL_RUNNING);
+    Resume();
+  }
+  void DidFinishNavigation(content::NavigationHandle* handle) override {
+    if (!handle->IsInPrimaryMainFrame() || handle->IsSameDocument()) return;
+    if (handle->HasCommitted() && !handle->IsErrorPage()) {
+      if (state_.DocumentCommitted()) note_outcome_.Run(desktop_webui_process::RecoveryOutcome::kRecovered);
+      return;
+    }
+    state_.NavigationEndedWithoutCommit();
+    Resume();
+  }
+
+  void Resume() {
+    if (!state_.owed()) return;
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&ShellRecovery::Step, weak_factory_.GetWeakPtr()));
+  }
+
+ private:
+  void Step() {
+    quit_poll_.Stop();
+    if (!web_contents()) return;
+    content::NavigationController& controller = web_contents()->GetController();
+    const content::NavigationEntry* entry = controller.GetLastCommittedEntry();
+    const bool shutdown_started = browser_shutdown::HasShutdownStarted();
+    const bool trying_to_quit = browser_shutdown::IsTryingToQuit();
+    switch (state_.Next((base::TimeTicks::Now() - base::TimeTicks()).InSecondsF(),
+                        desktop_webui_process::ShellWindowState(shutdown_started, trying_to_quit,
+                                                                window_state_.Run()),
+                        entry && !entry->IsInitialEntry())) {
+      case desktop_webui_process::RecoveryStep::kReloadDocument:
+        before_recovery_.Run();
+        note_outcome_.Run(desktop_webui_process::RecoveryOutcome::kAttempted);
+        controller.Reload(content::ReloadType::NORMAL, false);
+        break;
+      case desktop_webui_process::RecoveryStep::kLoadShellUrl:
+        before_recovery_.Run();
+        note_outcome_.Run(desktop_webui_process::RecoveryOutcome::kAttempted);
+        controller.LoadURL(GURL(desktop_webui_process::kShellUrl), content::Referrer(),
+                           ui::PAGE_TRANSITION_AUTO_TOPLEVEL, std::string());
+        break;
+      case desktop_webui_process::RecoveryStep::kWaitForResume:
+        if (desktop_webui_process::QuitMayStillBeCancelled(shutdown_started, trying_to_quit)) {
+          quit_poll_.Start(FROM_HERE, base::Milliseconds(desktop_webui_process::kQuitPollMilliseconds),
+                           base::BindOnce(&ShellRecovery::Resume, weak_factory_.GetWeakPtr()));
+        }
+        break;
+      case desktop_webui_process::RecoveryStep::kGaveUp:
+        note_outcome_.Run(desktop_webui_process::RecoveryOutcome::kExhausted);
+        break;
+      case desktop_webui_process::RecoveryStep::kNothing:
+        break;
+    }
+  }
+
+  base::RepeatingCallback<desktop_webui_process::WindowState()> window_state_;
+  base::RepeatingClosure before_recovery_;
+  base::RepeatingCallback<void(desktop_webui_process::RecoveryOutcome)> note_outcome_;
+  desktop_webui_process::ShellRecoveryState state_;
+  base::CallbackListSubscription quit_cancelled_;
+  base::OneShotTimer quit_poll_;
+  base::WeakPtrFactory<ShellRecovery> weak_factory_{this};
 };
 
 constexpr base::TimeDelta kShellCurtainSettle = base::Milliseconds(100);
@@ -925,6 +1021,49 @@ scoped_refptr<base::SequencedTaskRunner> FileRunner() {
   return *runner;
 }
 
+desktop_webui_process::ShellRecoveryTally& RecoveryTally() {
+  static desktop_webui_process::ShellRecoveryTally tally;
+  return tally;
+}
+
+desktop_webui_process::RecoveryDocuments& RecoveryArchive() {
+  static desktop_webui_process::RecoveryDocuments archive;
+  return archive;
+}
+
+auto ReadRecoveryDocument(const base::FilePath& directory) {
+  return [directory](const std::string& name) {
+    StoredDocument stored = ReadStoredDocument(directory, name);
+    return desktop_webui_process::RecoveryDocumentRead{stored.outcome, std::move(stored.contents)};
+  };
+}
+
+auto WriteRecoveryDocument(const base::FilePath& directory) {
+  return [directory](const std::string& name, const std::string& contents) {
+    return WriteDocument(directory, name, contents);
+  };
+}
+
+void NoteShellRecovery(const base::FilePath& directory, desktop_webui_process::RecoveryOutcome outcome) {
+  RecoveryTally().Record(outcome);
+  FileRunner()->PostTask(FROM_HERE, base::BindOnce(
+      [](const base::FilePath& directory, const std::string& tally) {
+        RecoveryArchive().Save(ReadRecoveryDocument(directory), WriteRecoveryDocument(directory), tally);
+      },
+      directory, RecoveryTally().Json()));
+}
+
+void RotateShellRecoveryDocuments(const base::FilePath& directory) {
+  static bool rotated = false;
+  if (rotated) return;
+  rotated = true;
+  FileRunner()->PostTask(FROM_HERE, base::BindOnce(
+      [](const base::FilePath& directory) {
+        RecoveryArchive().Rotate(ReadRecoveryDocument(directory), WriteRecoveryDocument(directory));
+      },
+      directory));
+}
+
 LinuxDocumentRead ReadCanonicalDocument(const base::FilePath& directory,
                                         std::string_view name) {
   LinuxDocumentRead result;
@@ -1409,6 +1548,7 @@ class ShellHostView : public views::View,
   void DocumentCall(std::string verb, base::DictValue request,
                     base::OnceCallback<void(LinuxDocumentResult)> done);
   base::DictValue Bootstrap() const;
+  void NoteAssetServed(std::string_view asset) { launch_bootstrap_.Served(asset); }
   void HandUnclaimedTabsToShell();
   base::DictValue Strip() const;
   base::DictValue Transaction(std::optional<int> command, bool advance);
@@ -1680,6 +1820,8 @@ class ShellHostView : public views::View,
   std::optional<StartupTab> startup_tab_;
   base::OneShotTimer startup_tab_timer_;
   void StartStartupTab();
+  void StartShellRecovery();
+  desktop_webui_process::WindowState RecoveryWindowState() const;
   void StartedStartupTab(std::optional<linux_startup_tab::StartupTab> saved);
   void OpenStartupTab(linux_startup_tab::StartupTab saved, std::string history);
   content::WebContents* TakeStartupTabForKey(const std::string& key, const GURL& url, Profile* profile);
@@ -1863,6 +2005,7 @@ class ShellHostView : public views::View,
   std::vector<std::unique_ptr<views::ViewTracker>> under_glass_;
   std::vector<gfx::Rect> shell_pass_;
   std::unique_ptr<ShellTransparency> shell_transparency_;
+  std::unique_ptr<ShellRecovery> shell_recovery_;
   raw_ptr<views::View> curtain_ = nullptr;
   std::optional<desktop_window_corners::Corners> window_corners_;
   std::optional<std::pair<bool, desktop_window_corners::DecorationAnswer>> followed_decorations_;
@@ -1925,6 +2068,7 @@ class ShellHostView : public views::View,
   base::WeakPtr<content::WebContents> switcher_source_;
   int id_;
   bool startup_;
+  desktop_webui_process::LaunchBootstrap launch_bootstrap_;
   std::unique_ptr<ardia::linux_suggest::SuggestionClient> suggestions_ =
       std::make_unique<ardia::linux_suggest::SuggestionClient>();
   std::unique_ptr<ardia::linux_telemetry::TelemetryClient> telemetry_ =
@@ -2762,6 +2906,7 @@ class ShellDataSource : public content::URLDataSource {
     const bool shell_bootstrap = AssetPath(url) == "host-bootstrap.js";
     if (shell_bootstrap) host->HandUnclaimedTabsToShell();
     base::DictValue bootstrap = host->Bootstrap();
+    host->NoteAssetServed(AssetPath(url));
     if (shell_bootstrap && host->TakeOpenedFloating()) bootstrap.Set("openedFloating", true);
     FileRunner()->PostTaskAndReplyWithResult(
         FROM_HERE,
@@ -2792,7 +2937,7 @@ class ShellController : public content::WebUIController {
 
 class ShellConfig : public content::DefaultWebUIConfig<ShellController> {
  public:
-  ShellConfig() : DefaultWebUIConfig("chrome", "ardia") {}
+  ShellConfig() : DefaultWebUIConfig(desktop_webui_process::kShellScheme, desktop_webui_process::kShellHost) {}
   bool IsWebUIEnabled(content::BrowserContext* context) override {
     return !Profile::FromBrowserContext(context)->IsOffTheRecord();
   }
@@ -2801,7 +2946,7 @@ class ShellConfig : public content::DefaultWebUIConfig<ShellController> {
 ShellHostView::ShellHostView(BrowserWindowInterface* browser, BrowserView* parent,
                              bool startup, Profile* app_profile)
     : browser_(browser), browser_view_(parent), app_profile_(app_profile->GetWeakPtr()),
-      id_(browser->GetSessionID().id()), startup_(startup),
+      id_(browser->GetSessionID().id()), startup_(startup), launch_bootstrap_(startup),
       window_id_(Hosts().empty() ? "main" : "window-" + base::NumberToString(id_)) {
   Hosts()[id_] = this;
   SetBackground(views::CreateSolidBackground(kColorWebContentsBackground));
@@ -2878,6 +3023,10 @@ ShellHostView::~ShellHostView() {
 
 void ShellHostView::Initialize() {
   sized_by_default_ = ArdiaLinuxTakeDefaultSizedBrowser(browser_);
+  if (Profile* app_profile = app_profile_.get()) {
+    shell_->SetOwnedWebContents(CreateShellContents(app_profile, private_window()));
+    RotateShellRecoveryDocuments(DocumentDirectory(app_profile));
+  }
   documents_ = DocumentsFor(profile());
   dialogs_ = std::make_unique<LinuxWindowDialogs>(window_id_, DialogProfile(), GetWidget(),
                                                   ardiacore::BackgroundInstance());
@@ -2937,13 +3086,38 @@ void ShellHostView::Initialize() {
     }
     if (startup_ && !small_ && private_window_.empty() && unclaimed_.empty()) StartStartupTab();
   }
-  shell_->LoadInitialURL(GURL("chrome://ardia/"));
+  shell_->LoadInitialURL(GURL(desktop_webui_process::kShellUrl));
   shell_transparency_ = std::make_unique<ShellTransparency>(shell());
+  StartShellRecovery();
   curtain_timer_.Start(FROM_HERE, kShellCurtainLimit,
                        base::BindOnce(&ShellHostView::LiftCurtain, base::Unretained(this)));
   ApplyShellInput();
   ardiacore::WatchLinuxShellInput(shell());
   settled_window_state_.Settle(NativeWindowFacts());
+}
+
+desktop_webui_process::WindowState ShellHostView::RecoveryWindowState() const {
+  if (!GetWidget() || GetWidget()->IsClosed() || close_.Irreversible())
+    return desktop_webui_process::WindowState::kGone;
+  return closing() ? desktop_webui_process::WindowState::kPaused : desktop_webui_process::WindowState::kOpen;
+}
+
+void ShellHostView::StartShellRecovery() {
+  Profile* app_profile = app_profile_.get();
+  if (!app_profile) return;
+  shell_recovery_ = std::make_unique<ShellRecovery>(
+      shell(),
+      base::BindRepeating(
+          [](base::WeakPtr<ShellHostView> host) {
+            return host ? host->RecoveryWindowState() : desktop_webui_process::WindowState::kGone;
+          },
+          GetWeakPtr()),
+      base::BindRepeating(
+          [](base::WeakPtr<ShellHostView> host) {
+            if (host) host->launch_bootstrap_.NoteRecovery();
+          },
+          GetWeakPtr()),
+      base::BindRepeating(&NoteShellRecovery, DocumentDirectory(app_profile)));
 }
 
 void ShellHostView::StartStartupTab() {
@@ -3432,7 +3606,7 @@ bool ShellHostView::Trusted(content::WebUI* ui) const {
   if (!browser_ || !ui || ui->GetWebContents() != shell()) return false;
   auto* frame = shell()->GetPrimaryMainFrame();
   return frame && frame->IsRenderFrameLive() && ui->GetRenderFrameHost() == frame && frame->GetWebUI() == ui && frame->GetLastCommittedOrigin() ==
-                      url::Origin::Create(GURL("chrome://ardia/")) &&
+                      url::Origin::Create(GURL(desktop_webui_process::kShellUrl)) &&
          shell()->GetLastCommittedURL().host() == "ardia";
 }
 
@@ -3548,7 +3722,7 @@ base::DictValue ShellHostView::Bootstrap() const {
   }
   auto bootstrap = base::DictValue()
       .Set("windowId", window_id_)
-      .Set("startup", startup_)
+      .Set("startup", launch_bootstrap_.startup())
       .Set("profileId", "default")
       .Set("nativeModules", std::move(native_modules))
       .Set("launchConfig", ardiacore::LinuxLaunchConfig(DocumentDirectory(profile()), user_data_directory))
@@ -4565,6 +4739,7 @@ void ShellHostView::CancelDocumentSeal(LinuxClose::Identity identity, bool chrom
               return;
             }
             if (!host->close_.Cancelled(identity)) return;
+            if (host->shell_recovery_) host->shell_recovery_->Resume();
             for (const auto& companion : host->companions_) {
               if (companion) UnloadController::From(companion.get())->ResetBeforeUnloadForShutdown();
             }
@@ -7638,7 +7813,7 @@ void ShellHostView::Invoke(
       method == "ArdiaShell.removeDocument") {
     const std::string name = ArgumentString(values, 0);
     if (!desktop_policy::ValidDocumentName(name) || name == kSessionName ||
-        LinuxDocuments::Reserved(name)) {
+        LinuxDocuments::Reserved(name) || desktop_webui_process::ShellRecoveryDocument(name)) {
       return std::move(done).Run(false, base::Value("Invalid or reserved document name"));
     }
     std::optional<std::string> contents;

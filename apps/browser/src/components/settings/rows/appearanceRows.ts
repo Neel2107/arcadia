@@ -101,9 +101,14 @@ export const appearanceRows = {
       section: "Switching tabs",
       rows: {
         ctrlTab: {
-          title: `What ${PLATFORM_TERMS.switchTabsKey} does`,
-          description: "Step through your tabs in order, or open the recent tabs switcher.",
-          keywords: ["ctrl tab", "control tab", "alt tab", "tab switcher", "switch tabs", "switching tabs", "recent tabs", "recently used", "last tab", "previous tab", "next tab", "cycle tabs", "mru", "tabbing", "arc", "dia", "chrome"],
+          title: `${PLATFORM_TERMS.switchTabsKey} goes to`,
+          description: "Your most recent tabs first, or the next tab down the list.",
+          keywords: ["ctrl tab", "control tab", "alt tab", "tab switcher", "switch tabs", "switching tabs", "recent tabs", "recently used", "last tab", "previous tab", "next tab", "cycle tabs", "mru", "in order", "order", "tabbing", "arc", "dia", "chrome"],
+        },
+        tabSwitcherView: {
+          title: "Tab switcher shows",
+          description: "Page previews, a compact list of titles, or nothing at all while you switch.",
+          keywords: ["tab switcher", "switcher", "compact list", "list", "thumbnails", "previews", "page previews", "pictures", "overlay", "hud", "none", "ctrl tab", "control tab"],
         },
         afterClosingTab: {
           title: "After closing a tab",

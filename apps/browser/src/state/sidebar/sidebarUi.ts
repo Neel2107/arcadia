@@ -3,6 +3,7 @@ import { create } from "zustand";
 import { snappedToDevicePixels } from "../settings/interfaceScale";
 import { peekShown } from "../windows/dockMotion";
 import { noteSidebarPeekResize } from "../telemetry/dockCounts";
+import type { Settings } from "../settings/settings";
 
 export type Anchor = { x: number; y: number; width: number; height: number };
 export type Target = { kind: "tab" | "group" | "live" | "folder"; id: string };
@@ -14,7 +15,7 @@ type SidebarUi = {
   tileLetters: { windowId: string; tabId: string; anchor: Anchor | null } | null;
   hover: Hover | null;
   searchTabs: string | null;
-  switcher: { windowId: string; ids: string[]; index: number; mounted: boolean; visible: boolean } | null;
+  switcher: { windowId: string; ids: string[]; index: number; view: Settings["tabSwitcherView"]; mounted: boolean; visible: boolean } | null;
   dragWidth: Record<string, number>;
 };
 
