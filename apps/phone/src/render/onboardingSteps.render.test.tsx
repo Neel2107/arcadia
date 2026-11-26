@@ -329,11 +329,11 @@ onIos("on iPhone every step sits on one start-screen gradient that stays put fro
   const look = presetLook(PROFILE_PRESETS.find((preset) => preset.key === DEFAULT_PROFILE_COLOR)!);
   expect(backdrop[0]!.findAll((node) => node.type === StartBackdrop)[0]!.props).toMatchObject({ look, dark: false, incognito: false });
   expect(root.root.findAll((node) => node.props.entering !== undefined && node.props.testID === undefined && node.props.exiting !== undefined)).toHaveLength(0);
-  const first = backdrop[0]!.instance;
+  const first = backdrop[0]!;
   act(() => useOnboarding.setState({ step: "blocking", forward: true }));
   const after = hosts(root, "onboardingStartBackdrop");
   expect(after).toHaveLength(1);
-  expect(after[0]!.instance).toBe(first);
+  expect(after[0]).toBe(first);
   unmount(root);
 });
 

@@ -176,6 +176,7 @@ export function OnboardingView() {
   const scrolls = fontScale > onboardingLayout.scrollsAboveFontScale;
   const startLook = onboardingLayout.startBackdrop && !material;
   const intro = startLook && settingsUIAvailable();
+  const shared = intro && !scrolls;
   const stepLayers = steps.map((shown) => {
     const content = (
       <StepFocus live={showing && !shown.closing}>
@@ -213,12 +214,12 @@ export function OnboardingView() {
   });
   return (
     <ForcedDark value={intro ? true : null}>
-    <PrimarySlotContext.Provider value={intro ? primarySlot : null}>
+    <PrimarySlotContext.Provider value={shared ? primarySlot : null}>
     <Animated.View testID="onboarding" exiting={FadeOut.duration(tabsMotion.surfaceFade)} {...closingGate(!showing)} style={[StyleSheet.absoluteFill, { backgroundColor: material ? theme.canvas : ink.steps }]}>
       {intro ? (
         <>
           <MeadowBackdrop step={step} />
-          <PrimaryCapsule rect={primaryRect} title={primaryTitle} firstDelayMs={step === "welcome" ? onboardingMotion.capsuleFirstDelayMs : 0} />
+          {shared ? <PrimaryCapsule rect={primaryRect} title={primaryTitle} firstDelayMs={step === "welcome" ? onboardingMotion.capsuleFirstDelayMs : 0} /> : null}
         </>
       ) : startLook ? (
         <StartLookBackdrop />
@@ -227,7 +228,7 @@ export function OnboardingView() {
         {material ? <LookBackdrop softened={!welcome} fadesOut={!welcome} /> : null}
       </Animated.View>
       )}
-      {intro ? <PhoneStage step={step} steps={steps}>{stepLayers}</PhoneStage> : stepLayers}
+      {shared ? <PhoneStage step={step} steps={steps}>{stepLayers}</PhoneStage> : stepLayers}
     </Animated.View>
     </PrimarySlotContext.Provider>
     </ForcedDark>

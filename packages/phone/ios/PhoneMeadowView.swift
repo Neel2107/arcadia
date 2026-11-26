@@ -5,6 +5,8 @@ import WebKit
 final class PhoneMeadowView: ExpoView {
   let onMeadow = EventDispatcher()
   private var webView: WKWebView?
+  private var bridge: PhoneMeadowBridge?
+  private var hasFailed = false
   private var isReady = false
   private var sentHour: String?
 
@@ -25,16 +27,18 @@ final class PhoneMeadowView: ExpoView {
   }
 
   deinit {
-    webView?.configuration.userContentController.removeScriptMessageHandler(forName: PhoneMeadowMessages.name)
+    webView?.configuration.userContentController.removeScriptMessageHandler(forName: PhoneMeadowBridge.name)
   }
 
   private func load() {
-    guard let page = PhoneMeadowMessages.page else {
-      DispatchQueue.main.async { [weak self] in self?.onMeadow(["state": "failed"]) }
+    guard let page = PhoneMeadowBridge.page else {
+      DispatchQueue.main.async { [weak self] in self?.pageFailed() }
       return
     }
     let config = WKWebViewConfiguration()
-    config.userContentController.add(PhoneMeadowMessages(owner: self), name: PhoneMeadowMessages.name)
+    let bridge = PhoneMeadowBridge(owner: self)
+    self.bridge = bridge
+    config.userContentController.add(bridge, name: PhoneMeadowBridge.name)
     config.suppressesIncrementalRendering = true
     let web = WKWebView(frame: bounds, configuration: config)
     web.isOpaque = false
@@ -44,6 +48,7 @@ final class PhoneMeadowView: ExpoView {
     web.scrollView.contentInsetAdjustmentBehavior = .never
     web.isUserInteractionEnabled = false
     web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    web.navigationDelegate = bridge
     addSubview(web)
     webView = web
     let opening = URL(string: "#calm", relativeTo: page.html)?.absoluteURL ?? page.html
@@ -62,9 +67,19 @@ final class PhoneMeadowView: ExpoView {
       sentHour = nil
       sendHour()
     }
-    if state == "ready" || state == "failed" {
+    if state == "ready", !hasFailed {
       onMeadow(["state": state])
     }
+    if state == "failed" {
+      pageFailed()
+    }
+  }
+
+  func pageFailed() {
+    guard !hasFailed else { return }
+    hasFailed = true
+    isReady = false
+    onMeadow(["state": "failed"])
   }
 
   private func sendHour() {
@@ -76,11 +91,11 @@ final class PhoneMeadowView: ExpoView {
   }
 }
 
-final class PhoneMeadowMessages: NSObject, WKScriptMessageHandler {
+final class PhoneMeadowBridge: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
   static let name = "meadow"
 
   static let page: (html: URL, folder: URL)? = {
-    guard let bundleURL = Bundle(for: PhoneMeadowMessages.self).url(forResource: "ArdiaPhoneMeadow", withExtension: "bundle"),
+    guard let bundleURL = Bundle(for: PhoneMeadowBridge.self).url(forResource: "ArdiaPhoneMeadow", withExtension: "bundle"),
       let bundle = Bundle(url: bundleURL),
       let html = bundle.url(forResource: "index", withExtension: "html")
     else { return nil }
@@ -95,5 +110,17 @@ final class PhoneMeadowMessages: NSObject, WKScriptMessageHandler {
 
   func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
     owner?.received(message.body)
+  }
+
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    owner?.pageFailed()
+  }
+
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    owner?.pageFailed()
+  }
+
+  func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    owner?.pageFailed()
   }
 }
